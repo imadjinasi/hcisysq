@@ -4,13 +4,13 @@ import { AuthLayout } from "@/layouts/AuthLayout";
 export function LoginPage() {
   return (
     <AuthLayout>
-      <header className="mb-8 sm:mb-9">
-        <span className="mb-5 block h-1 w-14 rounded-full bg-brand-yellow" aria-hidden="true" />
-        <h2 className="font-display text-4xl font-bold leading-[1.06] tracking-[-0.02em] text-brand-heading sm:text-[2.6rem]">
+      <header className="mb-7 sm:mb-8">
+        <span className="mb-4 block h-1 w-12 rounded-full bg-brand-yellow" aria-hidden="true" />
+        <h2 className="font-display text-3xl font-bold leading-[1.08] tracking-[-0.018em] text-brand-heading sm:text-[2.15rem]">
           Selamat datang kembali
         </h2>
-        <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground sm:text-[0.95rem]">
-          Masuk untuk membuka ruang kerja HCIS sesuai kewenangan akun Anda.
+        <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">
+          Masuk untuk membuka layanan kepegawaian sesuai kewenangan akun Anda.
         </p>
       </header>
       <LoginForm />
