@@ -1,0 +1,49 @@
+# Secrets and environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Data and exports
+*.sql
+*.sqlite
+*.sqlite3
+*.dump
+*.csv
+*.xlsx
+*.xls
+*.pdf
+*.zip
+*.tar
+*.tar.gz
+backups/
+exports/
+
+# Dependencies and builds
+node_modules/
+vendor/
+dist/
+build/
+coverage/
+.cache/
+.tmp/
+tmp/
+
+# Runtime
+storage/logs/*
+logs/
+*.log
+*.pid
+
+# IDE and OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# AI/editor local state
+.codex/
+.lovable/

@@ -1,0 +1,246 @@
+version: 1
+status: DISCOVERY
+source_system: legacy-hcis
+updated_at: 2026-08-20
+
+status_values:
+  - discovery
+  - specified
+  - planned
+  - implementing
+  - implemented
+  - verified
+  - deferred
+  - removed
+
+rules:
+  - Legacy behavior is evidence, not automatic product truth.
+  - Every feature requires acceptance criteria before implementation.
+  - Financial and authorization features require additional review.
+
+features:
+  - id: AUTH-001
+    module: identity
+    name: Employee sign-in and session
+    legacy_evidence: email/password and Google sign-in exist
+    target_status: discovery
+    priority: foundation
+    risk: high
+    docs:
+      - docs/domain/roles-permissions.md
+
+  - id: AUTH-002
+    module: identity
+    name: Password recovery and account activation
+    legacy_evidence: password reset and inactive-account handling exist
+    target_status: discovery
+    priority: foundation
+    risk: high
+
+  - id: EMP-001
+    module: employee
+    name: Employee master data
+    legacy_evidence: Employee is the authenticated principal
+    target_status: discovery
+    priority: foundation
+    risk: high
+
+  - id: EMP-002
+    module: employee
+    name: Employee self-service profile
+    legacy_evidence: account and self-service pages exist
+    target_status: discovery
+    priority: foundation
+    risk: medium
+
+  - id: EMP-003
+    module: employee
+    name: Employee data change request
+    legacy_evidence: data change request and notification exist
+    target_status: discovery
+    priority: later
+    risk: medium
+
+  - id: ORG-001
+    module: organization
+    name: Unit, position, and reporting hierarchy
+    legacy_evidence: units, positions, and direct-manager hierarchy exist
+    target_status: discovery
+    priority: foundation
+    risk: high
+
+  - id: AUTH-010
+    module: authorization
+    name: Role and permission management
+    legacy_evidence: super_admin, yayasan group, pegawai, kepala_unit, and admin are observed
+    target_status: discovery
+    priority: foundation
+    risk: critical
+
+  - id: APR-001
+    module: approval
+    name: Reusable multi-step approval engine
+    legacy_evidence: leave, attendance, loan, reimbursement, and overtime use approval flows
+    target_status: discovery
+    priority: foundation
+    risk: critical
+    docs:
+      - docs/domain/workflows/approval-engine.md
+
+  - id: ATT-001
+    module: attendance
+    name: Daily attendance
+    legacy_evidence: GPS and photo validation are described
+    target_status: discovery
+    priority: core
+    risk: high
+
+  - id: ATT-002
+    module: attendance
+    name: Attendance clarification and permission
+    legacy_evidence: stale attendance approval automation exists
+    target_status: discovery
+    priority: core
+    risk: high
+
+  - id: ATT-003
+    module: attendance
+    name: Work schedules and holidays
+    legacy_evidence: unit-based schedules and holiday calendar exist
+    target_status: discovery
+    priority: core
+    risk: high
+
+  - id: LEAVE-001
+    module: leave
+    name: Submit leave request
+    legacy_evidence: leave request and approval notification exist
+    target_status: specified
+    priority: first-slice
+    risk: high
+    docs:
+      - docs/domain/workflows/leave-request.md
+
+  - id: LEAVE-002
+    module: leave
+    name: Leave balance and working-day calculation
+    legacy_evidence: requires validation against current behavior
+    target_status: discovery
+    priority: first-slice
+    risk: critical
+
+  - id: REIMB-001
+    module: reimbursement
+    name: Reimbursement submission and approval
+    legacy_evidence: reimbursement module and notifications exist
+    target_status: discovery
+    priority: core
+    risk: high
+
+  - id: PAY-001
+    module: payroll
+    name: Payroll import and validation
+    legacy_evidence: CSV import exists
+    target_status: discovery
+    priority: later
+    risk: critical
+
+  - id: PAY-002
+    module: payroll
+    name: Payslip generation and employee access
+    legacy_evidence: PDF payslip and availability notification exist
+    target_status: discovery
+    priority: later
+    risk: critical
+
+  - id: LOAN-001
+    module: loan
+    name: Employee loan, installments, and approval
+    legacy_evidence: loan with installments and multi-approver exists
+    target_status: discovery
+    priority: later
+    risk: critical
+
+  - id: PERF-001
+    module: performance
+    name: Performance review and tier
+    legacy_evidence: performance review with tier exists
+    target_status: discovery
+    priority: later
+    risk: high
+
+  - id: TRAIN-001
+    module: training
+    name: Internal training and learning records
+    legacy_evidence: internal LMS/training module exists
+    target_status: discovery
+    priority: later
+    risk: medium
+
+  - id: DOC-001
+    module: documents
+    name: Work certificate request and issuance
+    legacy_evidence: work certificate and notifications exist
+    target_status: discovery
+    priority: later
+    risk: high
+
+  - id: DOC-002
+    module: documents
+    name: Warning letters
+    legacy_evidence: warning-letter feature is described
+    target_status: discovery
+    priority: later
+    risk: high
+
+  - id: NOTIF-001
+    module: notification
+    name: Email, WhatsApp, and in-app notification adapters
+    legacy_evidence: SMTP and Starsender integrations exist
+    target_status: discovery
+    priority: foundation
+    risk: high
+
+  - id: NOTIF-002
+    module: notification
+    name: Announcement and urgent announcement
+    legacy_evidence: announcement notifications exist
+    target_status: discovery
+    priority: later
+    risk: medium
+
+  - id: NOTIF-003
+    module: notification
+    name: Reminder generation and dispatch
+    legacy_evidence: scheduled reminder commands exist
+    target_status: discovery
+    priority: later
+    risk: medium
+
+  - id: REC-001
+    module: recruitment
+    name: Candidate application and recruitment workflow
+    legacy_evidence: application, interview, assessment, and candidate verification notifications exist
+    target_status: discovery
+    priority: validate-product-scope
+    risk: high
+
+  - id: MIG-001
+    module: migration
+    name: Repeatable legacy data migration
+    legacy_evidence: required for cutover
+    target_status: specified
+    priority: foundation
+    risk: critical
+    docs:
+      - docs/migration/strategy.md
+
+  - id: SEC-001
+    module: security
+    name: Audit, privacy, and sensitive-data controls
+    legacy_evidence: activity logs and sensitive HR data exist
+    target_status: specified
+    priority: foundation
+    risk: critical
+    docs:
+      - docs/security/security-baseline.md

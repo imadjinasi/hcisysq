@@ -1,0 +1,465 @@
+openapi: 3.1.0
+info:
+  title: HCIS YSQ API
+  version: 0.0.1
+  description: |
+    Kontrak awal untuk vertical slice identity, employee profile, dan leave.
+    Status dokumen DRAFT; endpoint belum menyatakan implementasi telah tersedia.
+servers:
+  - url: https://api.example.invalid
+    description: Placeholder only
+
+tags:
+  - name: System
+  - name: Session
+  - name: Employees
+  - name: Leave
+  - name: Approvals
+
+paths:
+  /health:
+    get:
+      tags: [System]
+      operationId: getHealth
+      responses:
+        '200':
+          description: Process is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    const: ok
+
+  /session:
+    get:
+      tags: [Session]
+      operationId: getCurrentSession
+      responses:
+        '200':
+          description: Authenticated session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /employees/me:
+    get:
+      tags: [Employees]
+      operationId: getMyEmployeeProfile
+      responses:
+        '200':
+          description: Employee profile visible to the current actor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmployeeProfile'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /leave/preview:
+    post:
+      tags: [Leave]
+      operationId: previewLeaveRequest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveRequestInput'
+      responses:
+        '200':
+          description: Non-persistent leave calculation preview
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeavePreview'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /leave/requests:
+    get:
+      tags: [Leave]
+      operationId: listMyLeaveRequests
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Current employee leave requests
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LeaveRequest'
+                  nextCursor:
+                    type: [string, 'null']
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+    post:
+      tags: [Leave]
+      operationId: submitLeaveRequest
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveRequestInput'
+      responses:
+        '201':
+          description: Leave request created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequest'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Domain conflict such as overlapping request or stale state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
+  /leave/requests/{requestId}:
+    get:
+      tags: [Leave]
+      operationId: getLeaveRequest
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: Authorized request detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /approvals/tasks:
+    get:
+      tags: [Approvals]
+      operationId: listMyApprovalTasks
+      responses:
+        '200':
+          description: Active approval tasks for current actor
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ApprovalTask'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /approvals/tasks/{taskId}/decision:
+    post:
+      tags: [Approvals]
+      operationId: decideApprovalTask
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision, version]
+              properties:
+                decision:
+                  type: string
+                  enum: [approve, reject]
+                note:
+                  type: [string, 'null']
+                  maxLength: 2000
+                version:
+                  type: integer
+                  minimum: 1
+      responses:
+        '200':
+          description: Decision committed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalTask'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Task already decided or version conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+
+components:
+  parameters:
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 128
+    RequestId:
+      name: requestId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    Unauthenticated:
+      description: Authentication required
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: Actor is not authorized
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: Resource not found or intentionally concealed
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    ValidationError:
+      description: Request validation failed
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ValidationProblem'
+
+  schemas:
+    Session:
+      type: object
+      required: [actor, permissions]
+      properties:
+        actor:
+          $ref: '#/components/schemas/Actor'
+        permissions:
+          type: array
+          items:
+            type: string
+
+    Actor:
+      type: object
+      required: [id, kind, displayName]
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [employee, candidate, system]
+        displayName:
+          type: string
+        employeeId:
+          type: [string, 'null']
+          format: uuid
+
+    EmployeeProfile:
+      type: object
+      required: [id, employeeNumber, fullName, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        employeeNumber:
+          type: string
+        fullName:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive, resigned]
+        unit:
+          $ref: '#/components/schemas/Reference'
+        position:
+          $ref: '#/components/schemas/Reference'
+        directManager:
+          oneOf:
+            - $ref: '#/components/schemas/Reference'
+            - type: 'null'
+
+    Reference:
+      type: object
+      required: [id, label]
+      properties:
+        id:
+          type: string
+          format: uuid
+        label:
+          type: string
+
+    LeaveRequestInput:
+      type: object
+      required: [leaveTypeId, startDate, endDate, reason]
+      properties:
+        leaveTypeId:
+          type: string
+          format: uuid
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        partialDay:
+          type: [string, 'null']
+          enum: [null, morning, afternoon]
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        attachmentIds:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            format: uuid
+
+    LeavePreview:
+      type: object
+      required: [workingDays, balanceBefore, balanceAfter, conflicts]
+      properties:
+        workingDays:
+          type: number
+          minimum: 0
+        balanceBefore:
+          type: number
+        balanceAfter:
+          type: number
+        conflicts:
+          type: array
+          items:
+            type: string
+
+    LeaveRequest:
+      type: object
+      required: [id, status, employeeId, leaveType, startDate, endDate, workingDays, version, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [draft, submitted, in_review, approved, rejected, cancelled]
+        employeeId:
+          type: string
+          format: uuid
+        leaveType:
+          $ref: '#/components/schemas/Reference'
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        workingDays:
+          type: number
+        reason:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+
+    ApprovalTask:
+      type: object
+      required: [id, requestType, requestId, status, version]
+      properties:
+        id:
+          type: string
+          format: uuid
+        requestType:
+          type: string
+        requestId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, approved, rejected, skipped, reassigned]
+        version:
+          type: integer
+          minimum: 1
+
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        correlationId:
+          type: string
+
+    ValidationProblem:
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            errors:
+              type: object
+              additionalProperties:
+                type: array
+                items:
+                  type: string
