@@ -40,8 +40,10 @@ export function EmployeeDashboardPage() {
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-semibold capitalize tracking-wide text-muted-foreground">{getDateLabel()}</p>
-          <h1 className="mt-1 font-display text-3xl font-bold tracking-tight text-brand-heading sm:text-4xl">Assalamu&apos;alaikum, Ahmad.</h1>
-          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">
+          <h1 className="mt-1 font-display text-2xl font-bold tracking-[-0.015em] text-brand-heading sm:text-3xl">
+            Assalamu&apos;alaikum, Ahmad.
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
             Ringkasan aktivitas kerja, pengajuan, dan hal yang perlu Anda tindak lanjuti hari ini.
           </p>
         </div>
@@ -61,12 +63,12 @@ export function EmployeeDashboardPage() {
           <div className="relative flex h-full flex-col justify-between gap-7">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-white/70">
+                <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.15em] text-white/70">
                   <Clock3 className="h-4 w-4" aria-hidden="true" />
                   Kehadiran hari ini
                 </div>
                 <div className="mt-4 flex flex-wrap items-end gap-x-4 gap-y-2">
-                  <p className="font-display text-4xl font-bold leading-none sm:text-5xl">{data.attendance.checkIn}</p>
+                  <p className="font-display text-3xl font-bold leading-none sm:text-4xl">{data.attendance.checkIn}</p>
                   <div className="pb-0.5">
                     <p className="text-sm font-bold">Check-in</p>
                     <p className="mt-1 text-xs text-white/70">Jadwal {data.attendance.schedule}</p>
@@ -94,8 +96,8 @@ export function EmployeeDashboardPage() {
         <article className="rounded-[2rem] border border-border/80 bg-white p-5 shadow-[var(--shadow-raised)] sm:p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Cuti tahunan</p>
-              <p className="mt-2 font-display text-4xl font-bold text-brand-heading">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Cuti tahunan</p>
+              <p className="mt-2 font-display text-3xl font-bold text-brand-heading">
                 {data.leave.remaining}
                 <span className="ml-2 font-sans text-sm font-semibold text-muted-foreground">hari tersisa</span>
               </p>
@@ -126,7 +128,7 @@ export function EmployeeDashboardPage() {
             <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-cyan/14 text-cyan-900"><FileText className="h-5 w-5" aria-hidden="true" /></span>
             <HcisStatusBadge tone="review">Aktif</HcisStatusBadge>
           </div>
-          <p className="mt-5 text-3xl font-bold text-foreground">{data.activeRequests}</p>
+          <p className="mt-5 text-2xl font-bold text-foreground">{data.activeRequests}</p>
           <p className="mt-1 text-sm font-semibold text-foreground">Pengajuan berjalan</p>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Pengajuan cuti atau izin yang belum selesai.</p>
         </article>
@@ -136,7 +138,7 @@ export function EmployeeDashboardPage() {
             <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-orange/14 text-orange-900"><WalletCards className="h-5 w-5" aria-hidden="true" /></span>
             <HcisStatusBadge tone="approved">Read only</HcisStatusBadge>
           </div>
-          <p className="mt-5 text-lg font-bold text-foreground">{data.payslip.period}</p>
+          <p className="mt-5 text-base font-bold text-foreground">{data.payslip.period}</p>
           <p className="mt-1 text-sm font-semibold text-foreground">Slip gaji terbaru</p>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{data.payslip.source} · {data.payslip.importedAt}</p>
         </article>
@@ -144,11 +146,11 @@ export function EmployeeDashboardPage() {
         <article className="rounded-3xl border border-brand-yellow/35 bg-brand-yellow/10 p-5 shadow-[var(--shadow-soft)] sm:col-span-2">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-amber-900/70">
+              <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-amber-900/70">
                 <Sparkles className="h-4 w-4" aria-hidden="true" />
                 Akses manajemen
               </div>
-              <p className="mt-3 text-3xl font-bold text-amber-950">{data.approvals.total}</p>
+              <p className="mt-3 text-2xl font-bold text-amber-950">{data.approvals.total}</p>
               <p className="mt-1 text-sm font-bold text-amber-950">Persetujuan tim menunggu</p>
               <p className="mt-1 max-w-sm text-xs leading-relaxed text-amber-950/65">Muncul karena role tambahan. Fitur pegawai tetap tersedia.</p>
             </div>
@@ -161,8 +163,8 @@ export function EmployeeDashboardPage() {
       </section>
 
       <section className="mt-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Akses cepat</p>
-        <h2 className="mt-1 font-display text-2xl font-bold text-brand-heading">Apa yang ingin Anda lakukan?</h2>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Akses cepat</p>
+        <h2 className="mt-1 font-display text-xl font-bold tracking-[-0.01em] text-brand-heading">Apa yang ingin Anda lakukan?</h2>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {quickActions.map((action) => {
             const Icon = action.icon;
@@ -186,8 +188,8 @@ export function EmployeeDashboardPage() {
         <article className="rounded-[2rem] border border-border/80 bg-white p-5 shadow-[var(--shadow-raised)] sm:p-6">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Pengajuan saya</p>
-              <h2 className="mt-1 font-display text-2xl font-bold text-brand-heading">Status terbaru</h2>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Pengajuan saya</p>
+              <h2 className="mt-1 font-display text-xl font-bold tracking-[-0.01em] text-brand-heading">Status terbaru</h2>
             </div>
             <button type="button" className="text-xs font-bold text-brand-primary-deep focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Lihat semua</button>
           </div>
@@ -208,8 +210,8 @@ export function EmployeeDashboardPage() {
           <div className="flex items-center gap-3">
             <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-yellow/16 text-amber-950"><Sparkles className="h-5 w-5" aria-hidden="true" /></span>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Perlu perhatian</p>
-              <h2 className="mt-1 text-lg font-bold text-foreground">Persetujuan tim</h2>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Perlu perhatian</p>
+              <h2 className="mt-1 text-base font-bold text-foreground">Persetujuan tim</h2>
             </div>
           </div>
           <div className="mt-5 space-y-2.5">
