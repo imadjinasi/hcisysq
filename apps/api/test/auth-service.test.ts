@@ -9,7 +9,6 @@ import {
 } from "../src/modules/auth/crypto.js";
 import {
   AUTH_COOKIE_NAME,
-  AuthError,
   AuthService,
   readCookie,
 } from "../src/modules/auth/service.js";
@@ -53,7 +52,7 @@ describe("AuthService", () => {
         },
         { ipAddress: "127.0.0.1", userAgent: "vitest" },
       ),
-    ).rejects.toMatchObject<AuthError>({ code: "MFA_REQUIRED", statusCode: 401 });
+    ).rejects.toMatchObject({ code: "MFA_REQUIRED", statusCode: 401 });
 
     expect(query.mock.calls.some(([sql]) => String(sql).includes("INSERT INTO auth_sessions"))).toBe(
       false,
