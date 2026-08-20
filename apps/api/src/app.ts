@@ -7,6 +7,7 @@ import { registerAuthRoutes } from "./modules/auth/routes.js";
 import { registerEmployeeContactAdminRoutes } from "./modules/employees/admin-employee-contact-routes.js";
 import { registerEmployeeAdminRoutes } from "./modules/employees/admin-routes.js";
 import { registerOrgAccessAdminRoutes } from "./modules/employees/admin-org-access-routes.js";
+import { registerLeaveAdminRoutes } from "./modules/leave/admin-routes.js";
 import { registerSystemRoutes } from "./modules/system/routes.js";
 
 export async function createApp(config: ApiConfig, injectedPool?: Pool) {
@@ -31,6 +32,7 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerEmployeeAdminRoutes(app, pool, config);
   await registerOrgAccessAdminRoutes(app, pool, config);
   await registerEmployeeContactAdminRoutes(app, pool, config);
+  await registerLeaveAdminRoutes(app, pool, config);
 
   app.addHook("onClose", async () => {
     if (!injectedPool) await pool.end();
