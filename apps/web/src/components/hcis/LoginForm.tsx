@@ -6,34 +6,64 @@ import { HcisDivider } from "@/components/hcis/HcisDivider";
 import { HcisFormField } from "@/components/hcis/HcisFormField";
 import { HcisPasswordInput } from "@/components/hcis/HcisPasswordInput";
 import { GoogleIcon } from "@/components/hcis/icons/GoogleIcon";
+import { AuthApiError, landingPath, login } from "@/lib/auth";
 import type { LoginCredentials } from "@/types/hcis";
 
 type FormErrors = Partial<Record<keyof LoginCredentials, string>>;
 
-function validate(data: LoginCredentials): FormErrors {
+function validate(data: LoginCredentials, mfaRequired: boolean): FormErrors {
   const errors: FormErrors = {};
   if (!data.email.trim()) errors.email = "Email wajib diisi.";
   if (!data.password) errors.password = "Kata sandi wajib diisi.";
+  if (mfaRequired && !data.mfaCode?.trim()) {
+    errors.mfaCode = "Kode autentikator wajib diisi.";
+  }
   return errors;
 }
 
 export function LoginForm() {
   const navigate = useNavigate();
-  const [form, setForm] = useState<LoginCredentials>({ email: "", password: "" });
+  const [form, setForm] = useState<LoginCredentials>({
+    email: "",
+    password: "",
+    mfaCode: "",
+  });
   const [errors, setErrors] = useState<FormErrors>({});
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [mfaRequired, setMfaRequired] = useState(false);
   const [googleNotice, setGoogleNotice] = useState(false);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const nextErrors = validate(form);
+    const nextErrors = validate(form, mfaRequired);
     setErrors(nextErrors);
+    setSubmitError(null);
     if (Object.keys(nextErrors).length > 0) return;
 
     setIsLoading(true);
-    window.setTimeout(() => {
-      void navigate({ to: "/app" });
-    }, 500);
+    try {
+      const session = await login({
+        email: form.email,
+        password: form.password,
+        ...(mfaRequired && form.mfaCode ? { mfaCode: form.mfaCode } : {}),
+      });
+      await navigate({ to: landingPath(session.principal.principalType) });
+    } catch (error) {
+      if (error instanceof AuthApiError && error.code === "MFA_REQUIRED") {
+        setMfaRequired(true);
+        setForm((previous) => ({ ...previous, mfaCode: "" }));
+        return;
+      }
+
+      if (error instanceof AuthApiError) {
+        setSubmitError(error.message);
+      } else {
+        setSubmitError("HCIS belum dapat menghubungi layanan autentikasi. Coba lagi.");
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -62,11 +92,45 @@ export function LoginForm() {
           error={errors.password}
         />
         <div className="flex justify-end">
-          <button type="button" className="rounded-md px-1 py-0.5 text-xs font-semibold text-brand-primary-deep hover:text-brand-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/30">
+          <button
+            type="button"
+            className="rounded-md px-1 py-0.5 text-xs font-semibold text-brand-primary-deep hover:text-brand-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/30"
+            onClick={() => setSubmitError("Pemulihan kata sandi belum diaktifkan. Hubungi administrator HCIS.")}
+          >
             Lupa kata sandi?
           </button>
         </div>
       </div>
+
+      {mfaRequired && (
+        <div className="rounded-xl border border-brand-primary/15 bg-brand-primary-pale/45 p-4">
+          <HcisFormField
+            id="mfa-code"
+            label="Kode autentikator"
+            type="text"
+            name="mfaCode"
+            autoComplete="one-time-code"
+            placeholder="6 digit atau recovery code"
+            value={form.mfaCode ?? ""}
+            onChange={(event) =>
+              setForm((previous) => ({ ...previous, mfaCode: event.target.value }))
+            }
+            error={errors.mfaCode}
+          />
+          <p className="mt-2 text-xs leading-5 text-muted-foreground">
+            Masukkan kode dari aplikasi autentikator. Recovery code sekali pakai juga dapat digunakan.
+          </p>
+        </div>
+      )}
+
+      {submitError && (
+        <p
+          className="rounded-xl border border-destructive/15 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+          role="alert"
+        >
+          {submitError}
+        </p>
+      )}
 
       <button
         type="submit"
@@ -77,8 +141,10 @@ export function LoginForm() {
         {isLoading ? (
           <>
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-            Membuka ruang kerja...
+            Memverifikasi...
           </>
+        ) : mfaRequired ? (
+          "Verifikasi & masuk"
         ) : (
           "Masuk"
         )}
@@ -96,8 +162,11 @@ export function LoginForm() {
       </button>
 
       {googleNotice && (
-        <p className="rounded-lg bg-brand-primary-pale/60 px-3 py-2 text-center text-xs text-brand-primary-deep" role="status">
-          Masuk dengan Google masih berupa tampilan. Integrasi autentikasi akan dikerjakan terpisah.
+        <p
+          className="rounded-lg bg-brand-primary-pale/60 px-3 py-2 text-center text-xs text-brand-primary-deep"
+          role="status"
+        >
+          Masuk dengan Google belum diaktifkan. Gunakan akun HCIS yang telah diundang.
         </p>
       )}
     </form>
