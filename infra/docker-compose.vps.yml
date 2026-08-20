@@ -1,0 +1,79 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - hcis_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - backend
+    mem_limit: ${POSTGRES_MEMORY_LIMIT:-320m}
+    shm_size: 128mb
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3001
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    command:
+      - sh
+      - -c
+      - node apps/api/dist/db/migrate.js && exec node apps/api/dist/server.js
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "3001"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3001/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - backend
+      - edge
+    mem_limit: ${API_MEMORY_LIMIT:-192m}
+
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${HCIS_BIND_ADDRESS:-127.0.0.1}:${HCIS_HTTP_PORT:-18080}:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/healthz >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - edge
+    mem_limit: ${WEB_MEMORY_LIMIT:-96m}
+
+networks:
+  backend:
+    internal: true
+  edge:
+
+volumes:
+  hcis_pgdata:
