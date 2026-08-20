@@ -1,0 +1,227 @@
+import { ArrowLeft, Network, ShieldCheck, UserRoundCheck } from "lucide-react";
+import { useEffect, useState, type FormEvent } from "react";
+
+import { AdminShell } from "@/layouts/AdminShell";
+import { AdminApiError } from "@/lib/adminEmployees";
+import {
+  getEmployeeDetail,
+  prepareEmployeeAccount,
+  updateDirectManager,
+  type EmployeeDetailResponse,
+} from "@/lib/adminOrgAccess";
+
+function accountStatusLabel(status: string | null) {
+  if (status === "active") return "Aktif";
+  if (status === "invited") return "Disiapkan";
+  if (status === "suspended") return "Ditangguhkan";
+  if (status === "inactive") return "Nonaktif";
+  return "Belum ada account";
+}
+
+export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) {
+  const [data, setData] = useState<EmployeeDetailResponse | null>(null);
+  const [managerId, setManagerId] = useState("");
+  const [accountEmail, setAccountEmail] = useState("");
+  const [savingManager, setSavingManager] = useState(false);
+  const [preparingAccount, setPreparingAccount] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const reload = async () => {
+    const result = await getEmployeeDetail(employeeId);
+    setData(result);
+    setManagerId(result.employee.managerEmployeeId ?? "");
+    setAccountEmail(result.employee.accountEmail ?? result.employee.email ?? "");
+  };
+
+  useEffect(() => {
+    let mounted = true;
+    void getEmployeeDetail(employeeId)
+      .then((result) => {
+        if (!mounted) return;
+        setData(result);
+        setManagerId(result.employee.managerEmployeeId ?? "");
+        setAccountEmail(result.employee.accountEmail ?? result.employee.email ?? "");
+      })
+      .catch((cause: unknown) => {
+        if (!mounted) return;
+        setError(
+          cause instanceof AdminApiError ? cause.message : "Detail pegawai tidak dapat dimuat.",
+        );
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [employeeId]);
+
+  const saveManager = async (event: FormEvent) => {
+    event.preventDefault();
+    setSavingManager(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await updateDirectManager(employeeId, managerId || null);
+      setNotice("Atasan langsung berhasil diperbarui.");
+      await reload();
+    } catch (cause) {
+      setError(cause instanceof AdminApiError ? cause.message : "Atasan langsung gagal diperbarui.");
+    } finally {
+      setSavingManager(false);
+    }
+  };
+
+  const prepareAccount = async () => {
+    setPreparingAccount(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await prepareEmployeeAccount({
+        employeeId,
+        ...(accountEmail.trim() ? { email: accountEmail.trim() } : {}),
+      });
+      setNotice("Account pegawai berhasil disiapkan dalam status invited. Aktivasi login belum dibuka pada tahap ini.");
+      await reload();
+    } catch (cause) {
+      setError(cause instanceof AdminApiError ? cause.message : "Account pegawai gagal disiapkan.");
+    } finally {
+      setPreparingAccount(false);
+    }
+  };
+
+  const employee = data?.employee;
+
+  return (
+    <AdminShell
+      active="employees"
+      title={employee?.fullName ?? "Detail Pegawai"}
+      description={employee ? `${employee.employeeNumber} · ${employee.unitName ?? "Tanpa unit"} · ${employee.positionName ?? "Tanpa jabatan"}` : "Memuat employee master..."}
+    >
+      <a href="/admin/employees" className="mb-4 inline-flex items-center gap-2 text-sm font-semibold text-brand-primary-deep">
+        <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+        Kembali ke daftar pegawai
+      </a>
+
+      {error ? <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div> : null}
+      {notice ? <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{notice}</div> : null}
+
+      <section className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
+        <article className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+          <div className="flex items-center gap-3">
+            <UserRoundCheck className="h-5 w-5 text-brand-primary-deep" aria-hidden="true" />
+            <h2 className="text-base font-bold text-brand-heading">Employee master</h2>
+          </div>
+          <dl className="mt-5 grid gap-x-5 gap-y-4 sm:grid-cols-2">
+            {[
+              ["Status", employee?.status ?? "—"],
+              ["Status kepegawaian", employee?.employmentStatus ?? "—"],
+              ["Unit", employee?.unitName ?? "—"],
+              ["Jabatan", employee?.positionName ?? "—"],
+              ["Email", employee?.email ?? "—"],
+              ["Telepon", employee?.phone ?? "—"],
+              ["Pendidikan", employee?.education ?? "—"],
+              ["TMT", employee?.startedOn ?? "—"],
+            ].map(([label, value]) => (
+              <div key={label}>
+                <dt className="text-xs font-semibold text-muted-foreground">{label}</dt>
+                <dd className="mt-1 text-sm font-semibold text-foreground">{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </article>
+
+        <article className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+          <div className="flex items-center gap-3">
+            <Network className="h-5 w-5 text-brand-primary-deep" aria-hidden="true" />
+            <h2 className="text-base font-bold text-brand-heading">Reporting line</h2>
+          </div>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Atasan langsung ini nanti menjadi input resolver approval. Siklus reporting line ditolak oleh backend.
+          </p>
+          <form onSubmit={saveManager} className="mt-4 space-y-3">
+            <select
+              value={managerId}
+              onChange={(event) => setManagerId(event.target.value)}
+              className="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm outline-none focus:border-brand-primary"
+            >
+              <option value="">Belum ditetapkan</option>
+              {data?.managerCandidates.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {candidate.fullName} · {candidate.employeeNumber} · {candidate.unitName ?? "Tanpa unit"}
+                </option>
+              ))}
+            </select>
+            <button
+              type="submit"
+              disabled={savingManager || !employee}
+              className="h-10 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white disabled:opacity-50"
+            >
+              {savingManager ? "Menyimpan..." : "Simpan atasan langsung"}
+            </button>
+          </form>
+        </article>
+      </section>
+
+      <section className="mt-5 grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
+        <article className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+          <div className="flex items-center gap-3">
+            <ShieldCheck className="h-5 w-5 text-brand-primary-deep" aria-hidden="true" />
+            <h2 className="text-base font-bold text-brand-heading">Account akses</h2>
+          </div>
+          <p className="mt-3 text-sm font-semibold">{accountStatusLabel(employee?.accountStatus ?? null)}</p>
+          {employee?.accountId ? (
+            <>
+              <p className="mt-1 break-all text-sm text-muted-foreground">{employee.accountEmail}</p>
+              <a href="/admin/access" className="mt-4 inline-flex text-sm font-semibold text-brand-primary-deep">
+                Kelola role & scope →
+              </a>
+            </>
+          ) : (
+            <div className="mt-4 space-y-3">
+              <input
+                value={accountEmail}
+                onChange={(event) => setAccountEmail(event.target.value)}
+                placeholder="email@contoh.id"
+                type="email"
+                className="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm outline-none focus:border-brand-primary"
+              />
+              <button
+                type="button"
+                onClick={() => void prepareAccount()}
+                disabled={preparingAccount || employee?.status !== "active"}
+                className="h-10 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white disabled:opacity-50"
+              >
+                {preparingAccount ? "Menyiapkan..." : "Siapkan account pegawai"}
+              </button>
+              <p className="text-xs leading-5 text-muted-foreground">
+                Account dibuat sebagai <strong>invited</strong>. Belum ada email undangan atau metode aktivasi otomatis pada milestone ini.
+              </p>
+            </div>
+          )}
+        </article>
+
+        <article className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+          <h2 className="text-base font-bold text-brand-heading">Role tambahan</h2>
+          <p className="mt-1 text-xs text-muted-foreground">Base employee self-service tidak ditampilkan sebagai role; hanya assignment tambahan yang tercatat di sini.</p>
+          <div className="mt-4 space-y-3">
+            {data?.assignments.length ? data.assignments.map((assignment) => (
+              <div key={assignment.id} className="rounded-xl border border-border/70 bg-surface p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-bold">{assignment.roleName}</p>
+                  <span className="rounded-full bg-brand-primary-pale px-2.5 py-1 text-xs font-bold text-brand-primary-deep">
+                    {assignment.scopeType === "unit" ? assignment.organizationalUnitName : assignment.scopeType}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {assignment.startsOn ?? "mulai sekarang"} → {assignment.endsOn ?? "tanpa batas akhir"}
+                  {assignment.reason ? ` · ${assignment.reason}` : ""}
+                </p>
+              </div>
+            )) : (
+              <p className="rounded-xl bg-surface p-4 text-sm text-muted-foreground">Belum ada role tambahan.</p>
+            )}
+          </div>
+        </article>
+      </section>
+    </AdminShell>
+  );
+}

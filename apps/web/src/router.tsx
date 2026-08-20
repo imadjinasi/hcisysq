@@ -7,9 +7,12 @@ import {
 } from "@tanstack/react-router";
 
 import { getCurrentSession, landingPath } from "@/lib/auth";
+import { AdminAccessPage } from "@/pages/AdminAccessPage";
+import { AdminEmployeeDetailPage } from "@/pages/AdminEmployeeDetailPage";
 import { AdminEmployeeImportHistoryPage } from "@/pages/AdminEmployeeImportHistoryPage";
 import { AdminEmployeeImportPage } from "@/pages/AdminEmployeeImportPage";
 import { AdminEmployeesPage } from "@/pages/AdminEmployeesPage";
+import { AdminOrganizationPage } from "@/pages/AdminOrganizationPage";
 import { AdminPage } from "@/pages/AdminPage";
 import { EmployeeDashboardPage } from "@/pages/EmployeeDashboardPage";
 import { FoundationBoardPage } from "@/pages/FoundationBoardPage";
@@ -63,6 +66,18 @@ const adminEmployeesRoute = createRoute({
   component: AdminEmployeesPage,
 });
 
+const adminEmployeeDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/employees/$employeeId",
+  beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
+  component: AdminEmployeeDetailRoutePage,
+});
+
+function AdminEmployeeDetailRoutePage() {
+  const { employeeId } = adminEmployeeDetailRoute.useParams();
+  return <AdminEmployeeDetailPage employeeId={employeeId} />;
+}
+
 const adminEmployeeImportRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/employees/import",
@@ -77,6 +92,20 @@ const adminEmployeeImportHistoryRoute = createRoute({
   component: AdminEmployeeImportHistoryPage,
 });
 
+const adminOrganizationRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/organization",
+  beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
+  component: AdminOrganizationPage,
+});
+
+const adminAccessRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/access",
+  beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
+  component: AdminAccessPage,
+});
+
 const boardRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/board",
@@ -89,8 +118,11 @@ const routeTree = rootRoute.addChildren([
   appRoute,
   adminRoute,
   adminEmployeesRoute,
+  adminEmployeeDetailRoute,
   adminEmployeeImportRoute,
   adminEmployeeImportHistoryRoute,
+  adminOrganizationRoute,
+  adminAccessRoute,
   boardRoute,
 ]);
 

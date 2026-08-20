@@ -5,6 +5,7 @@ import type { ApiConfig } from "./config/env.js";
 import { createPool } from "./db/pool.js";
 import { registerAuthRoutes } from "./modules/auth/routes.js";
 import { registerEmployeeAdminRoutes } from "./modules/employees/admin-routes.js";
+import { registerOrgAccessAdminRoutes } from "./modules/employees/admin-org-access-routes.js";
 import { registerSystemRoutes } from "./modules/system/routes.js";
 
 export async function createApp(config: ApiConfig, injectedPool?: Pool) {
@@ -26,6 +27,7 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerSystemRoutes(app, pool);
   await registerAuthRoutes(app, pool, config);
   await registerEmployeeAdminRoutes(app, pool, config);
+  await registerOrgAccessAdminRoutes(app, pool, config);
 
   app.addHook("onClose", async () => {
     if (!injectedPool) await pool.end();

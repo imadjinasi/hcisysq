@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import {
+  Building2,
   History,
+  KeyRound,
   LayoutDashboard,
   LogOut,
   ShieldCheck,
@@ -15,7 +17,13 @@ import { getCurrentSession, logout } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import type { AuthSession } from "@/types/hcis";
 
-type AdminNavKey = "overview" | "employees" | "import" | "history";
+export type AdminNavKey =
+  | "overview"
+  | "employees"
+  | "import"
+  | "history"
+  | "organization"
+  | "access";
 
 const navItems: Array<{
   key: AdminNavKey;
@@ -27,6 +35,8 @@ const navItems: Array<{
   { key: "employees", label: "Daftar Pegawai", href: "/admin/employees", icon: UsersRound },
   { key: "import", label: "Impor Pegawai", href: "/admin/employees/import", icon: Upload },
   { key: "history", label: "Riwayat Impor", href: "/admin/employees/imports", icon: History },
+  { key: "organization", label: "Struktur Organisasi", href: "/admin/organization", icon: Building2 },
+  { key: "access", label: "Account & Akses", href: "/admin/access", icon: KeyRound },
 ];
 
 export function AdminShell({

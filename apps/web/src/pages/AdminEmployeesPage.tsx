@@ -68,7 +68,7 @@ export function AdminEmployeesPage() {
     <AdminShell
       active="employees"
       title="Data Pegawai"
-      description="Employee master read-only. Gunakan pencarian dan filter untuk review data hasil import sebelum modul editing manual dibuka."
+      description="Employee master read-only. Gunakan pencarian dan filter untuk review data hasil import; detail pegawai dipakai untuk reporting line dan kesiapan account."
     >
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
@@ -170,7 +170,9 @@ export function AdminEmployeesPage() {
                     <tr key={employee.id} className="hover:bg-surface/70">
                       <td className="whitespace-nowrap px-4 py-3 font-semibold text-foreground">{employee.employeeNumber}</td>
                       <td className="px-4 py-3">
-                        <p className="font-semibold text-foreground">{employee.fullName}</p>
+                        <a href={`/admin/employees/${employee.id}`} className="font-semibold text-brand-primary-deep hover:underline">
+                          {employee.fullName}
+                        </a>
                         <p className="mt-0.5 text-xs text-muted-foreground">{employee.employmentStatus ?? "—"}</p>
                       </td>
                       <td className="px-4 py-3">
