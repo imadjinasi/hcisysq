@@ -73,11 +73,15 @@ export function AppShell({ children, user, activeItem = "Beranda" }: AppShellPro
   return (
     <div className="min-h-screen bg-surface text-foreground">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-72 border-r border-border/80 bg-sidebar/95 px-5 py-6 lg:flex lg:flex-col">
-        <div className="flex items-center gap-3 px-2">
-          <img src={ysqMark} alt="" className="h-12 w-12 object-contain" />
-          <div>
-            <p className="font-display text-xl font-bold leading-none text-brand-heading">HCIS YSQ</p>
-            <p className="mt-1 text-[11px] font-semibold tracking-wide text-muted-foreground">Ruang kerja pegawai</p>
+        <div className="flex items-start gap-3 px-2">
+          <img src={ysqMark} alt="" className="h-11 w-11 shrink-0 object-contain" />
+          <div className="min-w-0 pt-0.5">
+            <p className="font-display text-sm font-bold leading-[1.25] tracking-[-0.01em] text-brand-heading">
+              Human Capital Information System
+            </p>
+            <p className="mt-1 text-[10px] font-semibold leading-4 text-muted-foreground">
+              Yayasan Sabilul Qur&apos;an
+            </p>
           </div>
         </div>
 
@@ -116,15 +120,19 @@ export function AppShell({ children, user, activeItem = "Beranda" }: AppShellPro
       <div className="lg:pl-72">
         <header className="sticky top-0 z-20 border-b border-border/70 bg-surface/92 px-4 py-3 backdrop-blur-sm sm:px-6 lg:px-8">
           <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
-            <div className="flex items-center gap-3 lg:hidden">
-              <img src={ysqMark} alt="" className="h-9 w-9 object-contain" />
-              <div>
-                <p className="font-display text-lg font-bold leading-none text-brand-heading">HCIS YSQ</p>
-                <p className="mt-1 text-[10px] font-semibold text-muted-foreground">Pegawai</p>
+            <div className="flex min-w-0 items-center gap-2.5 lg:hidden">
+              <img src={ysqMark} alt="" className="h-9 w-9 shrink-0 object-contain" />
+              <div className="min-w-0">
+                <p className="truncate font-display text-[11px] font-bold leading-tight text-brand-heading sm:text-xs">
+                  Human Capital Information System
+                </p>
+                <p className="mt-0.5 truncate text-[9px] font-semibold text-muted-foreground">
+                  Yayasan Sabilul Qur&apos;an
+                </p>
               </div>
             </div>
 
-            <p className="hidden text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground lg:block">Employee workspace</p>
+            <p className="hidden text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground lg:block">Ruang kerja pegawai</p>
 
             <div className="flex items-center gap-2">
               <button type="button" aria-label="Notifikasi" className="relative flex h-10 w-10 items-center justify-center rounded-2xl border border-border/70 bg-white text-muted-foreground shadow-[var(--shadow-soft)] transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
