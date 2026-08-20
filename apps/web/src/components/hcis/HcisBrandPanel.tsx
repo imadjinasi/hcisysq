@@ -24,7 +24,7 @@ export function HcisBrandPanel({ className }: { className?: string }) {
   return (
     <section
       className={cn("relative isolate overflow-hidden bg-brand-primary text-brand-foreground", className)}
-      aria-label="Tentang HCIS YSQ"
+      aria-label="Human Capital Information System Yayasan Sabilul Qur'an"
       style={{
         background:
           "linear-gradient(145deg, var(--brand-primary-deep) 0%, var(--brand-primary) 48%, var(--brand-accent-cyan) 132%)",
@@ -49,24 +49,22 @@ export function HcisBrandPanel({ className }: { className?: string }) {
           <img
             src={ysqLogoWhite}
             alt="Islamic Tahfizh School Sabilul Qur'an"
-            className="mb-8 h-auto w-full max-w-[25rem] object-contain object-left"
+            className="mb-7 h-auto w-full max-w-[22rem] object-contain object-left"
           />
 
-          <h1 className="font-display text-4xl font-bold leading-[0.98] tracking-[-0.02em] text-white sm:text-5xl lg:text-6xl xl:text-7xl">
-            HCIS YSQ
-          </h1>
-          <p className="mt-4 max-w-lg text-sm font-medium leading-relaxed text-white/82 sm:text-base">
+          <h1 className="max-w-2xl font-display text-3xl font-bold leading-[1.08] tracking-[-0.018em] text-white sm:text-[2.15rem] lg:text-[2.55rem] xl:text-[2.8rem]">
             Human Capital Information System
-            <br />
+          </h1>
+          <p className="mt-3 max-w-lg text-sm font-semibold leading-relaxed text-white/82 sm:text-[0.95rem]">
             Yayasan Sabilul Qur&apos;an
           </p>
-          <p className="mt-6 max-w-xl text-base font-semibold leading-relaxed text-white sm:mt-8 sm:text-lg lg:text-xl">
+          <p className="mt-6 max-w-xl text-base font-semibold leading-relaxed text-white sm:mt-7 lg:text-lg">
             Satu ruang untuk tumbuh, terhubung, dan melayani lebih baik.
           </p>
         </div>
 
         <div className="hidden lg:block" aria-label="Nilai YSQ UTSMAN">
-          <div className="mb-3 flex items-center gap-3 text-xs font-semibold uppercase tracking-[0.18em] text-white/72">
+          <div className="mb-3 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.17em] text-white/72">
             <span className="h-px w-8 bg-brand-yellow" aria-hidden="true" />
             Nilai YSQ · UTSMAN
           </div>
