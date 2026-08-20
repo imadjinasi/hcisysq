@@ -7,6 +7,9 @@ import {
 } from "@tanstack/react-router";
 
 import { getCurrentSession, landingPath } from "@/lib/auth";
+import { AdminEmployeeImportHistoryPage } from "@/pages/AdminEmployeeImportHistoryPage";
+import { AdminEmployeeImportPage } from "@/pages/AdminEmployeeImportPage";
+import { AdminEmployeesPage } from "@/pages/AdminEmployeesPage";
 import { AdminPage } from "@/pages/AdminPage";
 import { EmployeeDashboardPage } from "@/pages/EmployeeDashboardPage";
 import { FoundationBoardPage } from "@/pages/FoundationBoardPage";
@@ -53,6 +56,27 @@ const adminRoute = createRoute({
   component: AdminPage,
 });
 
+const adminEmployeesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/employees",
+  beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
+  component: AdminEmployeesPage,
+});
+
+const adminEmployeeImportRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/employees/import",
+  beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
+  component: AdminEmployeeImportPage,
+});
+
+const adminEmployeeImportHistoryRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/employees/imports",
+  beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
+  component: AdminEmployeeImportHistoryPage,
+});
+
 const boardRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/board",
@@ -60,7 +84,15 @@ const boardRoute = createRoute({
   component: FoundationBoardPage,
 });
 
-const routeTree = rootRoute.addChildren([loginRoute, appRoute, adminRoute, boardRoute]);
+const routeTree = rootRoute.addChildren([
+  loginRoute,
+  appRoute,
+  adminRoute,
+  adminEmployeesRoute,
+  adminEmployeeImportRoute,
+  adminEmployeeImportHistoryRoute,
+  boardRoute,
+]);
 
 export const router = createRouter({
   routeTree,
