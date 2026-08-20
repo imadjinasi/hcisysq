@@ -10,7 +10,7 @@ export function LoginPage() {
           Selamat datang kembali
         </h2>
         <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground sm:text-[0.95rem]">
-          Masuk untuk mengakses layanan kepegawaian, kehadiran, dan persetujuan Anda.
+          Masuk untuk membuka ruang kerja HCIS sesuai kewenangan akun Anda.
         </p>
       </header>
       <LoginForm />
