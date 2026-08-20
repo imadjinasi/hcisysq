@@ -41,9 +41,11 @@ export interface SpecialLeaveRequestValidation {
 
 interface RuleSupplement {
   maxWorkingDays?: number;
+  maxCalendarMonths?: number;
 }
 
 const RULE_SUPPLEMENTS: Partial<Record<SupportedSpecialLeaveKey, RuleSupplement>> = {
+  maternity: { maxCalendarMonths: 6 },
   menstruation_rest: { maxWorkingDays: 2 },
   spouse_childbirth: { maxWorkingDays: 2 },
   spouse_miscarriage: { maxWorkingDays: 2 },
@@ -83,6 +85,18 @@ function dateValue(value: string): number {
 
 function calendarDaysBetween(from: string, to: string): number {
   return Math.floor((dateValue(to) - dateValue(from)) / 86_400_000);
+}
+
+function addMonthsClamped(value: string, months: number): string {
+  const timestamp = dateValue(value);
+  const source = new Date(timestamp);
+  const sourceDay = source.getUTCDate();
+  const targetMonthIndex = source.getUTCFullYear() * 12 + source.getUTCMonth() + months;
+  const targetYear = Math.floor(targetMonthIndex / 12);
+  const targetMonth = targetMonthIndex % 12;
+  const lastDay = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
+  const target = new Date(Date.UTC(targetYear, targetMonth, Math.min(sourceDay, lastDay)));
+  return target.toISOString().slice(0, 10);
 }
 
 export function validateSpecialLeaveRequest(
@@ -142,6 +156,16 @@ export function validateSpecialLeaveRequest(
       "DURATION_LIMIT_EXCEEDED",
       `${policy.name} pada baseline saat ini maksimal ${supplement.maxWorkingDays} hari kerja untuk satu pengajuan.`,
     );
+  }
+
+  if (supplement?.maxCalendarMonths !== undefined) {
+    const exclusiveLimit = addMonthsClamped(input.startOn, supplement.maxCalendarMonths);
+    if (dateValue(input.endOn) >= dateValue(exclusiveLimit)) {
+      throw new SpecialLeavePolicyError(
+        "DURATION_LIMIT_EXCEEDED",
+        `${policy.name} pada baseline saat ini tidak boleh melampaui total ${supplement.maxCalendarMonths} bulan tanpa kebijakan lanjutan yang terpisah.`,
+      );
+    }
   }
 
   const warnings: Array<{ code: string; message: string }> = [];
