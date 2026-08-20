@@ -6,8 +6,8 @@ import {
   EMPLOYEE_IMPORT_SHEET,
   EMPLOYEE_SOURCE_HEADERS,
   REQUIRED_EMPLOYEE_SOURCE_HEADERS,
+  flagDuplicateEmployeeNumbers,
   normalizeEmployeeImportRow,
-  resolveDuplicateEmployeeNumbers,
   type NormalizedEmployeeImportRow,
 } from "../domain/employee-import.js";
 
@@ -27,11 +27,16 @@ function cellValue(cell: ExcelJS.Cell): unknown {
   if (value === null || value === undefined) return null;
   if (value instanceof Date) return value;
 
-  if (typeof value === "object" && "result" in value && value.result instanceof Date) {
-    return value.result;
+  if (typeof value === "object" && "result" in value) {
+    const result = value.result;
+    if (result instanceof Date) return result;
+    if (typeof result === "string") return result;
+    if (typeof result === "number") return cell.text || String(result);
   }
 
-  // Keep identifiers/phone numbers as displayed text; never coerce them through JS numbers.
+  if (typeof value === "string") return value;
+
+  // Keep identifiers and phone numbers as displayed text; never coerce them through JS numbers.
   return cell.text || null;
 }
 
@@ -84,5 +89,5 @@ export async function parseEmployeeWorkbook(
     if (normalized.candidate || normalized.issues.length > 0) rows.push(normalized);
   });
 
-  return resolveDuplicateEmployeeNumbers(rows);
+  return flagDuplicateEmployeeNumbers(rows);
 }

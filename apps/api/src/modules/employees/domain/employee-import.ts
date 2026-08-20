@@ -58,7 +58,6 @@ export interface NormalizedEmployeeImportRow {
   rowNumber: number;
   candidate: EmployeeImportCandidate | null;
   issues: ImportIssue[];
-  skip?: boolean;
 }
 
 export interface PlannedEmployeeImportRow extends NormalizedEmployeeImportRow {
@@ -92,6 +91,40 @@ export interface EmployeeImportCommitResult extends EmployeeImportSummary {
   committedCount: number;
 }
 
+const spreadsheetErrorValues = new Set([
+  "#DIV/0!",
+  "#N/A",
+  "#NAME?",
+  "#NULL!",
+  "#NUM!",
+  "#REF!",
+  "#VALUE!",
+]);
+
+const namedMonths: Record<string, number> = {
+  januari: 1,
+  january: 1,
+  februari: 2,
+  february: 2,
+  maret: 3,
+  march: 3,
+  april: 4,
+  mei: 5,
+  may: 5,
+  juni: 6,
+  june: 6,
+  juli: 7,
+  july: 7,
+  agustus: 8,
+  august: 8,
+  september: 9,
+  oktober: 10,
+  october: 10,
+  november: 11,
+  desember: 12,
+  december: 12,
+};
+
 function text(value: unknown): string {
   if (value === null || value === undefined) return "";
   return String(value).replace(/\u00a0/g, " ").trim();
@@ -116,7 +149,8 @@ function normalizeEmail(value: unknown): { value: string | null; warning: Import
       severity: "warning",
       code: "invalid_email_ignored",
       field: "email",
-      message: "Email tidak valid dan diabaikan; employee tetap dapat diimpor dan email dapat dikoreksi manual setelah konfirmasi.",
+      message:
+        "Email tidak valid dan diabaikan; employee tetap dapat diimpor dan email dapat dikoreksi manual setelah konfirmasi.",
     },
   };
 }
@@ -126,7 +160,9 @@ function pad2(value: number): string {
 }
 
 function isValidDateParts(year: number, month: number, day: number): boolean {
-  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return false;
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
+    return false;
+  }
   if (month < 1 || month > 12 || day < 1 || day > 31) return false;
   const date = new Date(Date.UTC(year, month - 1, day));
   return (
@@ -139,7 +175,19 @@ function isValidDateParts(year: number, month: number, day: number): boolean {
 function isEmptyDateSentinel(value: unknown): boolean {
   if (value === 0) return true;
   const raw = text(value).toLowerCase();
-  return raw === "0" || raw === "0.0" || raw === "00" || raw === "n/a" || raw === "na";
+  return (
+    raw === "0" ||
+    raw === "0.0" ||
+    raw === "00" ||
+    raw === "00:00:00" ||
+    raw === "0:00:00" ||
+    raw === "n/a" ||
+    raw === "na"
+  );
+}
+
+function normalizedDateValue(year: number, month: number, day: number): string {
+  return `${year}-${pad2(month)}-${pad2(day)}`;
 }
 
 function normalizeDate(
@@ -157,21 +205,43 @@ function normalizeDate(
   }
 
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    // Excel serial 0 / empty date sentinels can surface around the 1899/1900 epoch.
-    if (value.getFullYear() <= 1900) return { value: null, warning: null };
+    const year = value.getFullYear();
+    if (field === "endedOn" && year <= 1900) {
+      return { value: null, warning: null };
+    }
     return {
-      value: `${value.getFullYear()}-${pad2(value.getMonth() + 1)}-${pad2(value.getDate())}`,
+      value: normalizedDateValue(year, value.getMonth() + 1, value.getDate()),
       warning: null,
     };
   }
 
   const raw = text(value);
-  const isoDate = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  const isoDate = /^(\d{4})-(\d{2})-(\d{2})(?:[ T]\d{2}:\d{2}:\d{2})?$/.exec(raw);
   if (
     isoDate &&
     isValidDateParts(Number(isoDate[1]), Number(isoDate[2]), Number(isoDate[3]))
   ) {
-    return { value: raw, warning: null };
+    const year = Number(isoDate[1]);
+    if (field === "endedOn" && year <= 1900) {
+      return { value: null, warning: null };
+    }
+    return {
+      value: normalizedDateValue(year, Number(isoDate[2]), Number(isoDate[3])),
+      warning: null,
+    };
+  }
+
+  const namedDate = /^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/i.exec(raw);
+  if (namedDate) {
+    const day = Number(namedDate[1]);
+    const month = namedMonths[namedDate[2]!.toLowerCase()] ?? 0;
+    const year = Number(namedDate[3]);
+    if (month > 0 && isValidDateParts(year, month, day)) {
+      if (field === "endedOn" && year <= 1900) {
+        return { value: null, warning: null };
+      }
+      return { value: normalizedDateValue(year, month, day), warning: null };
+    }
   }
 
   const monthOnly = /^(\d{4})-(\d{2})$/.exec(raw);
@@ -192,8 +262,12 @@ function normalizeDate(
     dayFirst &&
     isValidDateParts(Number(dayFirst[3]), Number(dayFirst[2]), Number(dayFirst[1]))
   ) {
+    const year = Number(dayFirst[3]);
+    if (field === "endedOn" && year <= 1900) {
+      return { value: null, warning: null };
+    }
     return {
-      value: `${dayFirst[3]}-${pad2(Number(dayFirst[2]))}-${pad2(Number(dayFirst[1]))}`,
+      value: normalizedDateValue(year, Number(dayFirst[2]), Number(dayFirst[1])),
       warning: {
         severity: "warning",
         code: "date_format_normalized",
@@ -245,14 +319,25 @@ export function normalizeEmployeeImportRow(
   source: Record<string, unknown>,
 ): NormalizedEmployeeImportRow {
   const issues: ImportIssue[] = [];
-  const employeeNumber = text(source[EMPLOYEE_SOURCE_HEADERS.employeeNumber]);
+  const rawEmployeeNumber = text(source[EMPLOYEE_SOURCE_HEADERS.employeeNumber]);
+  const employeeNumberHasSpreadsheetError = spreadsheetErrorValues.has(
+    rawEmployeeNumber.toUpperCase(),
+  );
+  const employeeNumber = employeeNumberHasSpreadsheetError ? "" : rawEmployeeNumber;
   const fullName = text(source[EMPLOYEE_SOURCE_HEADERS.fullName]);
 
-  if (!employeeNumber && !fullName) {
+  if (!rawEmployeeNumber && !fullName) {
     return { rowNumber, candidate: null, issues };
   }
 
-  if (!employeeNumber) {
+  if (employeeNumberHasSpreadsheetError) {
+    issues.push({
+      severity: "error",
+      code: "invalid_employee_number_source_error",
+      field: "employeeNumber",
+      message: "NIP berisi error formula spreadsheet dan harus diperbaiki pada sumber data.",
+    });
+  } else if (!employeeNumber) {
     issues.push({
       severity: "error",
       code: "missing_employee_number",
@@ -324,60 +409,30 @@ export function normalizeEmployeeImportRow(
   };
 }
 
-function hasBlockingIssue(row: NormalizedEmployeeImportRow): boolean {
-  return row.issues.some((issue) => issue.severity === "error");
-}
-
-function compareDuplicateCandidates(
-  left: NormalizedEmployeeImportRow,
-  right: NormalizedEmployeeImportRow,
-): number {
-  const leftValid = hasBlockingIssue(left) ? 0 : 1;
-  const rightValid = hasBlockingIssue(right) ? 0 : 1;
-  if (leftValid !== rightValid) return rightValid - leftValid;
-
-  const leftActive = left.candidate?.status === "active" ? 1 : 0;
-  const rightActive = right.candidate?.status === "active" ? 1 : 0;
-  if (leftActive !== rightActive) return rightActive - leftActive;
-
-  const leftTmt = left.candidate?.startedOn ?? "";
-  const rightTmt = right.candidate?.startedOn ?? "";
-  if (leftTmt !== rightTmt) return rightTmt.localeCompare(leftTmt);
-
-  return right.rowNumber - left.rowNumber;
-}
-
-export function resolveDuplicateEmployeeNumbers(
+export function flagDuplicateEmployeeNumbers(
   rows: NormalizedEmployeeImportRow[],
 ): NormalizedEmployeeImportRow[] {
-  const groups = new Map<string, NormalizedEmployeeImportRow[]>();
+  const firstSeen = new Map<string, NormalizedEmployeeImportRow>();
+
   for (const row of rows) {
     const employeeNumber = row.candidate?.employeeNumber;
     if (!employeeNumber) continue;
-    const group = groups.get(employeeNumber) ?? [];
-    group.push(row);
-    groups.set(employeeNumber, group);
-  }
 
-  for (const [employeeNumber, group] of groups) {
-    if (group.length < 2) continue;
-    const ranked = [...group].sort(compareDuplicateCandidates);
-    const winner = ranked[0]!;
-    winner.issues.push({
-      severity: "warning",
-      code: "duplicate_employee_number_selected",
+    const previous = firstSeen.get(employeeNumber);
+    if (!previous) {
+      firstSeen.set(employeeNumber, row);
+      continue;
+    }
+
+    const duplicateIssue: ImportIssue = {
+      severity: "error",
+      code: "duplicate_employee_number_in_file",
       field: "employeeNumber",
-      message: `NIP ${employeeNumber} muncul ${group.length} kali; record ini dipilih sebagai kondisi terkini (valid > aktif > TMT terbaru > baris terakhir).`,
-    });
-
-    for (const row of ranked.slice(1)) {
-      row.skip = true;
-      row.issues.push({
-        severity: "warning",
-        code: "duplicate_employee_number_superseded",
-        field: "employeeNumber",
-        message: "Record NIP yang sama dilewati karena ada record yang lebih diprioritaskan sebagai kondisi pegawai terkini.",
-      });
+      message: "NIP muncul lebih dari sekali dalam file import yang sama.",
+    };
+    row.issues.push(duplicateIssue);
+    if (!previous.issues.some((issue) => issue.code === duplicateIssue.code)) {
+      previous.issues.push(duplicateIssue);
     }
   }
 

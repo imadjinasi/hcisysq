@@ -1,8 +1,8 @@
 import {
   EMPLOYEE_SOURCE_HEADERS,
   REQUIRED_EMPLOYEE_SOURCE_HEADERS,
+  flagDuplicateEmployeeNumbers,
   normalizeEmployeeImportRow,
-  resolveDuplicateEmployeeNumbers,
   type NormalizedEmployeeImportRow,
 } from "../domain/employee-import.js";
 
@@ -99,6 +99,28 @@ function parseRecords(text: string, delimiter: "," | ";"): string[][] {
   return records;
 }
 
+function findHeaderRecord(records: string[][]): {
+  headerIndex: number;
+  headers: Map<string, number>;
+} {
+  const scanLimit = Math.min(records.length, 10);
+
+  for (let headerIndex = 0; headerIndex < scanLimit; headerIndex += 1) {
+    const candidate = records[headerIndex]!;
+    const headers = new Map<string, number>();
+    candidate.forEach((value, index) => headers.set(headerKey(value), index));
+
+    const complete = REQUIRED_EMPLOYEE_SOURCE_HEADERS.every((name) =>
+      headers.has(headerKey(name)),
+    );
+    if (complete) return { headerIndex, headers };
+  }
+
+  throw new EmployeeCsvFormatError(
+    `Header wajib tidak ditemukan pada 10 baris pertama: ${REQUIRED_EMPLOYEE_SOURCE_HEADERS.join(", ")}`,
+  );
+}
+
 export function parseEmployeeCsv(
   buffer: Buffer,
   options: { maxRows?: number } = {},
@@ -108,26 +130,13 @@ export function parseEmployeeCsv(
 
   const delimiter = detectDelimiter(text);
   const records = parseRecords(text, delimiter);
-  const header = records[0];
-  if (!header) throw new EmployeeCsvFormatError("Header CSV tidak ditemukan.");
-
-  const headers = new Map<string, number>();
-  header.forEach((value, index) => headers.set(headerKey(value), index));
-
-  const missingHeaders = REQUIRED_EMPLOYEE_SOURCE_HEADERS.filter(
-    (name) => !headers.has(headerKey(name)),
-  );
-  if (missingHeaders.length > 0) {
-    throw new EmployeeCsvFormatError(
-      `Header wajib tidak ditemukan: ${missingHeaders.join(", ")}`,
-    );
-  }
+  const { headerIndex, headers } = findHeaderRecord(records);
 
   const maxRows = options.maxRows ?? 2_000;
   const rows: NormalizedEmployeeImportRow[] = [];
   const knownHeaders = Object.values(EMPLOYEE_SOURCE_HEADERS);
 
-  for (let recordIndex = 1; recordIndex < records.length; recordIndex += 1) {
+  for (let recordIndex = headerIndex + 1; recordIndex < records.length; recordIndex += 1) {
     if (rows.length >= maxRows) {
       throw new EmployeeCsvFormatError(`Import melebihi batas ${maxRows} baris.`);
     }
@@ -143,5 +152,5 @@ export function parseEmployeeCsv(
     if (normalized.candidate || normalized.issues.length > 0) rows.push(normalized);
   }
 
-  return resolveDuplicateEmployeeNumbers(rows);
+  return flagDuplicateEmployeeNumbers(rows);
 }

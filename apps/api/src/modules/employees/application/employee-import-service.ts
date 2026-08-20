@@ -26,13 +26,11 @@ export class EmployeeImportService {
       ? parseEmployeeCsv(input.buffer)
       : await parseEmployeeWorkbook(input.buffer);
     const employeeNumbers = parsedRows
-      .filter((row) => !row.skip)
       .map((row) => row.candidate?.employeeNumber ?? null)
       .filter((value): value is string => Boolean(value));
     const existing = await this.store.findExistingEmployeeNumbers(employeeNumbers);
 
     const plannedRows: PlannedEmployeeImportRow[] = parsedRows.map((row) => {
-      if (row.skip) return { ...row, action: "skip" };
       const hasError = row.issues.some((issue) => issue.severity === "error");
       if (hasError || !row.candidate) return { ...row, action: "error" };
 
