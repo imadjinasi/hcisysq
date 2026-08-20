@@ -86,23 +86,35 @@ git pull --ff-only origin feat/backend-employee-import-foundation
 
 ## 3. Create the VPS environment file
 
+For a new deployment:
+
 ```bash
 cd /var/www/hcis
 cp infra/vps.env.example infra/.env.vps
+chmod 600 infra/.env.vps
+```
+
+Generate separate random values for the PostgreSQL password and auth encryption key:
+
+```bash
+openssl rand -hex 32
 openssl rand -hex 32
 ```
 
-Put the generated value into `POSTGRES_PASSWORD` in `infra/.env.vps`.
+Put the first value into `POSTGRES_PASSWORD` and the second value into `AUTH_ENCRYPTION_KEY` in `infra/.env.vps`.
 
-Keep these topology values:
+`AUTH_ENCRYPTION_KEY` must be exactly 64 hexadecimal characters. It encrypts Super Admin MFA secrets at rest. Do not rotate it casually; controlled re-encryption must exist before key rotation.
+
+Keep these values unless the topology changes:
 
 ```text
+AUTH_SESSION_TTL_HOURS=8
 EDGE_NETWORK=edge_proxy
 HCIS_BIND_ADDRESS=127.0.0.1
 HCIS_HTTP_PORT=18080
 ```
 
-Do not commit `infra/.env.vps`.
+Do not commit `infra/.env.vps` or paste its secrets into chat/logs.
 
 Default memory limits are intentionally conservative for the shared VPS:
 
@@ -146,21 +158,25 @@ $COMPOSE logs --tail=120 postgres api web
 curl -i http://127.0.0.1:18080/
 curl -i http://127.0.0.1:18080/api/health
 curl -i http://127.0.0.1:18080/api/ready
+curl -i http://127.0.0.1:18080/api/auth/me
 ```
 
-Expected API result for healthy process/database:
+Expected system results for healthy process/database:
 
 ```json
 {"status":"ok"}
+{"status":"ready"}
 ```
 
-`/ready` must not report success if PostgreSQL is unreachable.
+Before login, `/api/auth/me` should return HTTP 401 with `UNAUTHENTICATED`. This confirms that the real session boundary is active.
 
-Also confirm the web container is actually attached to the existing ingress network:
+Also confirm the web container is attached to the existing ingress network:
 
 ```bash
-docker network inspect edge_proxy --format '{{range $id, $c := .Containers}}{{println $c.Name}}{{end}}' | grep hcis
+docker inspect infra-web-1 --format '{{range $name, $cfg := .NetworkSettings.Networks}}{{println $name}}{{end}}'
 ```
+
+The output must include `edge_proxy` and the private HCIS backend network.
 
 ## 6. Add the HCIS route to the existing Caddy
 
@@ -202,27 +218,76 @@ Do not recreate or restart the Caddy container just to add HCIS.
 
 Caddy can route directly to `hcis-web:80` because both containers share `edge_proxy`. Caddy automatic HTTPS can issue the certificate while the Cloudflare record remains DNS-only.
 
-## 7. External verification
+## 7. Bootstrap the first Super Admin once
+
+The first real account is `admin@hcis.sabilulquran.or.id`. The complete security contract is documented in `docs/security/super-admin-bootstrap.md`.
+
+Run the bootstrap only after migration `0002_auth_bootstrap.sql` is applied and the new API image is healthy:
+
+```bash
+cd /var/www/hcis
+COMPOSE="docker compose --env-file infra/.env.vps -f infra/docker-compose.vps.yml"
+
+read -s -p "Super Admin password (minimum 14 characters): " HCIS_BOOTSTRAP_PASSWORD
+echo
+export HCIS_BOOTSTRAP_PASSWORD
+
+$COMPOSE run --rm \
+  -e HCIS_ALLOW_SUPER_ADMIN_BOOTSTRAP=1 \
+  -e HCIS_BOOTSTRAP_PASSWORD \
+  api \
+  node apps/api/dist/modules/auth/cli/bootstrap-super-admin.js \
+  --email admin@hcis.sabilulquran.or.id
+
+unset HCIS_BOOTSTRAP_PASSWORD
+```
+
+The command prints the TOTP secret/URI and one-time recovery codes exactly once. Put the TOTP secret into an authenticator and store recovery codes offline. Never paste these values into chat, screenshots, repository files, shell history, or issue trackers.
+
+The bootstrap refuses to create a second Super Admin. Future privileged account changes must use the audited account-management domain rather than this bootstrap path.
+
+## 8. External verification
 
 ```bash
 curl -I https://hcis.sabilulquran.or.id/
 curl -i https://hcis.sabilulquran.or.id/api/health
 curl -i https://hcis.sabilulquran.or.id/api/ready
+curl -i https://hcis.sabilulquran.or.id/api/auth/me
 ```
 
-Then open in a browser:
+Without a browser session, `/api/auth/me` should remain 401.
+
+Browser verification after Super Admin bootstrap:
 
 ```text
 https://hcis.sabilulquran.or.id/
-https://hcis.sabilulquran.or.id/app
 ```
 
-The employee import HTTP/admin UI is intentionally not exposed yet. This deployment first verifies the web shell, API, PostgreSQL migration, and readiness path.
+Expected behavior:
 
-## 8. Updating the deployment
+1. password is checked by the API;
+2. Super Admin is asked for authenticator/recovery code;
+3. successful MFA creates an HttpOnly Secure session cookie;
+4. Super Admin lands at `/admin`;
+5. entering `/app` as Super Admin redirects back to `/admin`;
+6. an unauthenticated browser entering `/app` redirects to `/`.
+
+The employee import HTTP/admin UI remains closed until it is explicitly protected by backend Super Admin authorization.
+
+## 9. Updating an existing deployment
+
+If the deployment predates real auth, add the encryption key before starting the new API image. Do not replace the existing PostgreSQL password.
 
 ```bash
 cd /var/www/hcis
+
+if ! grep -q '^AUTH_ENCRYPTION_KEY=' infra/.env.vps; then
+  AUTHKEY="$(openssl rand -hex 32)"
+  printf '\nAUTH_ENCRYPTION_KEY=%s\nAUTH_SESSION_TTL_HOURS=8\n' "$AUTHKEY" >> infra/.env.vps
+  unset AUTHKEY
+fi
+chmod 600 infra/.env.vps
+
 git fetch origin
 git pull --ff-only origin feat/backend-employee-import-foundation
 
@@ -232,9 +297,18 @@ $COMPOSE build web
 $COMPOSE up -d
 ```
 
+Validate without exposing the encryption key:
+
+```bash
+grep '^AUTH_ENCRYPTION_KEY=' infra/.env.vps | sed 's/=.*/=<configured>/'
+grep '^AUTH_SESSION_TTL_HOURS=' infra/.env.vps
+$COMPOSE ps
+curl -i http://127.0.0.1:18080/api/auth/me
+```
+
 Do not use `git reset --hard`, force-push, or destructive database commands as routine deployment steps.
 
-## 9. Stop HCIS without deleting data
+## 10. Stop HCIS without deleting data
 
 ```bash
 cd /var/www/hcis
@@ -246,10 +320,11 @@ Do not add `-v` unless the PostgreSQL data volume is intentionally being destroy
 
 ## Security notes
 
-- This hostname is a development environment until explicitly promoted.
-- Use synthetic data only during foundation verification.
+- This hostname remains a development/verification environment until explicitly promoted.
+- Use synthetic employee/payroll data until authorization and import review are ready.
 - PostgreSQL has no published host port.
 - Fastify is not connected to the shared edge network; only `hcis-web` is reachable from Caddy.
-- No spreadsheet containing real employee/payroll data should be copied to the server yet.
-- The employee import HTTP/admin surface remains closed before authorization exists.
+- Super Admin is a standalone technical account, not a fake employee record.
+- Super Admin requires MFA; passwords and MFA/recovery secrets must never enter the repository.
+- Real employee spreadsheets must not be copied to the server until the protected import flow is ready.
 - `exceljs` currently carries moderate transitive dependency advisories. Do not use `npm audit fix --force`; resolve that dependency deliberately before exposing employee workbook upload to production users.
