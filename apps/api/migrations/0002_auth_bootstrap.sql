@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS accounts (
   id uuid PRIMARY KEY,
-  employee_id uuid NULL REFERENCES employees(id) ON DELETE SET NULL,
+  employee_id uuid NULL REFERENCES employees(id) ON DELETE RESTRICT,
   email text NOT NULL,
   principal_type text NOT NULL CHECK (
     principal_type IN ('EMPLOYEE', 'FOUNDATION_BOARD', 'SUPER_ADMIN')
@@ -17,8 +17,8 @@ CREATE TABLE IF NOT EXISTS accounts (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   CHECK (
-    principal_type = 'EMPLOYEE'
-    OR employee_id IS NULL
+    (principal_type = 'EMPLOYEE' AND employee_id IS NOT NULL)
+    OR (principal_type <> 'EMPLOYEE' AND employee_id IS NULL)
   ),
   CHECK (
     mfa_enabled_at IS NULL
@@ -27,11 +27,24 @@ CREATE TABLE IF NOT EXISTS accounts (
       AND mfa_secret_iv IS NOT NULL
       AND mfa_secret_tag IS NOT NULL
     )
+  ),
+  CHECK (
+    principal_type <> 'SUPER_ADMIN'
+    OR (
+      mfa_enabled_at IS NOT NULL
+      AND mfa_secret_ciphertext IS NOT NULL
+      AND mfa_secret_iv IS NOT NULL
+      AND mfa_secret_tag IS NOT NULL
+    )
   )
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS accounts_email_lower_unique
   ON accounts (lower(email));
+
+CREATE UNIQUE INDEX IF NOT EXISTS accounts_employee_unique
+  ON accounts (employee_id)
+  WHERE employee_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS accounts_principal_status_idx
   ON accounts (principal_type, status);
