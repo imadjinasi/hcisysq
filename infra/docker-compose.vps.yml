@@ -28,6 +28,8 @@ services:
       HOST: 0.0.0.0
       PORT: 3001
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      AUTH_ENCRYPTION_KEY: ${AUTH_ENCRYPTION_KEY}
+      AUTH_SESSION_TTL_HOURS: ${AUTH_SESSION_TTL_HOURS:-8}
     command:
       - sh
       - -c
