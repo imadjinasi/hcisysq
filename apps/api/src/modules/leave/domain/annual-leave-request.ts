@@ -98,10 +98,15 @@ export function validateAnnualLeaveRequest(
     );
   }
 
+  const usage =
+    input.usedDaysByPeriod === undefined
+      ? {}
+      : { usedDaysByPeriod: input.usedDaysByPeriod };
+
   const startView = calculateAnnualLeaveYearView({
     employmentStartedOn: input.employmentStartedOn,
     referenceDate: input.leaveStartOn,
-    usedDaysByPeriod: input.usedDaysByPeriod,
+    ...usage,
   });
   if (!startView.eligible) {
     throw new AnnualLeaveRequestPolicyError(
@@ -113,7 +118,7 @@ export function validateAnnualLeaveRequest(
   const endView = calculateAnnualLeaveYearView({
     employmentStartedOn: input.employmentStartedOn,
     referenceDate: input.leaveEndOn,
-    usedDaysByPeriod: input.usedDaysByPeriod,
+    ...usage,
   });
   if (
     startView.year !== endView.year ||
