@@ -36,7 +36,6 @@ The importer uses an allowlist. Columns outside this list are ignored even when 
 | `PENDIDIKAN TERAKHIR` | `education` | no | Descriptive value. |
 | `TMT` | `startedOn` | no | Date normalization required. |
 | `TAHUN KELUAR (TTTT-BB)` | `endedOn` | no | Month-only values normalize to the first day of the month and generate a warning. |
-| `KETERANGAN` | `note` | no | Internal HR note; not exposed in employee self-service by default. |
 
 ## Explicitly excluded from MVP import
 
@@ -50,7 +49,8 @@ Examples currently excluded:
 - BPJS identifiers;
 - bank account;
 - NPWP;
-- full KTP address and family-card number.
+- full KTP address and family-card number;
+- free-form source notes that may contain unclassified personal data.
 
 Adding any excluded field requires an explicit product/security decision and matching authorization/audit behavior.
 

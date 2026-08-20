@@ -1,0 +1,32 @@
+{
+  "name": "@hcis/api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file=.env.local --import tsx --watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "migrate": "node --env-file=.env.local --import tsx src/db/migrate.ts",
+    "employees:import": "node --env-file=.env.local --import tsx src/modules/employees/cli/import-employees.ts"
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "fastify": "^5.6.2",
+    "pg": "^8.16.3",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.32.0",
+    "@types/node": "^22.16.5",
+    "@types/pg": "^8.15.5",
+    "eslint": "^9.32.0",
+    "globals": "^15.15.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.56.1",
+    "vitest": "^3.2.4"
+  }
+}

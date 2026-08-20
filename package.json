@@ -7,11 +7,21 @@
   ],
   "scripts": {
     "dev:web": "npm --workspace @hcis/web run dev",
+    "dev:api": "npm --workspace @hcis/api run dev",
     "build:web": "npm --workspace @hcis/web run build",
+    "build:api": "npm --workspace @hcis/api run build",
     "typecheck:web": "npm --workspace @hcis/web run typecheck",
+    "typecheck:api": "npm --workspace @hcis/api run typecheck",
     "lint:web": "npm --workspace @hcis/web run lint",
-    "build": "npm run build:web",
-    "typecheck": "npm run typecheck:web",
-    "lint": "npm run lint:web"
+    "lint:api": "npm --workspace @hcis/api run lint",
+    "test:api": "npm --workspace @hcis/api run test",
+    "migrate:api": "npm --workspace @hcis/api run migrate",
+    "employees:import": "npm --workspace @hcis/api run employees:import --",
+    "db:up": "docker compose --env-file infra/.env.local -f infra/docker-compose.local.yml up -d postgres",
+    "db:down": "docker compose --env-file infra/.env.local -f infra/docker-compose.local.yml down",
+    "build": "npm run build:web && npm run build:api",
+    "typecheck": "npm run typecheck:web && npm run typecheck:api",
+    "lint": "npm run lint:web && npm run lint:api",
+    "test": "npm run test:api"
   }
 }
