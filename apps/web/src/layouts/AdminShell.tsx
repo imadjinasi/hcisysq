@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import {
   Building2,
+  CalendarDays,
   History,
   KeyRound,
   LayoutDashboard,
@@ -23,6 +24,7 @@ export type AdminNavKey =
   | "import"
   | "history"
   | "organization"
+  | "leave"
   | "access";
 
 const navItems: Array<{
@@ -36,6 +38,7 @@ const navItems: Array<{
   { key: "import", label: "Impor Pegawai", href: "/admin/employees/import", icon: Upload },
   { key: "history", label: "Riwayat Impor", href: "/admin/employees/imports", icon: History },
   { key: "organization", label: "Struktur Organisasi", href: "/admin/organization", icon: Building2 },
+  { key: "leave", label: "Konfigurasi Cuti", href: "/admin/leave", icon: CalendarDays },
   { key: "access", label: "Account & Akses", href: "/admin/access", icon: KeyRound },
 ];
 
