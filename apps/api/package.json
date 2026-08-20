@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "migrate": "node --env-file=.env.local --import tsx src/db/migrate.ts",
+    "auth:bootstrap-super-admin": "node --env-file=.env.local --import tsx src/modules/auth/cli/bootstrap-super-admin.ts",
     "employees:import": "node --env-file=.env.local --import tsx src/modules/employees/cli/import-employees.ts"
   },
   "dependencies": {
