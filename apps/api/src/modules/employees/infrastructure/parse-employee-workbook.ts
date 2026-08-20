@@ -39,7 +39,9 @@ export async function parseEmployeeWorkbook(
   options: { maxRows?: number } = {},
 ): Promise<NormalizedEmployeeImportRow[]> {
   const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(buffer);
+  await workbook.xlsx.load(
+    buffer as unknown as Parameters<typeof workbook.xlsx.load>[0],
+  );
 
   const worksheet = workbook.getWorksheet(EMPLOYEE_IMPORT_SHEET);
   if (!worksheet) {
