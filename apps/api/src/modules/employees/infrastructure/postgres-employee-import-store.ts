@@ -81,9 +81,7 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
     const warningCount = input.rows.filter((row) =>
       row.issues.some((issue) => issue.severity === "warning"),
     ).length;
-    const errorCount = input.rows.filter((row) =>
-      row.issues.some((issue) => issue.severity === "error"),
-    ).length;
+    const errorCount = input.rows.filter((row) => row.action === "error").length;
     const insertCount = input.rows.filter((row) => row.action === "insert").length;
     const updateCount = input.rows.filter((row) => row.action === "update").length;
 
@@ -193,7 +191,7 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
       let updateCount = 0;
 
       for (const row of rows.rows) {
-        if (!row.payload) continue;
+        if (!row.payload || (row.action !== "insert" && row.action !== "update")) continue;
         const actualAction = await this.upsertEmployee(client, row.payload, importId);
         if (actualAction === "insert") insertCount += 1;
         if (actualAction === "update") updateCount += 1;

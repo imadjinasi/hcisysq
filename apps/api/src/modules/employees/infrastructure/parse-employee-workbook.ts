@@ -7,6 +7,7 @@ import {
   EMPLOYEE_SOURCE_HEADERS,
   REQUIRED_EMPLOYEE_SOURCE_HEADERS,
   normalizeEmployeeImportRow,
+  resolveDuplicateEmployeeNumbers,
   type NormalizedEmployeeImportRow,
 } from "../domain/employee-import.js";
 
@@ -83,28 +84,5 @@ export async function parseEmployeeWorkbook(
     if (normalized.candidate || normalized.issues.length > 0) rows.push(normalized);
   });
 
-  const firstSeen = new Map<string, NormalizedEmployeeImportRow>();
-  for (const row of rows) {
-    const employeeNumber = row.candidate?.employeeNumber;
-    if (!employeeNumber) continue;
-
-    const previous = firstSeen.get(employeeNumber);
-    if (!previous) {
-      firstSeen.set(employeeNumber, row);
-      continue;
-    }
-
-    const duplicateIssue = {
-      severity: "error" as const,
-      code: "duplicate_employee_number_in_file",
-      field: "employeeNumber",
-      message: "NIP muncul lebih dari sekali dalam workbook yang sama.",
-    };
-    row.issues.push(duplicateIssue);
-    if (!previous.issues.some((issue) => issue.code === duplicateIssue.code)) {
-      previous.issues.push(duplicateIssue);
-    }
-  }
-
-  return rows;
+  return resolveDuplicateEmployeeNumbers(rows);
 }

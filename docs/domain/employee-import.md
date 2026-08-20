@@ -6,150 +6,113 @@
 
 ## Goal
 
-Populate and maintain the employee master from the existing HR spreadsheet without requiring HC staff to enter employees one by one.
+Populate and maintain the employee master from the existing HC source without requiring staff to enter employees one by one.
 
-This import is a controlled data-ingestion flow. It does not create login accounts automatically and it does not make the source spreadsheet the long-term system of record.
+The import is a controlled data-ingestion flow. It does not create login accounts automatically and the uploaded file is not the long-term system of record.
 
-## Source workbook contract
+## Source format
 
-The initial source is an `.xlsx` workbook maintained by HC. The importer reads only the sheet named:
+Preferred operational format: **CSV UTF-8**.
 
-`Master Data SDM YSQ`
+Compatibility format: `.xlsx` workbook.
 
-Header row: row 2. Data starts at row 3.
+CSV uses the supported headers on row 1. Comma and semicolon delimiters are accepted so exports from different spreadsheet locale settings remain deterministic.
 
-The importer uses an allowlist. Columns outside this list are ignored even when present in the workbook.
+For XLSX compatibility, the importer reads only the sheet named `Master Data SDM YSQ`, with header row 2 and data starting at row 3.
+
+The importer uses an allowlist. Columns outside this list are ignored.
 
 | Source header | Target | Required | Notes |
 |---|---|---:|---|
-| `NIP` | `employeeNumber` | yes | Natural key for deterministic upsert. Database primary key remains UUID. |
+| `NIP` | `employeeNumber` | yes | Natural key for current employee master upsert. Database PK remains UUID. |
 | `NAMA` | `fullName` | yes | Trimmed; empty name is an error. |
 | `STATUS AKTIF` | `status` | yes | Normalized to `active`, `inactive`, or `resigned`; unknown values fail closed to inactive with warning. |
-| `STATUS KEPEGAWAIAN` | `employmentStatus` | no | Descriptive value for the employee record. |
-| `UNIT` | organization unit | no | Normalized reference; missing value is a warning. |
-| `JABATAN` | position | no | Normalized reference; missing value is a warning. |
+| `STATUS KEPEGAWAIAN` | `employmentStatus` | no | Descriptive value. |
+| `UNIT` | organization unit | no | Normalized reference; missing value is warning. |
+| `JABATAN` | position | no | Normalized reference; missing value is warning. |
 | `JENIS KEPEGAWAIAN` | `employmentType` | no | Descriptive value. |
-| `JABATAN FUNGSIONAL` | `functionalPosition` | no | `-` is normalized to null. |
-| `JABATAN STRUKTURAL` | `structuralPosition` | no | `-` is normalized to null. |
-| `EMAIL` | `email` | no | Invalid/placeholder email becomes warning and is ignored; employee import still proceeds. |
-| `NO HP` | `phone` | no | Stored as text; no numeric coercion. |
+| `JABATAN FUNGSIONAL` | `functionalPosition` | no | `-` becomes null. |
+| `JABATAN STRUKTURAL` | `structuralPosition` | no | `-` becomes null. |
+| `EMAIL` | `email` | no | Invalid/placeholder email becomes warning and is ignored. Employee still imports and Admin may correct it manually after confirmation. |
+| `NO HP` | `phone` | no | Stored as text. |
 | `PENDIDIKAN TERAKHIR` | `education` | no | Descriptive value. |
 | `TMT` | `startedOn` | no | Date normalization required. |
-| `TAHUN KELUAR (TTTT-BB)` | `endedOn` | no | Month-only values normalize to the first day of the month and generate a warning. |
+| `TAHUN KELUAR (TTTT-BB)` | `endedOn` | no | Month-only becomes first day of month with warning. Source sentinel `0`/Excel epoch is treated as empty, not as year 1899/1900. |
 
-## Explicitly excluded from MVP import
+## Fields excluded from MVP
 
-The source workbook contains additional personal/restricted fields. MVP must not ingest them merely because they exist in the spreadsheet.
+The source contains additional sensitive fields. MVP does not ingest them merely because they exist.
 
-Examples currently excluded:
+Currently excluded include NIK, BPJS identifiers, bank account, NPWP, family identifiers, document markers, full address, and unclassified free-form notes.
 
-- NIK;
-- parent/spouse/child identity fields;
-- KTP/KK/ijazah document markers;
-- BPJS identifiers;
-- bank account;
-- NPWP;
-- full KTP address and family-card number;
-- free-form source notes that may contain unclassified personal data.
+**NIK is not an import key.** A duplicated NIK therefore does not drive merge/canonical selection in this MVP.
 
-Adding any excluded field requires an explicit product/security decision and matching authorization/audit behavior.
+## Duplicate NIP and rehire policy
+
+Real source data may contain more than one row for the same NIP when a former employee is recruited again. The employee master represents the **current/latest snapshot**, while historical employment periods are a separate future concern.
+
+Duplicate NIP inside one source file is resolved deterministically instead of always blocking the import:
+
+1. a row without blocking validation errors is preferred;
+2. an `active` row is preferred over inactive/resigned rows;
+3. if activity priority is equal, the latest valid `TMT` is preferred;
+4. if still tied, the later source row wins.
+
+The selected row becomes `insert`/`update`. Other rows with the same NIP become `skip` and receive a warning explaining that they were superseded.
+
+This rule deliberately does not attempt to reconstruct employment-period history.
 
 ## Import flow
 
 ```text
-HC/Admin selects XLSX
-  -> server validates file and required sheet/header
+Admin selects CSV (preferred) or XLSX
+  -> server validates required headers/source shape
   -> rows are normalized using the allowlist
-  -> duplicate NIP inside the same file is rejected
-  -> server compares NIP with current employee master
-  -> preview is persisted as sanitized rows only
-  -> user reviews insert/update/error/warning counts
-  -> user confirms commit
-  -> one database transaction upserts references and employees
+  -> duplicate NIP groups select one current record and skip superseded rows
+  -> server compares selected NIP with employee master
+  -> preview persists sanitized supported fields only
+  -> Admin reviews insert/update/skip/warning/error counts
+  -> Admin confirms commit
+  -> one transaction upserts references and employees
   -> import job becomes committed
 ```
 
-Raw workbook bytes are not stored permanently by HCIS during this flow.
+Raw upload bytes are not stored permanently.
 
 ## Preview states
 
-Each non-empty row receives one planned action:
-
-- `insert`: NIP does not exist yet;
-- `update`: NIP already exists;
-- `error`: row cannot be committed;
-- `skip`: reserved for future explicit skip behavior.
+- `insert`: selected NIP does not exist yet;
+- `update`: selected NIP already exists;
+- `skip`: row is deliberately not applied, including superseded duplicate-NIP history;
+- `error`: selected row cannot be committed.
 
 Warnings do not block commit. Errors do.
 
 ## Validation rules
 
-Blocking errors:
+Blocking errors include missing required headers, missing NIP, missing employee name, malformed source structure, and configured file/row limit violations.
 
-- required worksheet missing;
-- required headers missing;
-- employee number/NIP missing;
-- employee name missing;
-- duplicate NIP within the uploaded workbook;
-- import exceeds configured row/file limits.
+Warnings include invalid email, invalid optional date, missing unit/position, unknown status defaulted to inactive, and duplicate-NIP selection/skip notices.
 
-Warnings:
+Invalid email never creates an account and does not block employee import. Admin may verify the email with the employee and update employee contact data manually in the employee detail panel.
 
-- unknown employee status, normalized to inactive;
-- invalid email, ignored;
-- missing unit or position;
-- ambiguous/month-only optional date normalized conservatively.
+## Account boundary
 
-## Account and authorization boundary
-
-Employee master import does **not** automatically create or activate a user account. Identity/account activation remains a separate flow under AUTH-001/AUTH-002.
-
-The first implementation provides the import use case through a **local CLI adapter** so database/schema/import behavior can be verified before production authentication exists. The CLI is an engineering/admin bootstrap tool, not the final HC user experience.
-
-The target UI/API flow remains preview -> confirm under the production permission `employee.import` with an explicit administrative scope. The HTTP endpoint and menu must not be enabled until the centralized authorization layer is available.
+Employee import does not automatically create or activate accounts. Account activation remains a separate AUTH flow.
 
 ## Audit and history
 
-Persist an import job with:
-
-- job UUID;
-- source filename;
-- source sheet;
-- SHA-256 checksum;
-- row/insert/update/warning/error counts;
-- created/committed timestamps;
-- sanitized per-row outcome and messages.
-
-Do not persist ignored source columns inside import row payloads.
-
-## Organization references
-
-For the first import, unit and position are normalized into reference tables. This does **not** yet establish the organizational reporting hierarchy.
-
-Direct-manager/reporting relationships are a separate ORG-001 step and must be completed before approval resolution is considered ready.
-
-## UI direction
-
-The administrative navigation should eventually expose:
-
-```text
-Data Pegawai
-  - Daftar Pegawai
-  - Impor Pegawai
-  - Riwayat Impor
-```
-
-The UI must use preview -> confirm. Upload must never silently write directly to the employee master.
+Persist import job UUID, filename, source type/sheet, checksum, row/insert/update/warning/error counts, actor, timestamps, and sanitized per-row outcome/messages. Ignored sensitive source columns must never be persisted in import payloads.
 
 ## Acceptance criteria
 
-1. A synthetic workbook with the supported headers can be previewed.
-2. Preview clearly separates inserts, updates, warnings, and errors.
-3. Duplicate NIP in one workbook blocks those rows.
-4. Re-importing the same NIP updates the employee instead of duplicating it.
-5. Invalid email does not block creation of the employee record and does not create an account.
-6. Ignored sensitive columns never appear in persisted import payloads.
-7. Commit runs transactionally; a failed commit does not leave a partially committed job.
-8. Raw workbook bytes are not permanently stored.
-9. The local CLI and the later HTTP/UI adapter call the same import application service.
+1. CSV UTF-8 is the preferred source and XLSX remains supported.
+2. Preview separates inserts, updates, skips, warnings, and errors.
+3. Duplicate NIP selects a single current row using valid > active > newest TMT > later row.
+4. Superseded duplicate rows are skipped, not committed.
+5. Re-importing an existing NIP updates the employee instead of duplicating it.
+6. Invalid email does not block employee creation and can be corrected manually by Admin later.
+7. `0`/Excel epoch optional date values normalize to null.
+8. Ignored sensitive columns never appear in persisted import payloads.
+9. Commit is transactional and raw source bytes are not retained.
 10. Tests and fixtures use synthetic data only.

@@ -8,7 +8,7 @@ import {
 
 import { getCurrentSession, landingPath } from "@/lib/auth";
 import { AdminAccessPage } from "@/pages/AdminAccessPage";
-import { AdminEmployeeDetailPage } from "@/pages/AdminEmployeeDetailPage";
+import { AdminEmployeeDetailRoutePage } from "@/pages/AdminEmployeeDetailRoutePage";
 import { AdminEmployeeImportHistoryPage } from "@/pages/AdminEmployeeImportHistoryPage";
 import { AdminEmployeeImportPage } from "@/pages/AdminEmployeeImportPage";
 import { AdminEmployeesPage } from "@/pages/AdminEmployeesPage";
@@ -72,11 +72,6 @@ const adminEmployeeDetailRoute = createRoute({
   beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
   component: AdminEmployeeDetailRoutePage,
 });
-
-function AdminEmployeeDetailRoutePage() {
-  const { employeeId } = adminEmployeeDetailRoute.useParams();
-  return <AdminEmployeeDetailPage employeeId={employeeId} />;
-}
 
 const adminEmployeeImportRoute = createRoute({
   getParentRoute: () => rootRoute,

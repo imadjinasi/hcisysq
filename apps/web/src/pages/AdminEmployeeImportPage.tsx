@@ -1,5 +1,5 @@
-import { AlertTriangle, CheckCircle2, FileSpreadsheet, Upload } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, Upload } from "lucide-react";
+import { useMemo, useState, type FormEvent } from "react";
 
 import { AdminShell } from "@/layouts/AdminShell";
 import {
@@ -9,6 +9,11 @@ import {
   type EmployeeImportCommitResult,
   type EmployeeImportPreview,
 } from "@/lib/adminEmployees";
+
+const CSV_TEMPLATE = [
+  "NIP,NAMA,STATUS AKTIF,STATUS KEPEGAWAIAN,UNIT,JABATAN,JENIS KEPEGAWAIAN,JABATAN FUNGSIONAL,JABATAN STRUKTURAL,EMAIL,NO HP,PENDIDIKAN TERAKHIR,TMT,TAHUN KELUAR (TTTT-BB)",
+  "YSQ-DEMO-001,Pegawai Contoh,Aktif,Tetap,Unit Contoh,Jabatan Contoh,Tetap,-,-,pegawai.contoh@example.test,081234567890,S1,2026-01-01,",
+].join("\r\n");
 
 function summaryCard(label: string, value: number, tone: "neutral" | "good" | "warn" | "error") {
   const toneClass =
@@ -35,6 +40,25 @@ export function AdminEmployeeImportPage() {
   const [committing, setCommitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const validationSummary = useMemo(() => {
+    if (!preview) return [] as Array<{ code: string; count: number; severity: "warning" | "error" }>;
+    const counts = new Map<string, { count: number; severity: "warning" | "error" }>();
+    for (const row of preview.rows) {
+      for (const issue of row.issues) {
+        const current = counts.get(issue.code);
+        counts.set(issue.code, {
+          count: (current?.count ?? 0) + 1,
+          severity: current?.severity === "error" || issue.severity === "error" ? "error" : "warning",
+        });
+      }
+    }
+    return [...counts.entries()]
+      .map(([code, value]) => ({ code, ...value }))
+      .sort((a, b) => (a.severity === b.severity ? b.count - a.count : a.severity === "error" ? -1 : 1));
+  }, [preview]);
+
+  const skipCount = preview?.rows.filter((row) => row.action === "skip").length ?? 0;
+
   const handlePreview = async (event: FormEvent) => {
     event.preventDefault();
     if (!file) return;
@@ -49,7 +73,7 @@ export function AdminEmployeeImportPage() {
       setError(
         cause instanceof AdminApiError
           ? cause.message
-          : "Workbook tidak dapat dipreview.",
+          : "File import tidak dapat dipreview.",
       );
     } finally {
       setLoading(false);
@@ -84,15 +108,32 @@ export function AdminEmployeeImportPage() {
     <AdminShell
       active="import"
       title="Impor Pegawai"
-      description="Upload workbook XLSX untuk preview. Tidak ada perubahan employee master sebelum tombol konfirmasi dijalankan."
+      description="CSV UTF-8 adalah format yang disarankan; XLSX tetap didukung. Tidak ada perubahan employee master sebelum konfirmasi dijalankan."
     >
       <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+        <div className="mb-4 flex flex-col gap-3 rounded-xl border border-brand-primary/20 bg-brand-primary-pale/60 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-bold text-brand-heading">Gunakan CSV untuk import rutin</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              CSV lebih deterministik karena tidak membawa formula, format tanggal Excel, merged cells, atau hidden rows. XLSX tetap tersedia untuk kompatibilitas master lama.
+            </p>
+          </div>
+          <a
+            href={`data:text/csv;charset=utf-8,${encodeURIComponent(CSV_TEMPLATE)}`}
+            download="template-import-pegawai.csv"
+            className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-brand-primary/30 bg-white px-4 text-sm font-bold text-brand-primary-deep"
+          >
+            <Download className="h-4 w-4" aria-hidden="true" />
+            Template CSV
+          </a>
+        </div>
+
         <form onSubmit={handlePreview} className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
           <label className="block">
-            <span className="mb-2 block text-sm font-bold text-foreground">Workbook pegawai (.xlsx)</span>
+            <span className="mb-2 block text-sm font-bold text-foreground">File pegawai (.csv / .xlsx)</span>
             <input
               type="file"
-              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               onChange={(event) => {
                 setFile(event.target.files?.[0] ?? null);
                 setPreview(null);
@@ -102,7 +143,7 @@ export function AdminEmployeeImportPage() {
               className="block w-full rounded-xl border border-border bg-surface p-2 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-brand-primary-pale file:px-3 file:py-2 file:text-xs file:font-bold file:text-brand-primary-deep"
             />
             <p className="mt-2 text-xs leading-5 text-muted-foreground">
-              Server membaca sheet <strong>Master Data SDM YSQ</strong>, menyimpan hasil normalisasi, lalu membuang raw upload setelah request selesai.
+              CSV membaca header pada baris pertama. XLSX membaca sheet <strong>Master Data SDM YSQ</strong>. Raw upload dibuang setelah request selesai.
             </p>
           </label>
           <button
@@ -133,6 +174,7 @@ export function AdminEmployeeImportPage() {
                 </span>
                 <div>
                   <p className="text-sm font-bold text-brand-heading">{preview.sourceFilename}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Sumber: {preview.sourceSheet}</p>
                   <p className="mt-1 text-xs text-muted-foreground">Import ID: {preview.importId}</p>
                   <p className="mt-1 text-xs text-muted-foreground">Checksum SHA-256: {preview.checksumSha256.slice(0, 16)}…</p>
                 </div>
@@ -140,13 +182,32 @@ export function AdminEmployeeImportPage() {
               <a href="/admin/employees/imports" className="text-sm font-bold text-brand-primary-deep hover:underline">Lihat riwayat impor</a>
             </div>
 
-            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
               {summaryCard("Baris", preview.rowCount, "neutral")}
               {summaryCard("Insert", preview.insertCount, "good")}
               {summaryCard("Update", preview.updateCount, "neutral")}
+              {summaryCard("Skip", skipCount, "neutral")}
               {summaryCard("Warning", preview.warningCount, "warn")}
               {summaryCard("Error", preview.errorCount, "error")}
             </div>
+
+            {validationSummary.length ? (
+              <div className="mt-4 rounded-2xl border border-border/70 bg-surface p-4">
+                <p className="text-sm font-bold text-foreground">Ringkasan validasi</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {validationSummary.map((item) => (
+                    <span
+                      key={item.code}
+                      className={item.severity === "error"
+                        ? "rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-800"
+                        : "rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-900"}
+                    >
+                      {item.code} · {item.count}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-border/70 bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -159,10 +220,10 @@ export function AdminEmployeeImportPage() {
                 </p>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
                   {preview.errorCount > 0
-                    ? "Perbaiki workbook lalu buat preview baru. Warning tidak memblokir commit."
+                    ? "Perbaiki error lalu buat preview baru. Warning dan record skip tidak memblokir commit."
                     : committed
                       ? `${committed.committedCount} employee diproses. Buka Daftar Pegawai untuk melihat hasilnya.`
-                      : "Konfirmasi akan melakukan upsert employee berdasarkan NIP dan membentuk referensi unit/jabatan bila diperlukan."}
+                      : "Duplicate NIP memilih satu kondisi terkini: valid, lalu aktif, lalu TMT terbaru, lalu baris terakhir. Record lain dilewati sebagai skip."}
                 </p>
               </div>
               <button

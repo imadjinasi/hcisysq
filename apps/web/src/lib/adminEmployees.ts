@@ -143,12 +143,15 @@ export async function listEmployees(input: {
 }
 
 export async function previewEmployeeImport(file: File): Promise<EmployeeImportPreview> {
+  const isCsv = file.name.toLowerCase().endsWith(".csv");
   const response = await fetch("/api/admin/employee-imports/preview", {
     method: "POST",
     credentials: "include",
     headers: {
       Accept: "application/json",
-      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "Content-Type": isCsv
+        ? "text/csv"
+        : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "X-File-Name": encodeURIComponent(file.name),
     },
     body: await file.arrayBuffer(),

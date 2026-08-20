@@ -1,6 +1,7 @@
 export const EMPLOYEE_IMPORT_SHEET = "Master Data SDM YSQ";
 export const EMPLOYEE_IMPORT_HEADER_ROW = 2;
 export const EMPLOYEE_IMPORT_FIRST_DATA_ROW = 3;
+export const EMPLOYEE_IMPORT_CSV_SOURCE = "CSV";
 
 export const EMPLOYEE_SOURCE_HEADERS = {
   employeeNumber: "NIP",
@@ -57,6 +58,7 @@ export interface NormalizedEmployeeImportRow {
   rowNumber: number;
   candidate: EmployeeImportCandidate | null;
   issues: ImportIssue[];
+  skip?: boolean;
 }
 
 export interface PlannedEmployeeImportRow extends NormalizedEmployeeImportRow {
@@ -114,7 +116,7 @@ function normalizeEmail(value: unknown): { value: string | null; warning: Import
       severity: "warning",
       code: "invalid_email_ignored",
       field: "email",
-      message: "Email tidak valid dan diabaikan; employee tetap dapat diimpor tanpa account.",
+      message: "Email tidak valid dan diabaikan; employee tetap dapat diimpor dan email dapat dikoreksi manual setelah konfirmasi.",
     },
   };
 }
@@ -134,15 +136,29 @@ function isValidDateParts(year: number, month: number, day: number): boolean {
   );
 }
 
+function isEmptyDateSentinel(value: unknown): boolean {
+  if (value === 0) return true;
+  const raw = text(value).toLowerCase();
+  return raw === "0" || raw === "0.0" || raw === "00" || raw === "n/a" || raw === "na";
+}
+
 function normalizeDate(
   value: unknown,
   field: "startedOn" | "endedOn",
 ): { value: string | null; warning: ImportIssue | null } {
-  if (value === null || value === undefined || value === "" || value === "-") {
+  if (
+    value === null ||
+    value === undefined ||
+    value === "" ||
+    value === "-" ||
+    isEmptyDateSentinel(value)
+  ) {
     return { value: null, warning: null };
   }
 
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    // Excel serial 0 / empty date sentinels can surface around the 1899/1900 epoch.
+    if (value.getFullYear() <= 1900) return { value: null, warning: null };
     return {
       value: `${value.getFullYear()}-${pad2(value.getMonth() + 1)}-${pad2(value.getDate())}`,
       warning: null,
@@ -306,6 +322,66 @@ export function normalizeEmployeeImportRow(
     },
     issues,
   };
+}
+
+function hasBlockingIssue(row: NormalizedEmployeeImportRow): boolean {
+  return row.issues.some((issue) => issue.severity === "error");
+}
+
+function compareDuplicateCandidates(
+  left: NormalizedEmployeeImportRow,
+  right: NormalizedEmployeeImportRow,
+): number {
+  const leftValid = hasBlockingIssue(left) ? 0 : 1;
+  const rightValid = hasBlockingIssue(right) ? 0 : 1;
+  if (leftValid !== rightValid) return rightValid - leftValid;
+
+  const leftActive = left.candidate?.status === "active" ? 1 : 0;
+  const rightActive = right.candidate?.status === "active" ? 1 : 0;
+  if (leftActive !== rightActive) return rightActive - leftActive;
+
+  const leftTmt = left.candidate?.startedOn ?? "";
+  const rightTmt = right.candidate?.startedOn ?? "";
+  if (leftTmt !== rightTmt) return rightTmt.localeCompare(leftTmt);
+
+  return right.rowNumber - left.rowNumber;
+}
+
+export function resolveDuplicateEmployeeNumbers(
+  rows: NormalizedEmployeeImportRow[],
+): NormalizedEmployeeImportRow[] {
+  const groups = new Map<string, NormalizedEmployeeImportRow[]>();
+  for (const row of rows) {
+    const employeeNumber = row.candidate?.employeeNumber;
+    if (!employeeNumber) continue;
+    const group = groups.get(employeeNumber) ?? [];
+    group.push(row);
+    groups.set(employeeNumber, group);
+  }
+
+  for (const [employeeNumber, group] of groups) {
+    if (group.length < 2) continue;
+    const ranked = [...group].sort(compareDuplicateCandidates);
+    const winner = ranked[0]!;
+    winner.issues.push({
+      severity: "warning",
+      code: "duplicate_employee_number_selected",
+      field: "employeeNumber",
+      message: `NIP ${employeeNumber} muncul ${group.length} kali; record ini dipilih sebagai kondisi terkini (valid > aktif > TMT terbaru > baris terakhir).`,
+    });
+
+    for (const row of ranked.slice(1)) {
+      row.skip = true;
+      row.issues.push({
+        severity: "warning",
+        code: "duplicate_employee_number_superseded",
+        field: "employeeNumber",
+        message: "Record NIP yang sama dilewati karena ada record yang lebih diprioritaskan sebagai kondisi pegawai terkini.",
+      });
+    }
+  }
+
+  return rows;
 }
 
 export function normalizeReferenceName(value: string): string {

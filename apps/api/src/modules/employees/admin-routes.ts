@@ -82,7 +82,7 @@ interface ImportHistoryRow {
 }
 
 function decodeFilename(value: string | undefined): string {
-  if (!value) return "employee-import.xlsx";
+  if (!value) return "employee-import.csv";
   try {
     return basename(decodeURIComponent(value));
   } catch {
@@ -282,8 +282,8 @@ export async function registerEmployeeAdminRoutes(
 
       if (!Buffer.isBuffer(request.body)) {
         return reply.status(400).send({
-          code: "INVALID_WORKBOOK",
-          message: "Body upload harus berupa workbook XLSX.",
+          code: "INVALID_IMPORT_FILE",
+          message: "Body upload harus berupa file CSV atau XLSX.",
         });
       }
 
@@ -291,10 +291,11 @@ export async function registerEmployeeAdminRoutes(
       const filename = decodeFilename(
         Array.isArray(filenameHeader) ? filenameHeader[0] : filenameHeader,
       );
-      if (!filename.toLowerCase().endsWith(".xlsx")) {
+      const lower = filename.toLowerCase();
+      if (!lower.endsWith(".csv") && !lower.endsWith(".xlsx")) {
         return reply.status(400).send({
-          code: "INVALID_WORKBOOK",
-          message: "Employee import hanya menerima file .xlsx.",
+          code: "INVALID_IMPORT_FILE",
+          message: "Employee import hanya menerima file .csv atau .xlsx.",
         });
       }
 
@@ -315,7 +316,7 @@ export async function registerEmployeeAdminRoutes(
           message:
             error instanceof Error
               ? error.message
-              : "Workbook tidak dapat dipreview.",
+              : "File import tidak dapat dipreview.",
         });
       }
     },

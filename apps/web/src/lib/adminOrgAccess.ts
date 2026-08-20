@@ -138,6 +138,19 @@ export async function getEmployeeDetail(employeeId: string): Promise<EmployeeDet
   return readJson<EmployeeDetailResponse>(response);
 }
 
+export async function updateEmployeeContact(
+  employeeId: string,
+  input: { email: string | null; phone: string | null },
+): Promise<{ employeeId: string; email: string | null; phone: string | null; accountEmailChanged: false }> {
+  const response = await fetch(`/api/admin/employees/${employeeId}/contact`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify(input),
+  });
+  return readJson(response);
+}
+
 export async function updateDirectManager(
   employeeId: string,
   managerEmployeeId: string | null,
