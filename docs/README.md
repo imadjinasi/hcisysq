@@ -5,16 +5,23 @@ Dokumentasi ini adalah spesifikasi kerja, bukan arsip pasif. Perubahan perilaku 
 ## Urutan membaca
 
 1. `product/vision.md`
-2. `product/scope.md`
-3. `product/feature-parity.yaml`
-4. `domain/glossary.md`
-5. `domain/access-model.md`
-6. `domain/roles-permissions.md`
-7. workflow modul yang akan dikerjakan
-8. `architecture/system-context.md`
-9. ADR yang relevan
-10. `api/openapi.yaml`
-11. security dan testing guidance
+2. `product/mvp.md`
+3. `product/scope.md`
+4. `product/feature-parity.yaml`
+5. `domain/glossary.md`
+6. `domain/access-model.md`
+7. `domain/roles-permissions.md`
+8. workflow modul yang akan dikerjakan
+9. `architecture/system-context.md`
+10. ADR yang relevan
+11. `api/openapi.yaml`
+12. security dan testing guidance
+
+Untuk frontend, baca juga:
+
+- `design/brand-guideline.md`
+- `design/ui-guidelines.md`
+- `design/ui-foundation.md`
 
 ## Status dokumen
 
@@ -22,6 +29,7 @@ Dokumentasi ini adalah spesifikasi kerja, bukan arsip pasif. Perubahan perilaku 
 - `DISCOVERY` — sedang diekstrak dan dibandingkan dengan implementasi sebelumnya.
 - `PROPOSED` — keputusan diajukan, belum menjadi aturan wajib.
 - `ACCEPTED` — menjadi acuan implementasi.
+- `ACTIVE` — foundation/direction yang sedang berlaku.
 - `SUPERSEDED` — digantikan dokumen/ADR lain.
 
 ## Konvensi specification ID

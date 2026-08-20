@@ -1,25 +1,31 @@
 # UI and Design Guidelines
 
-**Status:** DRAFT
+**Status:** ACTIVE FOUNDATION
 
-## Peran Lovable
+## Canonical ownership
 
-Lovable digunakan untuk mengeksplorasi arah visual, application shell, design tokens, reusable components, responsive layout, dan prototype flow dengan mock data.
+Reviewed product UI now lives in `apps/web` in this repository. The earlier `imadjinasi/hcis-ysq-foundation` repository is design/reference history only.
 
-GitHub tetap menjadi source of truth. Hasil Lovable harus melalui review dan dirapikan sebelum dianggap production-ready.
+GitHub `imadjinasi/hcisysq` is the source of truth for product UI, domain rules, API contracts, and engineering work.
 
-## Layar pilot
+## Current MVP screens
 
-1. Login/recovery.
-2. Dashboard pegawai.
-3. Employee table untuk admin.
-4. Leave request form dan preview.
-5. Approval task detail/timeline.
-6. Empty, loading, error, forbidden, offline/slow, dan mobile states.
+1. Login/recovery foundation.
+2. Employee app shell and dashboard.
+3. Leave request form and preview.
+4. Approval task detail/timeline.
+5. Payslip read-only list/detail from imported data.
+6. Foundation Board read-only statistics/report panel.
+7. Super Admin access/audit minimum panel.
+8. Empty, loading, error, forbidden, offline/slow, and mobile states.
+
+## Brand
+
+Follow `docs/design/brand-guideline.md`.
 
 ## Design tokens
 
-Minimal definisikan:
+Define and reuse:
 
 - typography scale;
 - spacing scale;
@@ -29,35 +35,36 @@ Minimal definisikan:
 - focus ring;
 - breakpoints;
 - motion duration;
-- density untuk table/form.
+- density for table/form layouts.
 
-Jangan hardcode warna/status per halaman. Gunakan semantic tokens seperti `status-success`, `status-warning`, dan `status-danger` dengan label/icon yang jelas.
+Do not hardcode status meaning per page. Status needs label/icon/text and may use semantic color as secondary reinforcement.
 
 ## Interaction principles
 
-- Primary action tunggal dan jelas.
-- Destructive action membutuhkan confirmation sesuai risiko.
-- Validation error dekat dengan field dan ringkasan tersedia untuk accessibility.
-- Tabel besar mendukung filter, sort, pagination, sticky context, dan keyboard use.
-- Approval view menampilkan requester, request summary, policy context, history, dan decision consequence.
-- Jangan menampilkan data restricted yang tidak diperlukan untuk keputusan.
+- One obvious primary action per task.
+- Destructive action requires confirmation appropriate to risk.
+- Validation error stays close to the field.
+- Tables support practical filter/sort/pagination when data volume needs it.
+- Approval view shows requester, request summary, policy context, history, and decision consequence.
+- Do not reveal restricted data that is unnecessary for a decision.
+- Payslip employee views are read-only.
 
 ## Accessibility
 
 - Target minimum WCAG 2.1 AA.
-- Keyboard navigation dan visible focus.
-- Semantic HTML dan label form.
-- Status tidak disampaikan hanya dengan warna.
-- Dialog mengelola focus dengan benar.
-- Touch target memadai pada mobile.
-- Reduced motion dihormati.
+- Keyboard navigation and visible focus.
+- Semantic HTML and form labels.
+- Status not conveyed by color alone.
+- Dialog focus management.
+- Adequate touch targets on mobile.
+- Respect reduced motion.
 
 ## Responsive strategy
 
-- Mobile untuk employee self-service dan quick approval.
-- Desktop untuk administration, import, reconciliation, dan reporting.
-- Jangan sekadar mengecilkan tabel desktop; gunakan card/detail pattern bila lebih sesuai.
+- Mobile-first for employee self-service and quick approval.
+- Desktop-efficient for administration, import, reconciliation, and reporting.
+- Do not squeeze desktop tables onto mobile; use detail/card patterns when more appropriate.
 
 ## Mock data
 
-Semua prototype memakai data sintetis. Dilarang mengunggah screenshot/data pegawai production ke Lovable atau tool AI lain.
+All prototypes and fixtures use synthetic data. Production employee/payroll data must never be placed in prompts, screenshots, fixtures, or public repository history.

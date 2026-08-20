@@ -4,73 +4,81 @@
 
 ## Goal
 
-Menggunakan Lovable untuk percepatan desain dan Codex untuk engineering tanpa menjadikan output AI sebagai sumber kebenaran yang tidak direview.
+Gunakan satu repository canonical (`imadjinasi/hcisysq`) dengan pembagian kerja yang jelas antara implementation owner dan agent lokal yang dapat menjalankan environment/test secara langsung.
 
-## Workflow
+## Current workflow
 
 ```text
 Product/domain documentation
-       -> Lovable UI exploration with mock data
-       -> reviewed design decisions
-       -> code lands in GitHub branch
-       -> Codex/human engineering and tests
+       -> implementation in canonical repo
+       -> local Codex verification/fix loop
+       -> human review
        -> pull request quality gates
        -> merge
 ```
 
-## Lovable phase
+The earlier Lovable repository may remain as visual reference/archive, but is no longer an implementation source of truth.
 
-Input minimum:
+## Implementation owner
 
-- problem statement;
-- actor dan permission context;
-- workflow dan states;
-- design references;
-- required loading/error/empty/mobile states;
-- synthetic mock data.
+Coding may be performed through ChatGPT/GitHub-assisted work or a human engineer, but every change must follow repository documentation and branch discipline.
 
-Output yang diterima:
+Environment-dependent claims such as “build passes” or “migration works” must not be asserted until executed in a real local/CI environment.
 
-- design direction;
-- tokens;
-- reusable components;
-- page/flow prototype;
-- responsive behavior.
+## Codex Local verification phase
 
-Output yang tidak dianggap authoritative:
+Codex Local is the preferred execution agent for work that needs repeated local feedback, including dependency install, typecheck, lint, unit/integration tests, migration up/down, local PostgreSQL fixtures, build, and browser/E2E smoke tests.
 
-- database schema;
-- permission rules;
-- payroll/approval calculation;
-- production auth;
-- secret/configuration;
-- migration.
-
-## Codex phase
-
-Sebelum bekerja, Codex harus membaca:
+Before working, the agent must read:
 
 1. `AGENTS.md`;
-2. specification/feature parity item;
-3. workflow terkait;
-4. ADR terkait;
-5. OpenAPI dan security baseline.
+2. `docs/product/mvp.md` when the task is MVP-related;
+3. specification/feature parity item;
+4. workflow and ADR related to the task;
+5. OpenAPI and security baseline where relevant.
 
-Codex diminta menghasilkan perubahan kecil dan dapat direview, menjalankan test, serta menyebut asumsi dan risiko.
+## Suggested local-agent effort
 
-## Prompt contract
+Use the best coding-capable model available in the installed Codex environment. As a working default:
 
-Prompt implementasi yang baik mencakup:
+- routine lint/typecheck/build/test: medium reasoning effort;
+- integration failures, migration issues, or non-trivial debugging: high;
+- auth, authorization, approval, concurrency, or security review: high or xhigh;
+- reserve maximum effort for rare blockers where lower settings failed to provide reliable progress.
+
+Do not spend maximum reasoning effort on routine green-path verification.
+
+## Prompt contract for Codex Local
 
 ```text
-Repository/path scope
-Specification ID
-Outcome
-Non-goals
-Relevant docs
-Acceptance criteria
-Required tests
-Forbidden changes
+Repository: imadjinasi/hcisysq
+Branch: <branch>
+Specification ID: <ID>
+Outcome: <expected result>
+Non-goals: <explicit exclusions>
+Relevant docs: <paths>
+
+Run:
+- install if needed
+- typecheck
+- lint
+- unit/integration tests
+- build
+- E2E/smoke tests if present
+
+Rules:
+- do not redesign requirements
+- do not move business rules into the frontend
+- do not weaken authorization/tests to make them pass
+- use synthetic data only
+- do not commit secrets
+
+Report:
+- commands run
+- pass/fail
+- files changed
+- why each fix was needed
+- remaining risks
 ```
 
 ## Review checklist khusus AI
@@ -78,7 +86,8 @@ Forbidden changes
 - Apakah AI mengarang requirement?
 - Apakah business rule bocor ke UI?
 - Apakah authorization hanya di client?
-- Apakah query membuka cross-tenant/cross-unit data?
+- Apakah query membuka cross-unit data?
+- Apakah approval chain di-resolve ulang setelah submission tanpa alasan yang sah?
 - Apakah migration destructive?
 - Apakah retry membuat duplicate side effect?
 - Apakah log/error membocorkan data?
@@ -91,10 +100,10 @@ Hanya synthetic data yang boleh masuk prompt, fixture, screenshot, dan prototype
 
 ## Human approval required
 
-- Perubahan product scope.
-- Role/permission.
-- Payroll/loan/reimbursement rule.
+- Product scope changes.
+- Role/permission changes.
+- Payroll/payslip visibility rules.
 - Data retention.
 - Migration/cutover.
-- Security exception.
+- Security exceptions.
 - Production deployment.

@@ -17,6 +17,7 @@ rules:
   - Legacy behavior is evidence, not automatic product truth.
   - Every feature requires acceptance criteria before implementation.
   - Financial and authorization features require additional review.
+  - MVP scope is defined in docs/product/mvp.md.
 
 features:
   - id: AUTH-001
@@ -29,6 +30,7 @@ features:
     docs:
       - docs/domain/access-model.md
       - docs/domain/roles-permissions.md
+      - docs/product/mvp.md
 
   - id: AUTH-002
     module: identity
@@ -50,9 +52,11 @@ features:
     module: employee
     name: Employee self-service profile
     legacy_evidence: account and self-service pages exist
-    target_status: discovery
-    priority: foundation
+    target_status: specified
+    priority: mvp
     risk: medium
+    docs:
+      - docs/product/mvp.md
 
   - id: EMP-003
     module: employee
@@ -80,6 +84,7 @@ features:
     docs:
       - docs/domain/access-model.md
       - docs/domain/roles-permissions.md
+      - docs/product/mvp.md
 
   - id: APR-001
     module: approval
@@ -90,6 +95,7 @@ features:
     risk: critical
     docs:
       - docs/domain/workflows/approval-engine.md
+      - docs/product/mvp.md
 
   - id: ATT-001
     module: attendance
@@ -124,6 +130,7 @@ features:
     risk: high
     docs:
       - docs/domain/workflows/leave-request.md
+      - docs/product/mvp.md
 
   - id: LEAVE-002
     module: leave
@@ -137,25 +144,31 @@ features:
     module: reimbursement
     name: Reimbursement submission and approval
     legacy_evidence: reimbursement module and notifications exist
-    target_status: discovery
-    priority: core
+    target_status: deferred
+    priority: after-mvp
     risk: high
+    docs:
+      - docs/product/mvp.md
 
   - id: PAY-001
     module: payroll
-    name: Payroll import and validation
-    legacy_evidence: CSV import exists
-    target_status: discovery
-    priority: later
+    name: Payslip data import and validation
+    legacy_evidence: CSV payroll import exists
+    target_status: specified
+    priority: mvp
     risk: critical
+    docs:
+      - docs/product/mvp.md
 
   - id: PAY-002
     module: payroll
-    name: Payslip generation and employee access
+    name: Employee read-only payslip access
     legacy_evidence: PDF payslip and availability notification exist
-    target_status: discovery
-    priority: later
+    target_status: specified
+    priority: mvp
     risk: critical
+    docs:
+      - docs/product/mvp.md
 
   - id: LOAN-001
     module: loan

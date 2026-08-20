@@ -4,14 +4,16 @@
 
 ## Prinsip sequencing
 
-HCIS dibangun melalui vertical slice, bukan membuat seluruh halaman lebih dahulu. Setiap slice harus mencakup UI, API, domain rule, permission, audit, notification, test, dan operasional minimum.
+HCIS dibangun melalui vertical slice, bukan membuat seluruh halaman lebih dahulu. Setiap slice harus mencakup UI, API, domain rule, permission, audit, test, dan operasional minimum yang relevan.
+
+MVP rinci mengikuti `docs/product/mvp.md`.
 
 ## Foundation
 
 - Identity dan session.
 - Employee sebagai principal pengguna.
 - Struktur organisasi, unit, posisi, dan hubungan atasan.
-- Role, permission, dan policy.
+- Role, permission, scope, dan policy.
 - Audit trail.
 - Configuration dan feature flags.
 - Notification abstraction.
@@ -25,20 +27,33 @@ Login
   -> profil pegawai
   -> ajukan cuti
   -> validasi saldo dan bentrok tanggal
+  -> approval chain di-resolve dan di-snapshot
   -> approval atasan
-  -> notifikasi
   -> audit log
 ```
 
-Slice ini dipilih karena menguji hampir semua fondasi tanpa risiko finansial setinggi payroll.
+Slice ini dipilih karena menguji identity, hierarchy, role/scope, approval, state transition, dan audit tanpa risiko finansial setinggi payroll calculation.
 
-## Modul target
+## MVP tambahan: payslip read-only
+
+MVP menyertakan payslip **read-only** yang berasal dari proses import. HCIS belum menghitung payroll pada tahap ini.
+
+```text
+HC/Finance import payslip dataset
+  -> validasi
+  -> review/publish
+  -> employee melihat payslip miliknya
+```
+
+Reimbursement tidak termasuk MVP.
+
+## Modul target setelah MVP
 
 - Employee master dan organizational structure.
 - Attendance dengan jadwal, lokasi, dan bukti yang disetujui.
 - Leave dan approval.
 - Reimbursement.
-- Payroll, import, rekonsiliasi, dan payslip.
+- Payroll calculation, rekonsiliasi, dan payslip penuh.
 - Employee loan dan cicilan.
 - Performance review.
 - Training dan learning record.
@@ -67,9 +82,16 @@ Slice ini dipilih karena menguji hampir semua fondasi tanpa risiko finansial set
 - Synthetic seed tersedia.
 - CI menjalankan lint, typecheck, test, build, dan security checks dasar.
 
+### MVP ready
+
+- Leave vertical slice lulus acceptance test end-to-end.
+- Approval snapshot behavior dan role/scope memiliki automated test.
+- Payslip import + read-only access lulus acceptance test dengan synthetic data.
+- Foundation Board read-only boundary teruji.
+- Canonical repository dapat di-setup lokal dari clone bersih.
+
 ### Pilot ready
 
-- Vertical slice pertama lulus acceptance test.
 - Staging menggunakan data sintetis/tersanitasi.
 - Backup dan restore diuji.
 - Observability minimum aktif.

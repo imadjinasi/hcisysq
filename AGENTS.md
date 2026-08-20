@@ -1,6 +1,6 @@
 # HCIS YSQ Engineering Rules
 
-Dokumen ini berlaku untuk manusia, Lovable, Codex, dan automation lain yang mengubah repository.
+Dokumen ini berlaku untuk manusia, ChatGPT, Codex, dan automation lain yang mengubah repository.
 
 ## 1. Source of truth
 
@@ -8,72 +8,83 @@ Urutan otoritas:
 
 1. Keputusan produk dan domain di `docs/product/` dan `docs/domain/`.
 2. Kontrak HTTP di `docs/api/openapi.yaml`.
-3. ADR berstatus `Accepted` di `docs/architecture/adr/`.
+3. ADR berstatus Accepted di `docs/architecture/adr/`.
 4. Automated test.
 5. Implementasi kode.
-6. Implementasi HCIS sebelumnya sebagai referensi discovery.
+6. Legacy HCIS sebagai referensi discovery.
 
-Bila sumber-sumber tersebut bertentangan, jangan menebak. Buat atau perbarui ADR/specification dan jelaskan konflik pada pull request.
+Bila sumber-sumber tersebut bertentangan, jangan menebak. Perbarui specification/ADR atau eskalasi keputusan produk.
 
-## 2. Documentation first
+## 2. Canonical repository
+
+`imadjinasi/hcisysq` adalah satu-satunya repository development canonical.
+
+- Frontend canonical: `apps/web`.
+- Target API: `apps/api`.
+- Domain rules: `packages/domain` ketika mulai diimplementasikan.
+- Shared contracts: `packages/contracts` ketika dibutuhkan.
+
+`imadjinasi/hcis-ysq-foundation` adalah design/reference archive. Jangan membuat fitur baru di sana dan jangan merge history repository tersebut ke canonical repo.
+
+## 3. Documentation first
 
 - Fitur baru harus mempunyai specification ID sebelum implementasi.
-- Perubahan perilaku wajib memperbarui dokumentasi dalam pull request yang sama.
-- Workflow harus menjelaskan actor, precondition, input, state, transition, permission, notification, audit event, dan failure behavior.
+- Perubahan perilaku wajib memperbarui dokumentasi dalam perubahan yang sama.
+- Workflow harus menjelaskan actor, precondition, input, state, transition, permission, audit event, dan failure behavior.
 - Field dan istilah domain harus konsisten dengan `docs/domain/glossary.md`.
 - Asumsi yang belum diverifikasi harus ditandai `DRAFT`, `DISCOVERY`, atau `TBD`.
+- MVP mengikuti `docs/product/mvp.md`.
 
-## 3. Architecture boundaries
+## 4. Architecture boundaries
 
 - Frontend tidak boleh memuat aturan payroll, approval, authorization, saldo cuti, atau keputusan bisnis lain.
 - Frontend berkomunikasi melalui kontrak API; jangan mengakses tabel production secara langsung.
 - Domain logic tidak boleh bergantung langsung pada HTTP framework, database client, object storage, queue, email, atau vendor SDK.
-- Integrasi eksternal harus berada di adapter/infrastructure layer.
-- Jangan memperkenalkan microservice tanpa ADR yang menjelaskan kebutuhan, failure mode, observability, dan biaya operasional.
-- Jangan mendukung beberapa database relasional hanya demi fleksibilitas. Portabilitas dicapai melalui konfigurasi dan adapter, bukan duplikasi perilaku database.
+- Integrasi eksternal berada di adapter/infrastructure layer.
+- Jangan memperkenalkan microservice tanpa ADR.
+- Portabilitas database dicapai melalui konfigurasi/adapter, bukan dukungan beberapa database sekaligus.
 
-## 4. Ownership penggunaan AI
+## 5. MVP boundaries
 
-### Lovable
+- Reimbursement berada setelah MVP.
+- MVP payroll scope hanya import/validation data payslip dan employee read-only access.
+- Jangan membangun payroll calculation engine untuk memenuhi layar payslip MVP.
+- Approval chain mengikuti snapshot-on-submit behavior di `docs/domain/workflows/approval-engine.md`.
 
-Lovable digunakan untuk eksplorasi UI, design system, responsive states, dan prototype dengan mock data. Perubahan hasil Lovable harus direview sebelum menjadi source of truth.
+## 6. AI-assisted workflow
 
-Lovable tidak boleh menentukan aturan payroll, approval chain, permission, migrasi, atau keamanan production.
+Implementation owner dapat mengerjakan kode melalui chat/GitHub-assisted editing. Codex Local diprioritaskan untuk execution loop yang membutuhkan environment nyata: install, lint, typecheck, test, migration, build, dan browser smoke test.
 
-### Codex
+Baca `docs/development/ai-assisted-workflow.md` sebelum menyerahkan verification/fix loop ke agent lokal.
 
-Codex digunakan untuk discovery codebase lama, implementasi, refactor, migration, test, CI/CD, dan review. Codex wajib membaca dokumen yang relevan sebelum mengubah kode dan menyebut specification ID pada ringkasan perubahan.
-
-### Manusia
-
-Keputusan produk, akses data, nominal payroll, aturan legal/HR, dan cutover production tetap membutuhkan persetujuan manusia yang berwenang.
-
-## 5. Quality gates
+## 7. Quality gates
 
 Sebelum merge:
 
 - acceptance criteria terpenuhi;
-- typecheck, lint, test, dan build lulus;
+- typecheck, lint, test, dan build lulus di environment yang benar-benar menjalankannya;
 - setiap permission baru memiliki automated test;
-- setiap state transition penting menghasilkan audit event;
-- migration memiliki rollback atau recovery plan;
+- state transition penting menghasilkan audit event;
+- migration memiliki rollback/recovery plan;
 - kontrak API dan client tetap sinkron;
 - error, loading, empty, forbidden, dan mobile state diperiksa;
 - dokumentasi diperbarui;
 - tidak ada secret atau data pribadi pada diff.
 
-## 6. Security and privacy
+Jangan menyatakan quality gate lulus hanya berdasarkan inspeksi statis.
+
+## 8. Security and privacy
 
 - Gunakan data sintetis untuk development, prompt, test, screenshot, dan demo.
-- Jangan commit `.env`, token, credential, database dump, dokumen pegawai, foto absensi, slip gaji, atau data payroll.
+- Jangan commit `.env`, token, credential, database dump, dokumen pegawai, foto absensi, slip gaji production, atau data payroll production.
 - Jangan log password, token, nomor identitas lengkap, rekening, nominal sensitif, atau isi dokumen.
 - Terapkan least privilege pada role aplikasi, database, storage, dan deployment.
-- Perubahan auth, permission, audit, payroll, atau data migration harus mendapat review tambahan.
+- Auth, permission, audit, payslip/payroll, atau migration membutuhkan review tambahan.
 
-## 7. Pull request discipline
+## 9. Pull request discipline
 
-- Satu pull request harus mempunyai tujuan yang jelas dan scope terkontrol.
-- Sertakan specification ID, risiko, perubahan database, bukti test, dan langkah rollback.
+- Satu pull request mempunyai tujuan dan scope yang jelas.
+- Sertakan specification ID, risiko, perubahan database, bukti test, dan langkah rollback bila relevan.
 - Jangan mencampur refactor besar dengan perubahan perilaku tanpa alasan kuat.
 - Jangan menonaktifkan test untuk meloloskan perubahan.
-- Jangan melakukan force push ke `main`.
+- Jangan force push ke `main`.

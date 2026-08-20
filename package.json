@@ -1,0 +1,14 @@
+{
+  "name": "hcisysq",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm --workspace @hcis/web run dev",
+    "build:web": "npm --workspace @hcis/web run build",
+    "typecheck:web": "npm --workspace @hcis/web run typecheck",
+    "lint:web": "npm --workspace @hcis/web run lint"
+  }
+}
