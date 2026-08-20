@@ -5,42 +5,46 @@
 
 This profile is for development verification and early pilot work. Use synthetic data only until production readiness, migration, access control, and security review are complete.
 
-## Topology
+## Confirmed VPS topology
+
+The shared VPS already uses Dockerized Caddy as the only public ingress on ports 80/443. Its shared Docker network is `edge_proxy`.
 
 ```text
 https://hcis.sabilulquran.or.id
         |
         v
-host reverse proxy + TLS
+edge-caddy-1 :80/:443
         |
+        | Docker network: edge_proxy
         v
-127.0.0.1:18080
-        |
-        v
-hcis web (nginx)
+hcis-web :80
   |             |
   | /           | /api/* (prefix stripped)
   v             v
 Vite SPA       Fastify API :3001
                     |
+                    | private backend network
                     v
               PostgreSQL :5432
-              internal network only
 ```
 
-The PostgreSQL service has no published host port in the VPS profile.
+Only the HCIS web container joins `edge_proxy`. The API and PostgreSQL stay on the private HCIS backend network. The web container reaches the API privately and proxies `/api/*` to it.
+
+For host-only troubleshooting, the web container also binds to `127.0.0.1:18080`. This is not a public port.
 
 ## 1. DNS
 
-At the DNS manager for `sabilulquran.or.id`, create an `A` record for `hcis` pointing to the VPS public IPv4 address. Keep TTL at the provider default unless there is a reason to change it.
+DNS is managed in Cloudflare. Create:
 
-Jagoan Hosting reference:
+```text
+Type: A
+Name: hcis
+Value: VPS public IPv4
+Proxy status: DNS only during initial verification
+TTL: Auto
+```
 
-- https://www.jagoanhosting.com/tutorial/tips/cara-membuat-subdomain-di-member-area-jagoan-hosting
-
-Wait until the record resolves to the VPS before issuing TLS certificates.
-
-Useful checks:
+Verify it resolves to the VPS before continuing:
 
 ```bash
 nslookup hcis.sabilulquran.or.id
@@ -48,18 +52,31 @@ nslookup hcis.sabilulquran.or.id
 dig +short hcis.sabilulquran.or.id
 ```
 
-## 2. Inspect the VPS first
+After the origin and TLS route are verified, Cloudflare proxying can be evaluated separately.
 
-Before changing port 80/443 configuration, identify the existing reverse proxy and current Docker workloads:
+## 2. Confirm the existing ingress
+
+Before deploying HCIS, inspect the running workloads rather than replacing the existing reverse proxy:
 
 ```bash
-docker version
-docker compose version
 docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Ports}}'
-sudo ss -lntp | grep -E ':(80|443)\\s' || true
 ```
 
-Do not replace the existing reverse proxy blindly. HCIS intentionally binds only to `127.0.0.1:18080` by default so it does not collide with other services.
+The expected ingress container is `edge-caddy-1`, owning host ports 80 and 443.
+
+Confirm its Docker network:
+
+```bash
+docker inspect edge-caddy-1 --format '{{range $name, $config := .NetworkSettings.Networks}}{{println $name}}{{end}}'
+```
+
+Expected network:
+
+```text
+edge_proxy
+```
+
+Do not expose another container on host ports 80 or 443.
 
 ## 3. Clone the verification branch
 
@@ -99,9 +116,17 @@ openssl rand -hex 32
 
 Put that value into `POSTGRES_PASSWORD` in `infra/.env.vps`.
 
+Keep these values unless the VPS topology changes:
+
+```text
+EDGE_NETWORK=edge_proxy
+HCIS_BIND_ADDRESS=127.0.0.1
+HCIS_HTTP_PORT=18080
+```
+
 Do not commit `infra/.env.vps`.
 
-Default resource limits are intentionally conservative for a small shared VPS:
+Default resource limits are intentionally conservative for the shared VPS:
 
 - PostgreSQL: 320 MB;
 - API: 192 MB;
@@ -120,7 +145,9 @@ docker compose \
   up -d --build
 ```
 
-The API container waits for PostgreSQL, runs pending SQL migrations, then starts Fastify.
+The Compose profile expects the external Docker network `edge_proxy` to already exist. The web service joins that network with the unique alias `hcis-web`; Caddy can route to `hcis-web:80` without exposing the API or database.
+
+The API waits for PostgreSQL, runs pending SQL migrations, then starts Fastify.
 
 Check status and logs:
 
@@ -130,7 +157,7 @@ docker compose --env-file infra/.env.vps -f infra/docker-compose.vps.yml ps
 docker compose --env-file infra/.env.vps -f infra/docker-compose.vps.yml logs --tail=200 postgres api web
 ```
 
-## 6. Verify locally on the VPS before exposing the hostname
+## 6. Verify locally on the VPS before changing Caddy
 
 ```bash
 curl -i http://127.0.0.1:18080/
@@ -138,62 +165,39 @@ curl -i http://127.0.0.1:18080/api/health
 curl -i http://127.0.0.1:18080/api/ready
 ```
 
-Expected API results:
+Expected API result for a healthy process/database:
 
 ```json
 {"status":"ok"}
 ```
 
-`/ready` must only report ready when PostgreSQL is reachable.
+`/ready` must not report success if PostgreSQL is unreachable.
 
-## 7. Connect the existing host reverse proxy
+## 7. Locate the existing Caddy configuration
 
-Use the reverse proxy already responsible for ports 80/443 on the VPS.
+Do not guess where Caddy configuration lives. Inspect the existing container mounts first:
 
-### If the host uses native nginx
+```bash
+docker inspect edge-caddy-1 --format '{{range .Mounts}}{{println .Source " -> " .Destination}}{{end}}'
+```
 
-Example upstream configuration:
+Identify the host path mounted as the Caddyfile/config directory. Edit the existing ingress configuration only after confirming that path.
 
-```nginx
-server {
-    listen 80;
-    server_name hcis.sabilulquran.or.id;
+The HCIS site route should ultimately be equivalent to:
 
-    location / {
-        proxy_pass http://127.0.0.1:18080;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
+```caddyfile
+hcis.sabilulquran.or.id {
+    reverse_proxy hcis-web:80
 }
 ```
 
-Validate before reload:
+Because both containers share `edge_proxy`, Caddy resolves the `hcis-web` network alias directly.
 
-```bash
-sudo nginx -t
-sudo systemctl reload nginx
-```
-
-Then issue/attach a TLS certificate using the certificate mechanism already used on the VPS. If the VPS uses Certbot with nginx, the usual command is:
-
-```bash
-sudo certbot --nginx -d hcis.sabilulquran.or.id
-```
-
-Do not install a second proxy stack only for HCIS.
-
-### If the reverse proxy itself runs in Docker
-
-A container cannot normally reach the host's `127.0.0.1:18080`. Prefer attaching the proxy to an explicit shared Docker network and routing to the HCIS web container, or bind HCIS to a private host interface that is reachable from the proxy and protected by firewall rules.
-
-Inspect the existing proxy first; do not change `HCIS_BIND_ADDRESS` to `0.0.0.0` unless the firewall exposure is understood.
+Validate the active Caddy configuration using the same method already used by the `edge-caddy` stack before reloading it. Do not replace the existing Caddy container or its configuration for other SaaS applications.
 
 ## 8. External verification
 
-After DNS + reverse proxy + TLS are active:
+After the Caddy route and TLS are active:
 
 ```bash
 curl -I https://hcis.sabilulquran.or.id/
@@ -208,7 +212,7 @@ https://hcis.sabilulquran.or.id/
 https://hcis.sabilulquran.or.id/app
 ```
 
-The employee import UI is not public yet. The current deployment is intended to verify the web shell, API process, database migration, and readiness path first.
+The employee import UI is not public yet. The current deployment first verifies the web shell, API process, database migration, and readiness path.
 
 ## 9. Updating the development deployment
 
@@ -237,7 +241,8 @@ Do not add `-v` unless the PostgreSQL data volume is intentionally being destroy
 
 - This hostname is a development environment until explicitly promoted.
 - Use synthetic data only during foundation verification.
-- PostgreSQL must remain private to the Docker network.
+- PostgreSQL has no published host port.
+- Fastify is not connected to the shared edge network; only `hcis-web` is reachable from Caddy.
 - No spreadsheet containing real employee/payroll data should be copied to the server yet.
 - The employee import HTTP/admin surface is intentionally not exposed before authorization exists.
-- `exceljs` currently carries moderate transitive dependency advisories. Do not use `npm audit fix --force`; track and resolve the dependency deliberately before exposing employee workbook upload to production users.
+- `exceljs` currently carries moderate transitive dependency advisories. Do not use `npm audit fix --force`; resolve the dependency deliberately before exposing employee workbook upload to production users.
