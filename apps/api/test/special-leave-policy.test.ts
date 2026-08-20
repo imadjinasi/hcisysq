@@ -21,6 +21,19 @@ describe("YSQ special leave policy", () => {
     expect(result.warnings.map((item) => item.code)).toContain("EVIDENCE_DEFERRED");
   });
 
+  it("caps maternity at the six-month total policy boundary", () => {
+    expect(() =>
+      validateSpecialLeaveRequest({
+        policyKey: "maternity",
+        submittedOn: "2026-08-01",
+        startOn: "2026-09-15",
+        endOn: "2027-03-15",
+        workingDays: 120,
+        hasEvidence: true,
+      }),
+    ).toThrowError(SpecialLeavePolicyError);
+  });
+
   it("requires maternity evidence at initial submission", () => {
     expect(() =>
       validateSpecialLeaveRequest({
