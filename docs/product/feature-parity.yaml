@@ -43,10 +43,13 @@ features:
   - id: EMP-001
     module: employee
     name: Employee master data
-    legacy_evidence: Employee is the authenticated principal
-    target_status: discovery
+    legacy_evidence: Employee is the authenticated principal and current master data exists outside the new HCIS
+    target_status: implementing
     priority: foundation
     risk: high
+    docs:
+      - docs/domain/employee-import.md
+      - docs/product/mvp.md
 
   - id: EMP-002
     module: employee
@@ -66,13 +69,26 @@ features:
     priority: later
     risk: medium
 
+  - id: EMP-004
+    module: employee
+    name: Controlled employee master XLSX import
+    legacy_evidence: HC maintains an existing employee master spreadsheet
+    target_status: implementing
+    priority: foundation
+    risk: high
+    docs:
+      - docs/domain/employee-import.md
+      - docs/product/mvp.md
+
   - id: ORG-001
     module: organization
     name: Unit, position, and reporting hierarchy
     legacy_evidence: units, positions, and direct-manager hierarchy exist
-    target_status: discovery
+    target_status: implementing
     priority: foundation
     risk: high
+    docs:
+      - docs/domain/employee-import.md
 
   - id: AUTH-010
     module: authorization

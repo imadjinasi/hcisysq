@@ -11,7 +11,7 @@ Dokumentasi ini adalah spesifikasi kerja, bukan arsip pasif. Perubahan perilaku 
 5. `domain/glossary.md`
 6. `domain/access-model.md`
 7. `domain/roles-permissions.md`
-8. workflow modul yang akan dikerjakan
+8. specification/workflow modul yang akan dikerjakan, termasuk `domain/employee-import.md` untuk EMP-004
 9. `architecture/system-context.md`
 10. ADR yang relevan
 11. `api/openapi.yaml`

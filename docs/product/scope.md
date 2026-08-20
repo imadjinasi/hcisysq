@@ -10,17 +10,32 @@ MVP rinci mengikuti `docs/product/mvp.md`.
 
 ## Foundation
 
-- Identity dan session.
-- Employee sebagai principal pengguna.
+- API/runtime configuration dan health check.
+- PostgreSQL local/CI foundation dan migration runner.
+- Employee master + controlled XLSX import.
 - Struktur organisasi, unit, posisi, dan hubungan atasan.
+- Identity dan session.
 - Role, permission, scope, dan policy.
 - Audit trail.
-- Configuration dan feature flags.
 - Notification abstraction.
 - File/storage abstraction.
-- Health check, logging, migration, backup, dan restore runbook.
+- Logging, backup, dan restore runbook.
 
-## Vertical slice pertama
+## Foundation slice 0: employee master
+
+```text
+Start API + PostgreSQL
+  -> upload synthetic employee workbook
+  -> preview validation
+  -> confirm import
+  -> upsert employee by NIP
+  -> normalize unit + position references
+  -> review import history
+```
+
+Import employee precedes leave implementation because leave/approval depends on reliable employee, organization, and reporting data.
+
+## Vertical slice pertama: leave
 
 ```text
 Login
@@ -49,9 +64,7 @@ Reimbursement tidak termasuk MVP.
 
 ## Modul target setelah MVP
 
-- Employee master dan organizational structure.
 - Attendance dengan jadwal, lokasi, dan bukti yang disetujui.
-- Leave dan approval.
 - Reimbursement.
 - Payroll calculation, rekonsiliasi, dan payslip penuh.
 - Employee loan dan cicilan.
@@ -77,9 +90,10 @@ Reimbursement tidak termasuk MVP.
 
 ### Foundation ready
 
-- ADR inti disetujui.
-- Identity, permission, audit, dan environment configuration memiliki test.
-- Synthetic seed tersedia.
+- API dan PostgreSQL local dapat dijalankan dari clone bersih.
+- Migration clean-database lulus.
+- Employee import preview/commit lulus test dengan fixture sintetis.
+- Identity, permission, audit, dan environment configuration memiliki test sebelum pilot.
 - CI menjalankan lint, typecheck, test, build, dan security checks dasar.
 
 ### MVP ready

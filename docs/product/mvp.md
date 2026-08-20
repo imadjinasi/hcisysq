@@ -5,22 +5,33 @@
 
 ## Tujuan
 
-MVP harus membuktikan bahwa HCIS baru memiliki fondasi akses dan approval yang stabil, dapat dijalankan lokal dari satu repository canonical, dan sudah memberikan nilai self-service dasar kepada pegawai.
+MVP harus membuktikan bahwa HCIS baru memiliki employee master, fondasi akses, dan approval yang stabil, dapat dijalankan lokal dari satu repository canonical, dan sudah memberikan nilai self-service dasar kepada pegawai.
 
 MVP tidak mengejar feature parity penuh dengan legacy HCIS.
 
 ## Outcome MVP
 
-### 1. Identity dan access foundation
+### 1. Backend dan employee master foundation
+
+- API TypeScript dapat dijalankan lokal.
+- PostgreSQL lokal tersedia melalui Docker untuk development/test.
+- Migration dapat dijalankan pada database bersih.
+- Employee master menggunakan UUID internal dan NIP sebagai natural key import/upsert.
+- HC/Admin dapat melakukan preview -> confirm import employee dari XLSX.
+- Import hanya mengambil allowlisted fields dan tidak otomatis membuat account.
+- Unit dan position dasar dapat dibentuk dari import; reporting line ditetapkan terpisah.
+- Detail aturan import mengikuti `docs/domain/employee-import.md`.
+
+### 2. Identity dan access foundation
 
 - Satu login surface untuk semua account type.
 - Account type: `EMPLOYEE`, `FOUNDATION_BOARD`, dan `SUPER_ADMIN`.
-- Employee aktif selalu memperoleh base employee self-service access.
+- Employee aktif selalu memperoleh base employee self-service access setelah account aktif.
 - Role tambahan bersifat additive dan memiliki scope.
 - Organ Yayasan memiliki panel statistik/report read-only.
 - Super Admin digunakan untuk administrasi akses dan audit, bukan sebagai jabatan organisasi.
 
-### 2. Employee workspace
+### 3. Employee workspace
 
 - Login prototype/foundation UI.
 - App shell responsive.
@@ -31,7 +42,7 @@ MVP tidak mengejar feature parity penuh dengan legacy HCIS.
 - Payslip read-only.
 - Management navigation muncul hanya sebagai lapisan tambahan untuk pegawai yang memiliki kewenangan.
 
-### 3. Leave vertical slice
+### 4. Leave vertical slice
 
 Flow minimum:
 
@@ -48,7 +59,7 @@ Employee
 
 Approval wajib mengikuti `docs/domain/workflows/approval-engine.md`.
 
-### 4. Payslip read-only melalui import
+### 5. Payslip read-only melalui import
 
 Untuk MVP, HCIS **tidak menghitung payroll**.
 
@@ -64,11 +75,11 @@ Minimum scope:
 - akses ke payslip diaudit;
 - tidak ada payroll calculation engine pada MVP.
 
-### 5. Foundation Board panel
+### 6. Foundation Board panel
 
 Panel Organ Yayasan bersifat read-only dan berfokus pada statistik serta report agregat. Detail sensitif tidak otomatis terbuka hanya karena account type ini.
 
-### 6. Super Admin minimum
+### 7. Super Admin minimum
 
 - user/account access overview;
 - role assignment;
@@ -95,10 +106,12 @@ MVP dianggap selesai ketika:
 
 1. repository canonical dapat di-setup lokal dari clone bersih;
 2. lint, typecheck, automated test, dan build lulus;
-3. employee dapat menyelesaikan leave flow end-to-end dengan synthetic data;
-4. approval chain stabil terhadap perubahan organisasi setelah request dibuat;
-5. role/scope memiliki authorization test;
-6. payslip import dan read-only employee access memiliki test;
-7. Foundation Board tidak dapat melakukan mutation;
-8. audit event tersedia untuk operasi sensitif;
-9. tidak ada secret atau real employee/payroll data di repository/test fixture.
+3. clean PostgreSQL dapat dimigrasikan dan di-seed dengan synthetic data;
+4. employee XLSX import preview/commit memiliki automated test dan tidak menyimpan ignored sensitive fields;
+5. employee dapat menyelesaikan leave flow end-to-end dengan synthetic data;
+6. approval chain stabil terhadap perubahan organisasi setelah request dibuat;
+7. role/scope memiliki authorization test;
+8. payslip import dan read-only employee access memiliki test;
+9. Foundation Board tidak dapat melakukan mutation;
+10. audit event tersedia untuk operasi sensitif;
+11. tidak ada secret atau real employee/payroll data di repository/test fixture.
