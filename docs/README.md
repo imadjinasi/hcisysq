@@ -8,12 +8,13 @@ Dokumentasi ini adalah spesifikasi kerja, bukan arsip pasif. Perubahan perilaku 
 2. `product/scope.md`
 3. `product/feature-parity.yaml`
 4. `domain/glossary.md`
-5. `domain/roles-permissions.md`
-6. workflow modul yang akan dikerjakan
-7. `architecture/system-context.md`
-8. ADR yang relevan
-9. `api/openapi.yaml`
-10. security dan testing guidance
+5. `domain/access-model.md`
+6. `domain/roles-permissions.md`
+7. workflow modul yang akan dikerjakan
+8. `architecture/system-context.md`
+9. ADR yang relevan
+10. `api/openapi.yaml`
+11. security dan testing guidance
 
 ## Status dokumen
 

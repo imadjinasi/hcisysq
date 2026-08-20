@@ -23,10 +23,11 @@ features:
     module: identity
     name: Employee sign-in and session
     legacy_evidence: email/password and Google sign-in exist
-    target_status: discovery
+    target_status: specified
     priority: foundation
     risk: high
     docs:
+      - docs/domain/access-model.md
       - docs/domain/roles-permissions.md
 
   - id: AUTH-002
@@ -73,15 +74,18 @@ features:
     module: authorization
     name: Role and permission management
     legacy_evidence: super_admin, yayasan group, pegawai, kepala_unit, and admin are observed
-    target_status: discovery
+    target_status: specified
     priority: foundation
     risk: critical
+    docs:
+      - docs/domain/access-model.md
+      - docs/domain/roles-permissions.md
 
   - id: APR-001
     module: approval
     name: Reusable multi-step approval engine
     legacy_evidence: leave, attendance, loan, reimbursement, and overtime use approval flows
-    target_status: discovery
+    target_status: specified
     priority: foundation
     risk: critical
     docs:
