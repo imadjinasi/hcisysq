@@ -12,6 +12,7 @@ import { AdminEmployeeDetailRoutePage } from "@/pages/AdminEmployeeDetailRoutePa
 import { AdminEmployeeImportHistoryPage } from "@/pages/AdminEmployeeImportHistoryPage";
 import { AdminEmployeeImportPage } from "@/pages/AdminEmployeeImportPage";
 import { AdminEmployeesPage } from "@/pages/AdminEmployeesPage";
+import { AdminLeaveConfigurationPage } from "@/pages/AdminLeaveConfigurationPage";
 import { AdminOrganizationPage } from "@/pages/AdminOrganizationPage";
 import { AdminPage } from "@/pages/AdminPage";
 import { EmployeeDashboardPage } from "@/pages/EmployeeDashboardPage";
@@ -94,6 +95,13 @@ const adminOrganizationRoute = createRoute({
   component: AdminOrganizationPage,
 });
 
+const adminLeaveRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/leave",
+  beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
+  component: AdminLeaveConfigurationPage,
+});
+
 const adminAccessRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/access",
@@ -117,6 +125,7 @@ const routeTree = rootRoute.addChildren([
   adminEmployeeImportRoute,
   adminEmployeeImportHistoryRoute,
   adminOrganizationRoute,
+  adminLeaveRoute,
   adminAccessRoute,
   boardRoute,
 ]);
