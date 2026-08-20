@@ -48,7 +48,6 @@ services:
       retries: 12
     networks:
       - backend
-      - edge
     mem_limit: ${API_MEMORY_LIMIT:-192m}
 
   web:
@@ -61,19 +60,26 @@ services:
         condition: service_healthy
     ports:
       - "${HCIS_BIND_ADDRESS:-127.0.0.1}:${HCIS_HTTP_PORT:-18080}:80"
+    expose:
+      - "80"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/healthz >/dev/null || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
     networks:
-      - edge
+      backend:
+      edge_proxy:
+        aliases:
+          - hcis-web
     mem_limit: ${WEB_MEMORY_LIMIT:-96m}
 
 networks:
   backend:
     internal: true
-  edge:
+  edge_proxy:
+    external: true
+    name: ${EDGE_NETWORK:-edge_proxy}
 
 volumes:
   hcis_pgdata:
