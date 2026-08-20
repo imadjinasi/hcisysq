@@ -7,6 +7,10 @@ import {
   calculateAnnualLeaveYearView,
 } from "../src/modules/leave/domain/annual-leave-policy.js";
 import {
+  AnnualLeaveRequestPolicyError,
+  validateAnnualLeaveRequest,
+} from "../src/modules/leave/domain/annual-leave-request.js";
+import {
   LeaveApprovalConfigurationError,
   resolveLeaveLineApprovalChain,
 } from "../src/modules/leave/domain/approval-chain.js";
@@ -87,6 +91,80 @@ describe("YSQ annual leave policy", () => {
       AnnualLeavePolicyError,
     );
     expect(() => assertAnnualLeaveEntitlementGroup("non_education")).not.toThrow();
+  });
+});
+
+describe("YSQ annual leave request validation", () => {
+  it("accepts a normal request inside the active 3-day period", () => {
+    const result = validateAnnualLeaveRequest({
+      entitlementGroup: "non_education",
+      employmentStartedOn: "2024-01-01",
+      submittedOn: "2026-08-01",
+      leaveStartOn: "2026-08-10",
+      leaveEndOn: "2026-08-11",
+      requestedWorkingDays: 2,
+      usedDaysByPeriod: { JUL_SEP: 1 },
+    });
+
+    expect(result.annualEntitlementDays).toBe(12);
+    expect(result.periodKey).toBe("JUL_SEP");
+    expect(result.periodLimitDays).toBe(3);
+    expect(result.availableDaysBeforeRequest).toBe(2);
+    expect(result.availableDaysAfterRequest).toBe(0);
+    expect(result.noticeDays).toBe(9);
+  });
+
+  it("blocks annual leave before the 12-month eligibility date", () => {
+    expect(() =>
+      validateAnnualLeaveRequest({
+        entitlementGroup: "non_education",
+        employmentStartedOn: "2025-10-15",
+        submittedOn: "2026-09-25",
+        leaveStartOn: "2026-10-10",
+        leaveEndOn: "2026-10-10",
+        requestedWorkingDays: 1,
+      }),
+    ).toThrowError(AnnualLeaveRequestPolicyError);
+  });
+
+  it("blocks a request that misses H-7", () => {
+    expect(() =>
+      validateAnnualLeaveRequest({
+        entitlementGroup: "non_education",
+        employmentStartedOn: "2024-01-01",
+        submittedOn: "2026-08-05",
+        leaveStartOn: "2026-08-10",
+        leaveEndOn: "2026-08-10",
+        requestedWorkingDays: 1,
+      }),
+    ).toThrowError(AnnualLeaveRequestPolicyError);
+  });
+
+  it("blocks usage beyond the current period's remaining quota", () => {
+    expect(() =>
+      validateAnnualLeaveRequest({
+        entitlementGroup: "non_education",
+        employmentStartedOn: "2024-01-01",
+        submittedOn: "2026-08-01",
+        leaveStartOn: "2026-08-10",
+        leaveEndOn: "2026-08-12",
+        requestedWorkingDays: 2,
+        usedDaysByPeriod: { JUL_SEP: 2 },
+      }),
+    ).toThrowError(AnnualLeaveRequestPolicyError);
+  });
+
+  it("requires a split when one request crosses two quota periods", () => {
+    expect(() =>
+      validateAnnualLeaveRequest({
+        entitlementGroup: "non_education",
+        employmentStartedOn: "2024-01-01",
+        submittedOn: "2026-09-20",
+        leaveStartOn: "2026-09-29",
+        leaveEndOn: "2026-10-02",
+        requestedWorkingDays: 3,
+      }),
+    ).toThrowError(AnnualLeaveRequestPolicyError);
   });
 });
 
