@@ -12,10 +12,13 @@ import { AdminEmployeeDetailRoutePage } from "@/pages/AdminEmployeeDetailRoutePa
 import { AdminEmployeeImportHistoryPage } from "@/pages/AdminEmployeeImportHistoryPage";
 import { AdminEmployeeImportPage } from "@/pages/AdminEmployeeImportPage";
 import { AdminEmployeesPage } from "@/pages/AdminEmployeesPage";
+import { AdminLeaveCalendarPage } from "@/pages/AdminLeaveCalendarPage";
 import { AdminLeaveConfigurationPage } from "@/pages/AdminLeaveConfigurationPage";
 import { AdminOrganizationPage } from "@/pages/AdminOrganizationPage";
 import { AdminPage } from "@/pages/AdminPage";
+import { EmployeeApprovalsPage } from "@/pages/EmployeeApprovalsPage";
 import { EmployeeDashboardPage } from "@/pages/EmployeeDashboardPage";
+import { EmployeeLeavePage } from "@/pages/EmployeeLeavePage";
 import { FoundationBoardPage } from "@/pages/FoundationBoardPage";
 import { LoginPage } from "@/pages/LoginPage";
 import type { PrincipalType } from "@/types/hcis";
@@ -51,6 +54,20 @@ const appRoute = createRoute({
   path: "/app",
   beforeLoad: () => requirePrincipal("EMPLOYEE"),
   component: EmployeeDashboardPage,
+});
+
+const employeeLeaveRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/app/leave",
+  beforeLoad: () => requirePrincipal("EMPLOYEE"),
+  component: EmployeeLeavePage,
+});
+
+const employeeApprovalsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/app/approvals",
+  beforeLoad: () => requirePrincipal("EMPLOYEE"),
+  component: EmployeeApprovalsPage,
 });
 
 const adminRoute = createRoute({
@@ -102,6 +119,13 @@ const adminLeaveRoute = createRoute({
   component: AdminLeaveConfigurationPage,
 });
 
+const adminLeaveCalendarRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/leave/calendar",
+  beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
+  component: AdminLeaveCalendarPage,
+});
+
 const adminAccessRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/access",
@@ -119,6 +143,8 @@ const boardRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   loginRoute,
   appRoute,
+  employeeLeaveRoute,
+  employeeApprovalsRoute,
   adminRoute,
   adminEmployeesRoute,
   adminEmployeeDetailRoute,
@@ -126,6 +152,7 @@ const routeTree = rootRoute.addChildren([
   adminEmployeeImportHistoryRoute,
   adminOrganizationRoute,
   adminLeaveRoute,
+  adminLeaveCalendarRoute,
   adminAccessRoute,
   boardRoute,
 ]);

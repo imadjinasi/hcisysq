@@ -30,42 +30,61 @@ interface AppShellProps {
 }
 
 const employeeNavigation = [
-  { label: "Beranda", icon: Home },
-  { label: "Kehadiran", icon: Clock3 },
-  { label: "Cuti & Izin", icon: CalendarDays },
-  { label: "Slip Gaji", icon: WalletCards },
-  { label: "Dokumen", icon: FolderOpen },
-  { label: "Pengembangan", icon: GraduationCap },
+  { label: "Beranda", href: "/app", icon: Home },
+  { label: "Kehadiran", href: "#", icon: Clock3 },
+  { label: "Cuti & Izin", href: "/app/leave", icon: CalendarDays },
+  { label: "Slip Gaji", href: "#", icon: WalletCards },
+  { label: "Dokumen", href: "#", icon: FolderOpen },
+  { label: "Pengembangan", href: "#", icon: GraduationCap },
 ];
 
 const managementNavigation = [
-  { label: "Persetujuan", icon: ClipboardCheck },
-  { label: "Tim Saya", icon: UsersRound },
+  { label: "Persetujuan", href: "/app/approvals", icon: ClipboardCheck },
+  { label: "Tim Saya", href: "#", icon: UsersRound },
 ];
 
 const mobileNavigation = [
-  { label: "Beranda", icon: Home },
-  { label: "Hadir", icon: Clock3 },
-  { label: "Cuti", icon: CalendarDays },
-  { label: "Slip Gaji", icon: WalletCards },
-  { label: "Dokumen", icon: FileText },
+  { label: "Beranda", activeLabel: "Beranda", href: "/app", icon: Home },
+  { label: "Hadir", activeLabel: "Kehadiran", href: "#", icon: Clock3 },
+  { label: "Cuti", activeLabel: "Cuti & Izin", href: "/app/leave", icon: CalendarDays },
+  { label: "Approval", activeLabel: "Persetujuan", href: "/app/approvals", icon: ClipboardCheck },
+  { label: "Dokumen", activeLabel: "Dokumen", href: "#", icon: FileText },
 ];
 
-function NavigationButton({ label, icon: Icon, active = false }: { label: string; icon: typeof Home; active?: boolean }) {
+function NavigationLink({
+  label,
+  href,
+  icon: Icon,
+  active = false,
+}: {
+  label: string;
+  href: string;
+  icon: typeof Home;
+  active?: boolean;
+}) {
   return (
-    <button
-      type="button"
+    <a
+      href={href}
       aria-current={active ? "page" : undefined}
       className={cn(
         "group flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        active ? "bg-brand-primary-pale text-brand-primary-deep shadow-[var(--shadow-soft)]" : "text-muted-foreground hover:bg-white hover:text-foreground",
+        active
+          ? "bg-brand-primary-pale text-brand-primary-deep shadow-[var(--shadow-soft)]"
+          : "text-muted-foreground hover:bg-white hover:text-foreground",
       )}
     >
-      <span className={cn("flex h-9 w-9 items-center justify-center rounded-xl transition-colors", active ? "bg-white text-brand-primary shadow-[var(--shadow-soft)]" : "bg-muted/70 text-muted-foreground group-hover:bg-brand-primary-pale")}>
+      <span
+        className={cn(
+          "flex h-9 w-9 items-center justify-center rounded-xl transition-colors",
+          active
+            ? "bg-white text-brand-primary shadow-[var(--shadow-soft)]"
+            : "bg-muted/70 text-muted-foreground group-hover:bg-brand-primary-pale",
+        )}
+      >
         <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
       </span>
       <span>{label}</span>
-    </button>
+    </a>
   );
 }
 
@@ -88,10 +107,16 @@ export function AppShell({ children, user, activeItem = "Beranda" }: AppShellPro
         <nav className="mt-8 flex-1 space-y-1.5" aria-label="Navigasi utama pegawai">
           <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">Saya</p>
           {employeeNavigation.map((item) => (
-            <NavigationButton key={item.label} label={item.label} icon={item.icon} active={item.label === activeItem} />
+            <NavigationLink
+              key={item.label}
+              label={item.label}
+              href={item.href}
+              icon={item.icon}
+              active={item.label === activeItem}
+            />
           ))}
 
-          {user.additionalRole && (
+          {user.additionalRole ? (
             <div className="pt-6">
               <div className="mb-2 flex items-center justify-between px-3">
                 <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">Manajemen</p>
@@ -99,11 +124,17 @@ export function AppShell({ children, user, activeItem = "Beranda" }: AppShellPro
               </div>
               <div className="space-y-1.5">
                 {managementNavigation.map((item) => (
-                  <NavigationButton key={item.label} label={item.label} icon={item.icon} />
+                  <NavigationLink
+                    key={item.label}
+                    label={item.label}
+                    href={item.href}
+                    icon={item.icon}
+                    active={item.label === activeItem}
+                  />
                 ))}
               </div>
             </div>
-          )}
+          ) : null}
         </nav>
 
         <div className="rounded-3xl border border-border/70 bg-white p-3.5 shadow-[var(--shadow-soft)]">
@@ -135,9 +166,8 @@ export function AppShell({ children, user, activeItem = "Beranda" }: AppShellPro
             <p className="hidden text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground lg:block">Ruang kerja pegawai</p>
 
             <div className="flex items-center gap-2">
-              <button type="button" aria-label="Notifikasi" className="relative flex h-10 w-10 items-center justify-center rounded-2xl border border-border/70 bg-white text-muted-foreground shadow-[var(--shadow-soft)] transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <button type="button" aria-label="Notifikasi" className="relative flex h-10 w-10 items-center justify-center rounded-2xl border border-border/70 bg-white text-muted-foreground shadow-[var(--shadow-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <Bell className="h-[18px] w-[18px]" aria-hidden="true" />
-                <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-brand-orange ring-2 ring-white" aria-hidden="true" />
               </button>
               <div className="hidden items-center gap-2 rounded-2xl border border-border/70 bg-white py-1.5 pl-1.5 pr-3 shadow-[var(--shadow-soft)] sm:flex">
                 <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-primary text-xs font-bold text-white">{user.initials}</div>
@@ -154,14 +184,22 @@ export function AppShell({ children, user, activeItem = "Beranda" }: AppShellPro
       </div>
 
       <nav className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-5 rounded-[1.75rem] border border-border/80 bg-white/96 p-1.5 shadow-[var(--shadow-raised)] backdrop-blur lg:hidden" aria-label="Navigasi mobile pegawai">
-        {mobileNavigation.map((item, index) => {
+        {mobileNavigation.map((item) => {
           const Icon = item.icon;
-          const active = index === 0;
+          const active = item.activeLabel === activeItem;
           return (
-            <button type="button" key={item.label} aria-current={active ? "page" : undefined} className={cn("flex min-h-14 flex-col items-center justify-center gap-1 rounded-2xl px-1 text-[10px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", active ? "bg-brand-primary-pale text-brand-primary-deep" : "text-muted-foreground")}>
+            <a
+              href={item.href}
+              key={item.label}
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "flex min-h-14 flex-col items-center justify-center gap-1 rounded-2xl px-1 text-[10px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                active ? "bg-brand-primary-pale text-brand-primary-deep" : "text-muted-foreground",
+              )}
+            >
               <Icon className="h-[19px] w-[19px]" aria-hidden="true" />
               <span>{item.label}</span>
-            </button>
+            </a>
           );
         })}
       </nav>
