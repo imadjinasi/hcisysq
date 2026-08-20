@@ -10,6 +10,7 @@ import { registerOrgAccessAdminRoutes } from "./modules/employees/admin-org-acce
 import { registerLeaveAdminRoutes } from "./modules/leave/admin-routes.js";
 import { registerLeaveCalendarAdminRoutes } from "./modules/leave/calendar-admin-routes.js";
 import { registerEmployeeLeaveRoutes } from "./modules/leave/employee-routes.js";
+import { registerSpecialLeaveRoutes } from "./modules/leave/special-leave-routes.js";
 import { registerSystemRoutes } from "./modules/system/routes.js";
 
 export async function createApp(config: ApiConfig, injectedPool?: Pool) {
@@ -37,6 +38,7 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerLeaveAdminRoutes(app, pool, config);
   await registerLeaveCalendarAdminRoutes(app, pool, config);
   await registerEmployeeLeaveRoutes(app, pool, config);
+  await registerSpecialLeaveRoutes(app, pool, config);
 
   app.addHook("onClose", async () => {
     if (!injectedPool) await pool.end();
