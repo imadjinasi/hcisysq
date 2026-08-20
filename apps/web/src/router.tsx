@@ -19,7 +19,9 @@ import { AdminPage } from "@/pages/AdminPage";
 import { EmployeeApprovalsPage } from "@/pages/EmployeeApprovalsPage";
 import { EmployeeDashboardPage } from "@/pages/EmployeeDashboardPage";
 import { EmployeeLeavePage } from "@/pages/EmployeeLeavePage";
+import { EmployeeSpecialLeavePage } from "@/pages/EmployeeSpecialLeavePage";
 import { FoundationBoardPage } from "@/pages/FoundationBoardPage";
+import { HcLeaveValidationPage } from "@/pages/HcLeaveValidationPage";
 import { LoginPage } from "@/pages/LoginPage";
 import type { PrincipalType } from "@/types/hcis";
 
@@ -63,11 +65,25 @@ const employeeLeaveRoute = createRoute({
   component: EmployeeLeavePage,
 });
 
+const employeeSpecialLeaveRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/app/leave/special",
+  beforeLoad: () => requirePrincipal("EMPLOYEE"),
+  component: EmployeeSpecialLeavePage,
+});
+
 const employeeApprovalsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/app/approvals",
   beforeLoad: () => requirePrincipal("EMPLOYEE"),
   component: EmployeeApprovalsPage,
+});
+
+const hcLeaveValidationRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/app/hc/leave",
+  beforeLoad: () => requirePrincipal("EMPLOYEE"),
+  component: HcLeaveValidationPage,
 });
 
 const adminRoute = createRoute({
@@ -144,7 +160,9 @@ const routeTree = rootRoute.addChildren([
   loginRoute,
   appRoute,
   employeeLeaveRoute,
+  employeeSpecialLeaveRoute,
   employeeApprovalsRoute,
+  hcLeaveValidationRoute,
   adminRoute,
   adminEmployeesRoute,
   adminEmployeeDetailRoute,
