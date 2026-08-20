@@ -7,7 +7,16 @@ This profile is for development verification and early pilot work. Use synthetic
 
 ## Confirmed VPS topology
 
-The shared VPS already uses Dockerized Caddy as the only public ingress on ports 80/443. Its shared Docker network is `edge_proxy`.
+The shared VPS already uses Dockerized Caddy as the only public ingress on ports 80/443.
+
+Confirmed infrastructure:
+
+- public ingress container: `edge-caddy-1`;
+- shared ingress network: `edge_proxy`;
+- active host Caddyfile: `/var/www/edge/caddy/Caddyfile`;
+- edge compose working directory: `/var/www/edge`;
+- HCIS hostname: `hcis.sabilulquran.or.id`;
+- DNS is managed in Cloudflare and initially uses DNS-only mode.
 
 ```text
 https://hcis.sabilulquran.or.id
@@ -23,18 +32,18 @@ hcis-web :80
   v             v
 Vite SPA       Fastify API :3001
                     |
-                    | private backend network
+                    | private HCIS backend network
                     v
               PostgreSQL :5432
 ```
 
-Only the HCIS web container joins `edge_proxy`. The API and PostgreSQL stay on the private HCIS backend network. The web container reaches the API privately and proxies `/api/*` to it.
+Only the HCIS web container joins `edge_proxy`. The API and PostgreSQL remain private. The web container proxies `/api/*` to the API over the HCIS backend network.
 
-For host-only troubleshooting, the web container also binds to `127.0.0.1:18080`. This is not a public port.
+For host-only smoke tests, the web container also binds to `127.0.0.1:18080`. This is not a public port.
 
 ## 1. DNS
 
-DNS is managed in Cloudflare. Create:
+Cloudflare record:
 
 ```text
 Type: A
@@ -44,48 +53,22 @@ Proxy status: DNS only during initial verification
 TTL: Auto
 ```
 
-Verify it resolves to the VPS before continuing:
+Verify:
 
 ```bash
 nslookup hcis.sabilulquran.or.id
-# or
-dig +short hcis.sabilulquran.or.id
 ```
 
-After the origin and TLS route are verified, Cloudflare proxying can be evaluated separately.
+Do not continue with TLS routing until the hostname resolves to the VPS.
 
-## 2. Confirm the existing ingress
+## 2. Clone the verification branch
 
-Before deploying HCIS, inspect the running workloads rather than replacing the existing reverse proxy:
+Until the backend foundation is merged, deploy the feature branch directly.
 
 ```bash
-docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Ports}}'
-```
-
-The expected ingress container is `edge-caddy-1`, owning host ports 80 and 443.
-
-Confirm its Docker network:
-
-```bash
-docker inspect edge-caddy-1 --format '{{range $name, $config := .NetworkSettings.Networks}}{{println $name}}{{end}}'
-```
-
-Expected network:
-
-```text
-edge_proxy
-```
-
-Do not expose another container on host ports 80 or 443.
-
-## 3. Clone the verification branch
-
-Until the backend foundation is merged, deploy the verification branch directly:
-
-```bash
-sudo mkdir -p /opt/hcis
-sudo chown "$USER":"$USER" /opt/hcis
-cd /opt/hcis
+sudo mkdir -p /var/www/hcis
+sudo chown "$USER":"$USER" /var/www/hcis
+cd /var/www/hcis
 
 git clone https://github.com/imadjinasi/hcisysq.git .
 git fetch origin
@@ -95,28 +78,23 @@ git checkout feat/backend-employee-import-foundation
 For an existing checkout:
 
 ```bash
-cd /opt/hcis
+cd /var/www/hcis
 git fetch origin
 git checkout feat/backend-employee-import-foundation
 git pull --ff-only origin feat/backend-employee-import-foundation
 ```
 
-## 4. Create the VPS environment file
+## 3. Create the VPS environment file
 
 ```bash
-cd /opt/hcis
+cd /var/www/hcis
 cp infra/vps.env.example infra/.env.vps
-```
-
-Generate a database password:
-
-```bash
 openssl rand -hex 32
 ```
 
-Put that value into `POSTGRES_PASSWORD` in `infra/.env.vps`.
+Put the generated value into `POSTGRES_PASSWORD` in `infra/.env.vps`.
 
-Keep these values unless the VPS topology changes:
+Keep these topology values:
 
 ```text
 EDGE_NETWORK=edge_proxy
@@ -126,38 +104,43 @@ HCIS_HTTP_PORT=18080
 
 Do not commit `infra/.env.vps`.
 
-Default resource limits are intentionally conservative for the shared VPS:
+Default memory limits are intentionally conservative for the shared VPS:
 
 - PostgreSQL: 320 MB;
 - API: 192 MB;
 - web/nginx: 96 MB.
 
-Adjust only after observing actual memory pressure.
+## 4. Build sequentially on the small VPS
 
-## 5. Build and start HCIS
+The VPS has limited free memory and already runs multiple SaaS workloads. Build API and web one at a time instead of asking Compose to build everything concurrently.
 
 ```bash
-cd /opt/hcis
+cd /var/www/hcis
 
-docker compose \
-  --env-file infra/.env.vps \
-  -f infra/docker-compose.vps.yml \
-  up -d --build
+COMPOSE="docker compose --env-file infra/.env.vps -f infra/docker-compose.vps.yml"
+
+$COMPOSE build api
+$COMPOSE build web
+$COMPOSE up -d
 ```
 
-The Compose profile expects the external Docker network `edge_proxy` to already exist. The web service joins that network with the unique alias `hcis-web`; Caddy can route to `hcis-web:80` without exposing the API or database.
+The Compose profile expects the external Docker network `edge_proxy` to already exist. The web service joins it with alias `hcis-web`.
 
 The API waits for PostgreSQL, runs pending SQL migrations, then starts Fastify.
 
-Check status and logs:
+Check status:
 
 ```bash
-docker compose --env-file infra/.env.vps -f infra/docker-compose.vps.yml ps
-
-docker compose --env-file infra/.env.vps -f infra/docker-compose.vps.yml logs --tail=200 postgres api web
+$COMPOSE ps
 ```
 
-## 6. Verify locally on the VPS before changing Caddy
+If a service is unhealthy or restarting:
+
+```bash
+$COMPOSE logs --tail=120 postgres api web
+```
+
+## 5. Verify HCIS locally before touching Caddy
 
 ```bash
 curl -i http://127.0.0.1:18080/
@@ -165,7 +148,7 @@ curl -i http://127.0.0.1:18080/api/health
 curl -i http://127.0.0.1:18080/api/ready
 ```
 
-Expected API result for a healthy process/database:
+Expected API result for healthy process/database:
 
 ```json
 {"status":"ok"}
@@ -173,31 +156,53 @@ Expected API result for a healthy process/database:
 
 `/ready` must not report success if PostgreSQL is unreachable.
 
-## 7. Locate the existing Caddy configuration
-
-Do not guess where Caddy configuration lives. Inspect the existing container mounts first:
+Also confirm the web container is actually attached to the existing ingress network:
 
 ```bash
-docker inspect edge-caddy-1 --format '{{range .Mounts}}{{println .Source " -> " .Destination}}{{end}}'
+docker network inspect edge_proxy --format '{{range $id, $c := .Containers}}{{println $c.Name}}{{end}}' | grep hcis
 ```
 
-Identify the host path mounted as the Caddyfile/config directory. Edit the existing ingress configuration only after confirming that path.
+## 6. Add the HCIS route to the existing Caddy
 
-The HCIS site route should ultimately be equivalent to:
+The repository contains the reviewed site block at:
 
-```caddyfile
-hcis.sabilulquran.or.id {
-    reverse_proxy hcis-web:80
-}
+```text
+infra/caddy/hcis.sabilulquran.or.id.caddy
 ```
 
-Because both containers share `edge_proxy`, Caddy resolves the `hcis-web` network alias directly.
+Back up the active Caddyfile first:
 
-Validate the active Caddy configuration using the same method already used by the `edge-caddy` stack before reloading it. Do not replace the existing Caddy container or its configuration for other SaaS applications.
+```bash
+sudo cp /var/www/edge/caddy/Caddyfile \
+  /var/www/edge/caddy/Caddyfile.backup-before-hcis
+```
 
-## 8. External verification
+Append the HCIS block once:
 
-After the Caddy route and TLS are active:
+```bash
+if ! sudo grep -q '^hcis\.sabilulquran\.or\.id' /var/www/edge/caddy/Caddyfile; then
+  cat /var/www/hcis/infra/caddy/hcis.sabilulquran.or.id.caddy | \
+    sudo tee -a /var/www/edge/caddy/Caddyfile >/dev/null
+fi
+```
+
+Validate before reload:
+
+```bash
+docker exec edge-caddy-1 caddy validate --config /etc/caddy/Caddyfile
+```
+
+Only if validation reports `Valid configuration`, reload Caddy gracefully:
+
+```bash
+docker exec edge-caddy-1 caddy reload --config /etc/caddy/Caddyfile
+```
+
+Do not recreate or restart the Caddy container just to add HCIS.
+
+Caddy can route directly to `hcis-web:80` because both containers share `edge_proxy`. Caddy automatic HTTPS can issue the certificate while the Cloudflare record remains DNS-only.
+
+## 7. External verification
 
 ```bash
 curl -I https://hcis.sabilulquran.or.id/
@@ -205,34 +210,36 @@ curl -i https://hcis.sabilulquran.or.id/api/health
 curl -i https://hcis.sabilulquran.or.id/api/ready
 ```
 
-Then open:
+Then open in a browser:
 
 ```text
 https://hcis.sabilulquran.or.id/
 https://hcis.sabilulquran.or.id/app
 ```
 
-The employee import UI is not public yet. The current deployment first verifies the web shell, API process, database migration, and readiness path.
+The employee import HTTP/admin UI is intentionally not exposed yet. This deployment first verifies the web shell, API, PostgreSQL migration, and readiness path.
 
-## 9. Updating the development deployment
+## 8. Updating the deployment
 
 ```bash
-cd /opt/hcis
+cd /var/www/hcis
 git fetch origin
 git pull --ff-only origin feat/backend-employee-import-foundation
 
-docker compose \
-  --env-file infra/.env.vps \
-  -f infra/docker-compose.vps.yml \
-  up -d --build
+COMPOSE="docker compose --env-file infra/.env.vps -f infra/docker-compose.vps.yml"
+$COMPOSE build api
+$COMPOSE build web
+$COMPOSE up -d
 ```
 
-Do not run `git reset --hard`, force-push, or destructive database commands as part of routine deployment.
+Do not use `git reset --hard`, force-push, or destructive database commands as routine deployment steps.
 
-## 10. Stop without deleting data
+## 9. Stop HCIS without deleting data
 
 ```bash
-docker compose --env-file infra/.env.vps -f infra/docker-compose.vps.yml down
+cd /var/www/hcis
+COMPOSE="docker compose --env-file infra/.env.vps -f infra/docker-compose.vps.yml"
+$COMPOSE down
 ```
 
 Do not add `-v` unless the PostgreSQL data volume is intentionally being destroyed.
@@ -244,5 +251,5 @@ Do not add `-v` unless the PostgreSQL data volume is intentionally being destroy
 - PostgreSQL has no published host port.
 - Fastify is not connected to the shared edge network; only `hcis-web` is reachable from Caddy.
 - No spreadsheet containing real employee/payroll data should be copied to the server yet.
-- The employee import HTTP/admin surface is intentionally not exposed before authorization exists.
-- `exceljs` currently carries moderate transitive dependency advisories. Do not use `npm audit fix --force`; resolve the dependency deliberately before exposing employee workbook upload to production users.
+- The employee import HTTP/admin surface remains closed before authorization exists.
+- `exceljs` currently carries moderate transitive dependency advisories. Do not use `npm audit fix --force`; resolve that dependency deliberately before exposing employee workbook upload to production users.
