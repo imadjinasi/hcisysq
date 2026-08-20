@@ -2,174 +2,185 @@
 
 **Status:** ACTIVE IMPLEMENTATION BASELINE  
 **Specification:** ORG-002  
-**Related:** ORG-001, APR-001, AUTH-010, EMP-001
+**Related:** ORG-001, APR-001, AUTH-010, EMP-001, LEAVE-001
 
 ## Purpose
 
-Define a safe boundary between imported employee labels and the organization model that may influence authorization and approval routing.
+Keep organization administration simple while protecting approval routing.
 
-Imported `UNIT`, `JABATAN`, `JABATAN FUNGSIONAL`, and `JABATAN STRUKTURAL` values are useful source labels, but they are **not approval rules** and must never be interpreted as an organization hierarchy by string matching.
+Imported `UNIT`, `JABATAN`, `JABATAN FUNGSIONAL`, and `JABATAN STRUKTURAL` values are starting master data only. They are useful for setup, but they are **not approval rules** and HCIS must never infer hierarchy from title text.
 
-## Core model
+## Current-state organization model
 
-HCIS distinguishes these concepts:
+For the first usable HCIS release, organization data represents the structure that is valid **now**.
 
 ```text
-Job Profile
-  = reusable definition of work / role nature
+Employee
+  -> current Unit
+  -> current Position / Job label
+  -> current Direct Manager
 
-Position
-  = one concrete seat in a unit/location, may be filled or vacant
-
-Employee Assignment
-  = employee (NIP) occupying a Position for an effective period
-
-Reporting Line
-  = explicit Position-to-Position or employee direct-manager relationship
-
-Approval Role Assignment
-  = explicit role + scope used by UNIT_ROLE / ORG_ROLE resolvers
+Unit
+  -> current Unit Approver
 ```
-
-A single Job Profile may be used by multiple Positions. A Position may be vacant. Employee identity is not part of the Job Profile definition.
-
-## Imported data boundary
-
-The employee import currently creates normalized unit and position references so employee master can be used immediately. Those references are treated as **source-derived labels** until reviewed.
 
 Rules:
 
-1. Never derive seniority from words such as `Kepala`, `Direktur`, `Koordinator`, `Wakil`, `Mudir`, or similar text.
-2. Never derive parent unit from similar names or naming prefixes.
-3. Never infer direct manager from unit + position labels alone.
-4. Never convert a functional/centre-of-excellence relationship into line authority without an explicit approved reporting line.
-5. Never treat governance/supervisory bodies as operational reporting lines unless explicitly configured for that purpose.
-6. A source rename must not silently create a new approval hierarchy.
+1. Unit names may be renamed in place when the same unit changes nomenclature.
+2. Units or job labels that are no longer used may be marked inactive or cleaned up once no active employee depends on them.
+3. Historical aliases, effective-dated organization versions, seat registries, and automatic restructuring engines are not prerequisites for Leave.
+4. Job Profile and formal Position registries may be introduced later for HCM/JD/grading needs without changing the approval contract below.
+5. Raw import labels must never automatically create a reporting line.
 
-## Canonical mapping layer
+## Direct Manager
 
-Future organization implementation must preserve source labels through aliases rather than rewriting imported values destructively.
+`employees.direct_manager_employee_id` is the explicit current reporting relationship used by line approval.
 
-Conceptual mapping:
-
-```text
-source unit label
-  -> reviewed unit alias
-      -> canonical organization unit
-
-source position/job label
-  -> reviewed position alias
-      -> canonical Job Profile
-      -> concrete Position
-```
-
-Mapping records require a review state:
+Examples:
 
 ```text
-unreviewed -> proposed -> approved
-                    \-> rejected
+Guru Kelas
+  -> Wakasek Kurikulum
+  -> Kepala SDIT
 ```
 
-Only `approved` canonical mappings may be used as organization context for authorization or approval resolvers.
+A role at a similar level may legitimately report directly to the unit head:
 
-## Position identity
+```text
+Guru / Staf tertentu
+  -> Kepala SDIT
+```
 
-`Job_Profile_ID` and `Position_ID` are intentionally different identifiers.
+HCIS does not hardcode either path from the employee's job title. Human Capital / Super Admin configures the actual direct manager.
 
-- `Job_Profile_ID` identifies a reusable job profile.
-- `Position_ID` identifies a concrete seat in the organization.
-- NIP identifies the employee occupying a seat.
+Direct-manager assignment must reject:
 
-HCIS must not collapse these three identities into one table or key.
-
-## Vacant positions and acting arrangements
-
-A vacant manager Position is valid organization data.
-
-The system must not silently bypass a vacancy and assume the next visible manager. If work is temporarily reported to another person, that must be represented explicitly as an acting/temporary reporting assignment with:
-
-- acting approver/manager;
-- effective start;
-- optional effective end;
-- reason/mandate;
-- administrator;
-- audit trail.
-
-If an approval resolver requires a manager and neither a filled manager Position nor an approved acting fallback exists, submission fails with an actionable configuration error as required by APR-001.
-
-## Reporting line and approval safety
-
-`DIRECT_MANAGER` resolves from explicit current reporting data, not from job title text.
-
-`UNIT_ROLE(role_key)` and `ORG_ROLE(role_key)` resolve from explicit account role assignments and scope, not from position names.
-
-At request submission:
-
-1. read only approved organization/reporting configuration;
-2. resolve concrete approvers;
-3. reject self-approval and inactive approvers;
-4. fail closed if a mandatory resolver is unresolved;
-5. persist the complete approval chain snapshot;
-6. never recompute an existing request when organization mapping later changes.
-
-## Current-state versus target-state structure
-
-HCIS must support organization change without rewriting history.
-
-A proposed target structure is not automatically effective. Reporting-line changes require an effective date and explicit approval/publish action before they become resolver input.
-
-Historical approval snapshots remain unchanged.
-
-## Admin mapping workflow
-
-The organization admin surface should eventually provide:
-
-- source unit labels and employee counts;
-- canonical unit candidates;
-- source job/position labels and counts;
-- canonical Job Profile candidates;
-- explicit parent unit selection;
-- explicit reporting Position selection;
-- vacant-seat visibility;
-- acting assignment management;
-- mapping warnings and unresolved counts;
-- preview of approval-impact changes before publish.
-
-Bulk automatic approval-impacting mappings are prohibited.
-
-## Publish guard
-
-Publishing organization mapping must fail when any approval-critical inconsistency exists, including:
-
-- reporting-line cycle;
 - self-manager;
-- manager seat points to an inactive employee without an approved acting arrangement;
-- duplicate active occupancy of a single-seat Position unless the Position explicitly allows multiple incumbents;
-- an approval-critical employee maps to an unreviewed unit/Position;
-- a required organization role has no active assignee or has ambiguous active assignees where the resolver expects one person.
+- inactive manager;
+- reporting-line cycle.
+
+## Unit Approver
+
+Each active unit used by approval workflows has one explicit **current Unit Approver**.
+
+The Unit Approver is normally the unit head, but it is a configuration value, not a title-derived rule.
+
+This intentionally handles vacancies without a complex acting-position engine.
+
+Examples:
+
+```text
+Kepala Unit filled
+  Unit Approver = Kepala Unit
+
+Kepala Unit vacant, authority temporarily at Kabid
+  Unit Approver = Kabid
+
+Kepala Unit and Kabid vacant, authority temporarily at Director
+  Unit Approver = Director
+```
+
+HCIS must **not** automatically climb to the next visible hierarchy when a position is vacant. An administrator explicitly chooses the responsible employee.
+
+When responsibility changes, the Unit Approver value is updated for future submissions.
+
+## Standard line approval resolver
+
+For ordinary line-approved workflows, including Cuti Tahunan, the resolver is:
+
+```text
+DIRECT_MANAGER
+  -> UNIT_APPROVER
+```
+
+Resolution rules:
+
+1. resolve the requester's active Direct Manager;
+2. resolve the requester's unit's current Unit Approver;
+3. remove self-approval;
+4. deduplicate the same employee appearing in both steps;
+5. reject inactive approvers;
+6. fail submission when a mandatory relationship is not configured;
+7. snapshot the resolved people at submission according to APR-001.
+
+Examples:
+
+```text
+Guru Kelas
+  Direct Manager = Wakasek Kurikulum
+  Unit Approver  = Kepala SDIT
+
+Resolved:
+  Wakasek Kurikulum -> Kepala SDIT
+```
+
+```text
+Guru yang langsung ke Kepala SDIT
+  Direct Manager = Kepala SDIT
+  Unit Approver  = Kepala SDIT
+
+Resolved:
+  Kepala SDIT
+```
+
+```text
+Kepala SDIT mengajukan
+  Direct Manager = Kepala Bidang Pendidikan
+  Unit Approver  = dirinya sendiri
+
+Resolved:
+  Kepala Bidang Pendidikan
+```
+
+## Vacancy rule
+
+Vacancy is solved by explicit current configuration, not automatic hierarchy search.
+
+If a unit head is vacant, the Unit Approver must be intentionally pointed to the employee currently authorized to approve. This can be a Kabid, Director, or another authorized employee.
+
+If no Unit Approver is configured, approval-dependent submission fails with an actionable configuration error. The system must not guess.
+
+## Approval history
+
+Organization administration is current-state and intentionally simple, but submitted approvals still preserve history through approval snapshots.
+
+Changing Direct Manager or Unit Approver affects **new** submissions only. Existing submitted requests retain the approvers resolved when they were submitted.
+
+This is the historical boundary required by APR-001; organization master itself does not need complex versioning for the initial release.
+
+## Admin surface
+
+The admin experience should prioritize setup speed and visibility:
+
+- list current units and active employee counts;
+- rename/clean up current unit and job labels;
+- assign Direct Manager on active employees;
+- assign one Unit Approver per active unit;
+- show missing Direct Manager count;
+- show missing Unit Approver count;
+- preview the resolved approval chain for an employee;
+- warn on self-manager, cycles, inactive approvers, and incomplete configuration.
+
+No bulk title-based manager inference is allowed.
 
 ## Audit
 
 Audit at minimum:
 
-- source alias mapped/unmapped;
-- canonical unit created/renamed/reparented;
-- Job Profile mapping changed;
-- Position created/changed/vacated/filled;
-- reporting line changed;
-- acting assignment started/ended;
-- organization mapping published;
-- publish rejected because validation failed.
+- Direct Manager changed;
+- Unit Approver changed;
+- employee unit changed;
+- current unit renamed/deactivated when those operations are introduced.
 
 Audit payloads use identifiers and normalized metadata only; do not copy raw employee workbook rows.
 
 ## Acceptance criteria
 
-- ORG-002-A: raw import labels cannot directly create approval hierarchy.
-- ORG-002-B: Job Profile, Position, employee assignment, and reporting line remain separate concepts.
-- ORG-002-C: all approval-impacting mappings require explicit reviewed/approved state.
-- ORG-002-D: vacant manager seats do not silently fall through to another approver.
-- ORG-002-E: acting reporting relationships are explicit, effective-dated, and audited.
-- ORG-002-F: organization changes do not rewrite historical approval snapshots.
-- ORG-002-G: publish validation blocks cycles, ambiguity, inactive approvers, and unresolved approval-critical mappings.
-- ORG-002-H: approval resolvers use explicit approved relationships/roles, never title-text heuristics.
+- ORG-002-A: imported unit/job text never automatically creates approval hierarchy.
+- ORG-002-B: each active employee can have an explicit current Direct Manager.
+- ORG-002-C: each approval-relevant unit can have one explicit current Unit Approver.
+- ORG-002-D: `DIRECT_MANAGER -> UNIT_APPROVER` removes self-approval and duplicates.
+- ORG-002-E: vacancy never causes automatic hierarchy fallback; the responsible Unit Approver is configured explicitly.
+- ORG-002-F: missing mandatory approval configuration blocks submission instead of guessing.
+- ORG-002-G: changes affect future submissions only; submitted approval snapshots remain unchanged.
+- ORG-002-H: the initial Leave release does not depend on organization versioning, alias history, or a formal Position registry.
