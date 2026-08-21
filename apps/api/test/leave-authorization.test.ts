@@ -101,6 +101,18 @@ function createDecisionPool(input: {
         rowCount: input.steps?.length ?? 2,
       };
     }
+    if (sql.includes("UPDATE leave_request_approval_steps") && sql.includes("SET status = $2")) {
+      return { rows: [], rowCount: 1 };
+    }
+    if (sql.includes("UPDATE leave_request_approval_steps") && sql.includes("SET status = 'pending'")) {
+      return { rows: [{ approverEmployeeId: U }], rowCount: 1 };
+    }
+    if (sql.includes("UPDATE leave_requests") || sql.includes("INSERT INTO leave_request_events")) {
+      return { rows: [], rowCount: 1 };
+    }
+    if (sql.includes("INSERT INTO leave_notification_outbox")) {
+      return { rows: [], rowCount: 1 };
+    }
     throw new Error(`Unexpected SQL in leave authorization test: ${sql}`);
   });
 
@@ -126,6 +138,42 @@ async function decide(pool: Pool, stepId: string) {
 }
 
 describe("leave approval multi-account authorization", () => {
+  it("allows M to approve only M's active Direct Manager step", async () => {
+    const { pool } = createDecisionPool({
+      actorEmployeeId: M,
+      requestedStepId: DM_STEP,
+      stepApproverEmployeeId: M,
+      stepStatus: "pending",
+    });
+    const response = await decide(pool, DM_STEP);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      requestStatus: "in_review",
+      stepStatus: "approved",
+      nextPendingStepId: UNIT_STEP,
+    });
+  });
+
+  it("allows U to approve U's step only after the Direct Manager step is approved", async () => {
+    const { pool } = createDecisionPool({
+      actorEmployeeId: U,
+      requestedStepId: UNIT_STEP,
+      stepApproverEmployeeId: U,
+      stepStatus: "pending",
+      steps: [
+        { id: DM_STEP, order: 1, status: "approved" },
+        { id: UNIT_STEP, order: 2, status: "pending" },
+      ],
+    });
+    const response = await decide(pool, UNIT_STEP);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      requestStatus: "approved",
+      stepStatus: "approved",
+      nextPendingStepId: null,
+    });
+  });
+
   it("rejects unrelated employee X even when X knows the active step id", async () => {
     const { pool } = createDecisionPool({
       actorEmployeeId: X,
