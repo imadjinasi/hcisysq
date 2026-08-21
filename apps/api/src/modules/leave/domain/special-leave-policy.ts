@@ -183,6 +183,13 @@ export function validateSpecialLeaveRequest(
         "Pengajuan dapat dicatat sekarang karena kondisi darurat, tetapi dokumen pendukung harus dilengkapi sebelum validasi HC selesai.",
     });
   }
+  if (input.policyKey === "sick" && input.workingDays > 14) {
+    warnings.push({
+      code: "LONG_SICK_ADMIN_FOLLOW_UP",
+      message:
+        "Durasi sakit di atas 14 hari bukan batas hak, tetapi Human Capital dapat meminta kontrol administrasi dari rumah sakit atau dokter spesialis sesuai dokumen medis.",
+    });
+  }
 
   return {
     policyKey: input.policyKey,
