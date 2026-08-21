@@ -13,10 +13,13 @@ export interface AttendanceRecord {
   checkInAt: string | null;
   checkOutAt: string | null;
   source: "manual" | "integration";
-  sourceReference: string | null;
-  note: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AdminAttendanceRecord extends AttendanceRecord {
+  sourceReference: string | null;
+  note: string | null;
 }
 
 export interface AttendanceListResponse {
@@ -27,6 +30,11 @@ export interface AttendanceListResponse {
   };
   employee: AttendanceEmployee;
   items: AttendanceRecord[];
+}
+
+export interface AdminAttendanceListResponse
+  extends Omit<AttendanceListResponse, "items" | "referenceDate"> {
+  items: AdminAttendanceRecord[];
 }
 
 export class AttendanceApiError extends Error {
@@ -76,7 +84,7 @@ export async function getMyAttendance(
 export async function getAdminEmployeeAttendance(
   employeeId: string,
   input: { from?: string; to?: string } = {},
-): Promise<AttendanceListResponse> {
+): Promise<AdminAttendanceListResponse> {
   return readJson(
     await fetch(`/api/admin/attendance/employees/${employeeId}${rangeParams(input)}`, {
       credentials: "include",
@@ -93,7 +101,7 @@ export async function saveAdminAttendanceRecord(
     checkOutAt: string | null;
     note: string | null;
   },
-): Promise<{ item: AttendanceRecord }> {
+): Promise<{ item: AdminAttendanceRecord }> {
   return readJson(
     await fetch(`/api/admin/attendance/employees/${employeeId}/${attendanceDate}`, {
       method: "PUT",
