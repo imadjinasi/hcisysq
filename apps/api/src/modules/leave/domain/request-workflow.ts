@@ -18,7 +18,8 @@ export class LeaveWorkflowError extends Error {
     readonly code:
       | "REQUEST_NOT_REVIEWABLE"
       | "STEP_NOT_PENDING"
-      | "STEP_ORDER_INVALID",
+      | "STEP_ORDER_INVALID"
+      | "APPROVAL_STATE_INVALID",
     message: string,
   ) {
     super(message);
@@ -41,6 +42,32 @@ function sortedSteps(steps: readonly LeaveApprovalStepState[]) {
   return sorted;
 }
 
+function assertSequentialSnapshotState(steps: readonly LeaveApprovalStepState[]) {
+  const pendingSteps = steps.filter((step) => step.status === "pending");
+  if (pendingSteps.length !== 1) {
+    throw new LeaveWorkflowError(
+      "APPROVAL_STATE_INVALID",
+      "Snapshot approval harus memiliki tepat satu tahap aktif selama pengajuan masih diproses.",
+    );
+  }
+
+  const pending = pendingSteps[0]!;
+  for (const step of steps) {
+    if (step.order < pending.order && step.status !== "approved") {
+      throw new LeaveWorkflowError(
+        "APPROVAL_STATE_INVALID",
+        "Tahap sebelum approver aktif harus sudah disetujui.",
+      );
+    }
+    if (step.order > pending.order && step.status !== "waiting") {
+      throw new LeaveWorkflowError(
+        "APPROVAL_STATE_INVALID",
+        "Tahap setelah approver aktif harus tetap menunggu.",
+      );
+    }
+  }
+}
+
 export function decideLeaveApprovalStep(input: {
   requestStatus: LeaveRequestStatus;
   stepId: string;
@@ -55,6 +82,8 @@ export function decideLeaveApprovalStep(input: {
   }
 
   const steps = sortedSteps(input.steps);
+  assertSequentialSnapshotState(steps);
+
   const current = steps.find((step) => step.id === input.stepId);
   if (!current || current.status !== "pending") {
     throw new LeaveWorkflowError(
