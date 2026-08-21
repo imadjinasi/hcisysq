@@ -16,6 +16,7 @@ interface AccountForIssueRow {
   principalType: "EMPLOYEE" | "FOUNDATION_BOARD" | "SUPER_ADMIN";
   status: "invited" | "active" | "suspended" | "inactive";
   employeeStatus: "active" | "inactive" | "resigned" | null;
+  passwordHash: string | null;
 }
 
 interface ActivationRow {
@@ -147,7 +148,8 @@ export class AccountActivationService {
           account.id,
           account.principal_type AS "principalType",
           account.status,
-          employee.status AS "employeeStatus"
+          employee.status AS "employeeStatus",
+          account.password_hash AS "passwordHash"
          FROM accounts account
          LEFT JOIN employees employee ON employee.id = account.employee_id
          WHERE account.id = $1
@@ -170,6 +172,13 @@ export class AccountActivationService {
           409,
           "ACCOUNT_NOT_INVITED",
           "Link aktivasi hanya dapat diterbitkan untuk account yang masih berstatus invited.",
+        );
+      }
+      if (account.passwordHash) {
+        throw new AccountActivationError(
+          409,
+          "ACCOUNT_ALREADY_ACTIVATED",
+          "Account sudah pernah diaktifkan. Gunakan alur pemulihan kata sandi untuk mengganti kredensial.",
         );
       }
       if (account.principalType === "EMPLOYEE" && account.employeeStatus !== "active") {
