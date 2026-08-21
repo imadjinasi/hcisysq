@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   Upload,
   UsersRound,
+  WalletCards,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
@@ -29,6 +30,7 @@ export type AdminNavKey =
   | "attendance"
   | "leave"
   | "leave-calendar"
+  | "payslips"
   | "access";
 
 const navItems: Array<{
@@ -45,6 +47,7 @@ const navItems: Array<{
   { key: "attendance", label: "Kehadiran", href: "/admin/attendance", icon: Clock3 },
   { key: "leave", label: "Konfigurasi Cuti", href: "/admin/leave", icon: CalendarDays },
   { key: "leave-calendar", label: "Kalender Kerja", href: "/admin/leave/calendar", icon: CalendarRange },
+  { key: "payslips", label: "Payslip", href: "/admin/payslips", icon: WalletCards },
   { key: "access", label: "Account & Akses", href: "/admin/access", icon: KeyRound },
 ];
 
