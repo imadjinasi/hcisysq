@@ -133,12 +133,20 @@ export function AppShell({ children, user, activeItem = "Beranda" }: AppShellPro
                   />
                 ))}
                 {user.additionalRole === "Human Capital" ? (
-                  <NavigationLink
-                    label="Validasi Cuti"
-                    href="/app/hc/leave"
-                    icon={ShieldCheck}
-                    active={activeItem === "Validasi Cuti"}
-                  />
+                  <>
+                    <NavigationLink
+                      label="Validasi Cuti"
+                      href="/app/hc/leave"
+                      icon={ShieldCheck}
+                      active={activeItem === "Validasi Cuti"}
+                    />
+                    <NavigationLink
+                      label="Penyelesaian Kehadiran"
+                      href="/app/hc/attendance-resolution"
+                      icon={Clock3}
+                      active={activeItem === "Penyelesaian Kehadiran"}
+                    />
+                  </>
                 ) : null}
               </div>
             </div>
