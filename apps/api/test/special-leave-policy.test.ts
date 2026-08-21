@@ -21,6 +21,21 @@ describe("YSQ special leave policy", () => {
     expect(result.warnings.map((item) => item.code)).toContain("EVIDENCE_DEFERRED");
   });
 
+  it("flags sick leave above 14 days for administrative follow-up without capping the right", () => {
+    const result = validateSpecialLeaveRequest({
+      policyKey: "sick",
+      submittedOn: "2026-08-01",
+      startOn: "2026-08-01",
+      endOn: "2026-08-31",
+      workingDays: 21,
+      hasEvidence: true,
+    });
+    expect(result.workingDays).toBe(21);
+    expect(result.warnings.map((item) => item.code)).toContain(
+      "LONG_SICK_ADMIN_FOLLOW_UP",
+    );
+  });
+
   it("allows the three-month maternity base period", () => {
     expect(() =>
       validateSpecialLeaveRequest({
