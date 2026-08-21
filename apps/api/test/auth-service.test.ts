@@ -89,6 +89,45 @@ describe("AuthService", () => {
     );
   });
 
+  it.each(["EMPLOYEE", "FOUNDATION_BOARD"] as const)(
+    "allows an activated %s account to sign in with password without MFA",
+    async (principalType) => {
+      const password = "activated-account-password";
+      const account = {
+        id:
+          principalType === "EMPLOYEE"
+            ? "00000000-0000-4000-8000-000000000010"
+            : "00000000-0000-4000-8000-000000000011",
+        email:
+          principalType === "EMPLOYEE"
+            ? "employee@example.org"
+            : "board@example.org",
+        principalType,
+        status: "active" as const,
+        passwordHash: await hashPassword(password),
+        mfaSecretCiphertext: null,
+        mfaSecretIv: null,
+        mfaSecretTag: null,
+        mfaEnabledAt: null,
+      };
+      const query = vi.fn(async (sql: string) => {
+        if (sql.includes("FROM accounts")) return { rows: [account], rowCount: 1 };
+        return { rows: [], rowCount: 1 };
+      });
+      const service = new AuthService({ query } as unknown as Pool, encryptionKey, 8, true);
+
+      const result = await service.login(
+        { email: account.email, password },
+        { ipAddress: "127.0.0.1", userAgent: "vitest" },
+      );
+
+      expect(result.session.principal.principalType).toBe(principalType);
+      expect(query.mock.calls.some(([sql]) => String(sql).includes("INSERT INTO auth_sessions"))).toBe(
+        true,
+      );
+    },
+  );
+
   it("returns no session when the database rejects the token/account state", async () => {
     const query = vi.fn(async () => ({ rows: [], rowCount: 0 }));
     const service = new AuthService({ query } as unknown as Pool, encryptionKey, 8, true);
@@ -102,6 +141,6 @@ describe("readCookie", () => {
     expect(readCookie("other=1; hcis_session=abc123; theme=dark", "hcis_session")).toBe(
       "abc123",
     );
-    expect(readCookie("other=1", "hcis_session")).toBeNull();
+    expect(readCookie("other=1", "hcis_session=abc123" as never)).toBeNull();
   });
 });
