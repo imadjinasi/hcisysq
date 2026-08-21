@@ -2,11 +2,13 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
+  notFound,
   Outlet,
   redirect,
 } from "@tanstack/react-router";
 
 import { getCurrentSession, landingPath } from "@/lib/auth";
+import { AccountActivationRoutePage } from "@/pages/AccountActivationRoutePage";
 import { AdminAccessPage } from "@/pages/AdminAccessPage";
 import { AdminEmployeeDetailRoutePage } from "@/pages/AdminEmployeeDetailRoutePage";
 import { AdminEmployeeImportHistoryPage } from "@/pages/AdminEmployeeImportHistoryPage";
@@ -25,11 +27,12 @@ import { FoundationBoardPage } from "@/pages/FoundationBoardPage";
 import { HcAttendanceResolutionPage } from "@/pages/HcAttendanceResolutionPage";
 import { HcLeaveValidationPage } from "@/pages/HcLeaveValidationPage";
 import { LoginPage } from "@/pages/LoginPage";
+import { NotFoundPage } from "@/pages/NotFoundPage";
 import type { PrincipalType } from "@/types/hcis";
 
 const rootRoute = createRootRoute({
   component: () => <Outlet />,
-  notFoundComponent: () => <LoginPage />,
+  notFoundComponent: NotFoundPage,
 });
 
 async function requirePrincipal(expected: PrincipalType) {
@@ -37,7 +40,7 @@ async function requirePrincipal(expected: PrincipalType) {
   if (!session) throw redirect({ to: "/" });
 
   if (session.principal.principalType !== expected) {
-    throw redirect({ to: landingPath(session.principal.principalType) });
+    throw notFound();
   }
 
   return session;
@@ -51,6 +54,12 @@ const loginRoute = createRoute({
     if (session) throw redirect({ to: landingPath(session.principal.principalType) });
   },
   component: LoginPage,
+});
+
+const activationRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/activate/$token",
+  component: AccountActivationRoutePage,
 });
 
 const appRoute = createRoute({
@@ -174,6 +183,7 @@ const boardRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   loginRoute,
+  activationRoute,
   appRoute,
   employeeLeaveRoute,
   employeeSpecialLeaveRoute,
