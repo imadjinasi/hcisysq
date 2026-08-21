@@ -52,25 +52,41 @@ function formatTime(value: string | null) {
 export function EmployeeAttendancePage() {
   const [attendance, setAttendance] = useState<AttendanceListResponse | null>(null);
   const [summary, setSummary] = useState<EmployeeLeaveSummary | null>(null);
+  const [loadingAttendance, setLoadingAttendance] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
-    void Promise.all([getMyAttendance(), getEmployeeLeaveSummary()])
-      .then(([attendanceResult, leaveSummary]) => {
+
+    void getMyAttendance()
+      .then((attendanceResult) => {
         if (!mounted) return;
         setAttendance(attendanceResult);
-        setSummary(leaveSummary);
         setError(null);
       })
       .catch((cause: unknown) => {
         if (!mounted) return;
+        setAttendance(null);
         setError(
           cause instanceof AttendanceApiError || cause instanceof Error
             ? cause.message
             : "Data kehadiran tidak dapat dimuat.",
         );
+      })
+      .finally(() => {
+        if (mounted) setLoadingAttendance(false);
       });
+
+    // Leave summary is supporting shell context only. A failure here must not
+    // turn an otherwise successful attendance read into a false attendance error.
+    void getEmployeeLeaveSummary()
+      .then((leaveSummary) => {
+        if (mounted) setSummary(leaveSummary);
+      })
+      .catch(() => {
+        if (mounted) setSummary(null);
+      });
+
     return () => {
       mounted = false;
     };
@@ -107,9 +123,13 @@ export function EmployeeAttendancePage() {
         </div>
       ) : null}
 
-      {!attendance ? (
+      {loadingAttendance ? (
         <div className="mt-6 flex items-center gap-2 rounded-3xl border border-border/70 bg-white p-6 text-sm text-muted-foreground shadow-[var(--shadow-soft)]">
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Memuat rekaman kehadiran...
+        </div>
+      ) : !attendance ? (
+        <div className="mt-6 rounded-3xl border border-border/70 bg-white p-6 text-sm text-muted-foreground shadow-[var(--shadow-soft)]">
+          Rekaman kehadiran belum dapat ditampilkan. Muat ulang halaman setelah koneksi tersedia kembali.
         </div>
       ) : (
         <>
