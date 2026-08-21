@@ -13,10 +13,11 @@ Milestone ini sengaja hanya mencatat fakta kehadiran harian. Sistem belum menyim
 3. Rekaman dapat memiliki jam masuk saja, jam keluar saja, atau keduanya.
 4. Jika kedua waktu tersedia, jam keluar tidak boleh lebih awal dari jam masuk.
 5. `attendance_date` adalah tanggal kerja yang menjadi bucket rekaman. Timestamp dapat melewati tengah malam agar model tidak mengunci sistem pada pola kerja siang saja.
-6. Semua timestamp disimpan sebagai `timestamptz`; antarmuka menampilkan waktu dengan zona `Asia/Jakarta`.
+6. Semua timestamp disimpan sebagai `timestamptz`; antarmuka menampilkan dan memasukkan waktu operasional dengan zona `Asia/Jakarta`.
 7. Tidak adanya rekaman tidak otomatis berarti pegawai tidak hadir. Kesimpulan absensi memerlukan jadwal kerja dan proses resolusi kehadiran.
 8. Koreksi manual selalu diaudit dengan before/after snapshot. Audit tidak menyimpan kredensial atau data rahasia.
-9. Milestone ini tidak menghapus atau menggantikan `attendance_resolution_cases`. Modul resolusi tetap merupakan alur downstream untuk ketidakhadiran yang benar-benar telah ditetapkan perlu penyelesaian.
+9. Catatan koreksi manual adalah catatan administrasi internal. Catatan dan `source_reference` tidak dikirim pada endpoint employee self-service.
+10. Milestone ini tidak menghapus atau menggantikan `attendance_resolution_cases`. Modul resolusi tetap merupakan alur downstream untuk ketidakhadiran yang benar-benar telah ditetapkan perlu penyelesaian.
 
 ## Sumber rekaman
 
@@ -74,7 +75,7 @@ Query:
 
 Rentang maksimum 62 hari. Default adalah 30 hari terakhir sampai hari ini.
 
-Response tidak menyertakan rekaman pegawai lain.
+Response tidak menyertakan rekaman pegawai lain. `note` administrasi dan `source_reference` tidak diekspos kepada employee.
 
 ### Super Admin
 
@@ -107,9 +108,10 @@ Body PUT:
 Ketentuan:
 
 - timestamp harus ISO-8601 dengan offset/zona yang dapat diparse;
+- input waktu pada UI Super Admin selalu ditafsirkan sebagai `Asia/Jakarta`, bukan zona lokal perangkat Admin;
 - salah satu timestamp wajib ada;
 - jika dua timestamp ada, `checkOutAt >= checkInAt`;
-- catatan maksimum 1000 karakter;
+- catatan maksimum 1000 karakter dan diperlakukan sebagai catatan internal;
 - employee harus ditemukan;
 - perubahan manual tidak pernah mengubah status employee, leave request, atau payroll.
 
@@ -125,7 +127,7 @@ Halaman menampilkan:
 - pesan eksplisit bila belum ada rekaman;
 - penjelasan bahwa belum ada kesimpulan telat/absen karena jadwal kerja belum dihubungkan.
 
-Tidak ada tombol check-in mandiri pada milestone ini.
+Tidak ada tombol check-in mandiri pada milestone ini. Catatan internal Admin tidak ditampilkan.
 
 ## UX Super Admin
 
@@ -136,12 +138,12 @@ Super Admin dapat:
 1. memilih pegawai aktif;
 2. memilih tanggal kerja;
 3. mengisi jam masuk/jam keluar;
-4. menambahkan catatan opsional;
+4. menambahkan catatan internal opsional;
 5. menyimpan koreksi manual;
 6. melihat rekaman terbaru pegawai tersebut;
 7. menghapus rekaman yang salah dengan konfirmasi browser.
 
-Input waktu menggunakan waktu lokal browser, lalu dikirim sebagai timestamp ber-offset.
+Input waktu menggunakan label waktu Jakarta dan dikonversi secara eksplisit sebagai `+07:00` sebelum dikirim ke backend, sehingga tidak bergantung pada timezone browser Admin.
 
 ## Batas eksplisit ATT-001
 
@@ -162,10 +164,11 @@ Semua hal di atas membutuhkan policy/kontrak tersendiri agar HCIS tidak membuat 
 ## Acceptance criteria
 
 1. Migration dapat dijalankan ulang tanpa merusak schema yang sudah ada.
-2. Employee hanya dapat membaca kehadirannya sendiri.
+2. Employee hanya dapat membaca kehadirannya sendiri dan tidak menerima catatan internal Admin/source reference.
 3. Super Admin dapat create/update/delete rekaman harian dan setiap perubahan mempunyai audit immutable.
 4. Invalid date range, invalid timestamp, atau checkout sebelum check-in ditolak backend.
 5. Employee page tidak menyimpulkan telat/absen dari tidak adanya data.
 6. UI tetap jujur saat data kosong.
-7. Tidak ada data sintetis yang otomatis ditulis saat deploy.
-8. Tidak ada perubahan pada data employee/leave existing saat migration.
+7. Input waktu manual konsisten sebagai Asia/Jakarta walau browser Admin berada di timezone lain.
+8. Tidak ada data sintetis yang otomatis ditulis saat deploy.
+9. Tidak ada perubahan pada data employee/leave existing saat migration.
