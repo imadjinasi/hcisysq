@@ -18,6 +18,7 @@ Milestone ini sengaja hanya mencatat fakta kehadiran harian. Sistem belum menyim
 8. Koreksi manual selalu diaudit dengan before/after snapshot. Audit tidak menyimpan kredensial atau data rahasia.
 9. Catatan koreksi manual adalah catatan administrasi internal. Catatan dan `source_reference` tidak dikirim pada endpoint employee self-service.
 10. Milestone ini tidak menghapus atau menggantikan `attendance_resolution_cases`. Modul resolusi tetap merupakan alur downstream untuk ketidakhadiran yang benar-benar telah ditetapkan perlu penyelesaian.
+11. Provenance sumber tidak boleh hilang karena koreksi manual. Rekaman `integration` tidak dapat diubah menjadi `manual` atau dihapus melalui endpoint koreksi manual ATT-001.
 
 ## Sumber rekaman
 
@@ -26,7 +27,9 @@ Milestone ini sengaja hanya mencatat fakta kehadiran harian. Sistem belum menyim
 - `manual` — dimasukkan atau dikoreksi oleh Super Admin melalui HCIS.
 - `integration` — disediakan sebagai kontrak schema untuk integrasi sumber otomatis berikutnya.
 
-Endpoint tulis pada ATT-001 hanya membuat sumber `manual`. Belum ada public/service ingestion endpoint untuk `integration`.
+`source` wajib diisi eksplisit oleh setiap writer dan tidak memiliki default database. Endpoint tulis pada ATT-001 selalu menulis sumber `manual`. Belum ada public/service ingestion endpoint untuk `integration`.
+
+Jika pada milestone berikutnya integrasi otomatis sudah aktif, koreksi terhadap rekaman `integration` harus mengikuti kontrak integrasi/audit tersendiri. Endpoint PUT/DELETE manual ATT-001 menolak mutation atas rekaman `integration` agar sumber asli tidak tertimpa diam-diam.
 
 ## Model data
 
@@ -60,6 +63,8 @@ Riwayat immutable untuk setiap operasi manual:
 
 Audit menyimpan employee id, tanggal kerja, actor account id, snapshot `before_record`, snapshot `after_record`, dan waktu kejadian.
 
+Mutation manual untuk pasangan `(employee_id, attendance_date)` diserialisasi selama transaksi agar create/update audit tidak salah klasifikasi saat dua request datang bersamaan.
+
 ## Akses
 
 ### Employee
@@ -75,14 +80,14 @@ Query:
 
 Rentang maksimum 62 hari. Default adalah 30 hari terakhir sampai hari ini.
 
-Response tidak menyertakan rekaman pegawai lain. `note` administrasi dan `source_reference` tidak diekspos kepada employee.
+Response tidak menyertakan rekaman pegawai lain. `note` administrasi dan `source_reference` tidak menjadi field response employee, bukan sekadar dikosongkan.
 
 ### Super Admin
 
 Super Admin dapat:
 
 - membaca rekaman per pegawai;
-- membuat atau mengoreksi satu rekaman tanggal kerja;
+- membuat atau mengoreksi satu rekaman manual tanggal kerja;
 - menghapus rekaman manual jika memang salah input.
 
 Endpoint:
@@ -91,7 +96,7 @@ Endpoint:
 - `PUT /admin/attendance/employees/:employeeId/:attendanceDate`
 - `DELETE /admin/attendance/employees/:employeeId/:attendanceDate`
 
-Penghapusan hanya menghapus rekaman kanonik. Audit historis tetap dipertahankan.
+Penghapusan hanya menghapus rekaman manual kanonik. Audit historis tetap dipertahankan. Rekaman `integration` bersifat read-only pada surface admin ATT-001.
 
 ## Validasi tulis
 
@@ -113,7 +118,8 @@ Ketentuan:
 - jika dua timestamp ada, `checkOutAt >= checkInAt`;
 - catatan maksimum 1000 karakter dan diperlakukan sebagai catatan internal;
 - employee harus ditemukan;
-- perubahan manual tidak pernah mengubah status employee, leave request, atau payroll.
+- perubahan manual tidak pernah mengubah status employee, leave request, atau payroll;
+- mutation manual terhadap rekaman `integration` ditolak.
 
 ## UX Employee
 
@@ -141,9 +147,11 @@ Super Admin dapat:
 4. menambahkan catatan internal opsional;
 5. menyimpan koreksi manual;
 6. melihat rekaman terbaru pegawai tersebut;
-7. menghapus rekaman yang salah dengan konfirmasi browser.
+7. menghapus rekaman manual yang salah dengan konfirmasi browser.
 
 Input waktu menggunakan label waktu Jakarta dan dikonversi secara eksplisit sebagai `+07:00` sebelum dikirim ke backend, sehingga tidak bergantung pada timezone browser Admin.
+
+Saat pegawai pilihan berubah, form tidak boleh mempertahankan jam/catatan dari pegawai sebelumnya. Response request lama juga tidak boleh menimpa state pegawai yang baru dipilih. Rekaman integrasi ditampilkan read-only tanpa aksi koreksi/hapus manual.
 
 ## Batas eksplisit ATT-001
 
@@ -164,11 +172,13 @@ Semua hal di atas membutuhkan policy/kontrak tersendiri agar HCIS tidak membuat 
 ## Acceptance criteria
 
 1. Migration dapat dijalankan ulang tanpa merusak schema yang sudah ada.
-2. Employee hanya dapat membaca kehadirannya sendiri dan tidak menerima catatan internal Admin/source reference.
-3. Super Admin dapat create/update/delete rekaman harian dan setiap perubahan mempunyai audit immutable.
+2. Employee hanya dapat membaca kehadirannya sendiri dan response tidak memiliki field catatan internal Admin/source reference.
+3. Super Admin dapat create/update/delete rekaman manual harian dan setiap perubahan mempunyai audit immutable.
 4. Invalid date range, invalid timestamp, atau checkout sebelum check-in ditolak backend.
 5. Employee page tidak menyimpulkan telat/absen dari tidak adanya data.
 6. UI tetap jujur saat data kosong.
 7. Input waktu manual konsisten sebagai Asia/Jakarta walau browser Admin berada di timezone lain.
 8. Tidak ada data sintetis yang otomatis ditulis saat deploy.
 9. Tidak ada perubahan pada data employee/leave existing saat migration.
+10. `source` selalu eksplisit; mutation manual tidak dapat menimpa atau menghapus provenance rekaman integrasi.
+11. Pergantian pegawai pada UI admin tidak dapat membawa state atau response kehadiran pegawai sebelumnya ke target baru.
