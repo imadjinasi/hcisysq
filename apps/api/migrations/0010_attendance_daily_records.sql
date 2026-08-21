@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS attendance_daily_records (
   attendance_date date NOT NULL,
   check_in_at timestamptz NULL,
   check_out_at timestamptz NULL,
-  source text NOT NULL DEFAULT 'manual'
+  source text NOT NULL
     CHECK (source IN ('manual', 'integration')),
   source_reference text NULL,
   note text NULL CHECK (note IS NULL OR length(note) <= 1000),
@@ -35,9 +35,3 @@ CREATE TABLE IF NOT EXISTS attendance_daily_audit_events (
 
 CREATE INDEX IF NOT EXISTS attendance_daily_audit_events_employee_idx
   ON attendance_daily_audit_events (employee_id, attendance_date DESC, created_at DESC);
-
-INSERT INTO permissions (permission_key, description) VALUES
-  ('attendance.self.read', 'Membaca rekaman kehadiran harian milik sendiri'),
-  ('attendance.admin.read', 'Membaca rekaman kehadiran harian pegawai untuk administrasi'),
-  ('attendance.admin.manage', 'Membuat, mengoreksi, atau menghapus rekaman kehadiran harian')
-ON CONFLICT (permission_key) DO UPDATE SET description = EXCLUDED.description;
