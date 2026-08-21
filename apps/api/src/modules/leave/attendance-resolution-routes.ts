@@ -552,7 +552,7 @@ export async function registerAttendanceResolutionRoutes(
       const classification = classifyAdministrationDays({
         workingDates,
         action: body.data.action,
-        validatedDates: body.data.validatedDates,
+        ...(body.data.validatedDates ? { validatedDates: body.data.validatedDates } : {}),
       });
 
       for (const date of classification.validatedDates) {
