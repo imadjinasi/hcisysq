@@ -31,7 +31,7 @@ interface AppShellProps {
 
 const employeeNavigation = [
   { label: "Beranda", href: "/app", icon: Home },
-  { label: "Kehadiran", href: "#", icon: Clock3 },
+  { label: "Kehadiran", href: "/app/attendance", icon: Clock3 },
   { label: "Cuti & Izin", href: "/app/leave", icon: CalendarDays },
   { label: "Slip Gaji", href: "#", icon: WalletCards },
   { label: "Dokumen", href: "#", icon: FolderOpen },
@@ -45,7 +45,7 @@ const managementNavigation = [
 
 const mobileNavigation = [
   { label: "Beranda", activeLabel: "Beranda", href: "/app", icon: Home },
-  { label: "Hadir", activeLabel: "Kehadiran", href: "#", icon: Clock3 },
+  { label: "Hadir", activeLabel: "Kehadiran", href: "/app/attendance", icon: Clock3 },
   { label: "Cuti", activeLabel: "Cuti & Izin", href: "/app/leave", icon: CalendarDays },
   { label: "Approval", activeLabel: "Persetujuan", href: "/app/approvals", icon: ClipboardCheck },
   { label: "Dokumen", activeLabel: "Dokumen", href: "#", icon: FolderOpen },
