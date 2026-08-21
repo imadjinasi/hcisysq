@@ -50,6 +50,42 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerSpecialLeaveRoutes(app, pool, config);
   await registerAttendanceResolutionRoutes(app, pool, config);
 
+  app.setErrorHandler((error, _request, reply) => {
+    const databaseError = error as Error & { code?: string; constraint?: string };
+    if (
+      databaseError.code === "23514" &&
+      databaseError.message === "active leave request overlaps another active leave request"
+    ) {
+      return reply.status(409).send({
+        code: "LEAVE_REQUEST_OVERLAP",
+        message: "Rentang cuti bertabrakan dengan pengajuan aktif lain.",
+      });
+    }
+    if (
+      databaseError.code === "23514" &&
+      [
+        "attendance resolution is already final",
+        "attendance resolution is awaiting employee decision",
+        "invalid attendance resolution transition",
+      ].includes(databaseError.message)
+    ) {
+      return reply.status(409).send({
+        code: "ATTENDANCE_RESOLUTION_STATE_CONFLICT",
+        message: "Status penyelesaian kehadiran sudah berubah. Muat ulang sebelum mengambil keputusan.",
+      });
+    }
+    if (
+      databaseError.code === "23505" &&
+      databaseError.constraint === "leave_request_approval_steps_one_pending_idx"
+    ) {
+      return reply.status(409).send({
+        code: "APPROVAL_STATE_CONFLICT",
+        message: "Tahap persetujuan aktif sudah berubah. Muat ulang sebelum mengambil keputusan.",
+      });
+    }
+    return reply.send(error);
+  });
+
   app.addHook("onClose", async () => {
     if (!injectedPool) await pool.end();
   });
