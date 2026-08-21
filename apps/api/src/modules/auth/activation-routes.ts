@@ -10,11 +10,10 @@ import {
 } from "./account-activation.js";
 import type { RequestContext } from "./service.js";
 
-const tokenParamsSchema = z.object({
-  token: z.string().min(32).max(128).regex(/^[A-Za-z0-9_-]+$/),
-});
-
+const tokenSchema = z.string().min(32).max(128).regex(/^[A-Za-z0-9_-]+$/);
+const previewBodySchema = z.object({ token: tokenSchema });
 const activationBodySchema = z.object({
+  token: tokenSchema,
   password: z
     .string()
     .min(ACCOUNT_ACTIVATION_PASSWORD_MIN_LENGTH)
@@ -36,10 +35,10 @@ async function sendActivationError(reply: FastifyReply, error: unknown) {
 export async function registerAccountActivationRoutes(app: FastifyInstance, pool: Pool) {
   const activation = new AccountActivationService(pool);
 
-  app.get("/auth/activation/:token", async (request, reply) => {
+  app.post("/auth/activation/preview", async (request, reply) => {
     reply.header("Cache-Control", "no-store");
-    const params = tokenParamsSchema.safeParse(request.params);
-    if (!params.success) {
+    const body = previewBodySchema.safeParse(request.body);
+    if (!body.success) {
       return reply.status(410).send({
         code: "ACTIVATION_LINK_INVALID",
         message: "Link aktivasi tidak berlaku atau sudah kedaluwarsa. Minta link aktivasi baru kepada administrator.",
@@ -47,23 +46,23 @@ export async function registerAccountActivationRoutes(app: FastifyInstance, pool
     }
 
     try {
-      return reply.send(await activation.preview(params.data.token));
+      return reply.send(await activation.preview(body.data.token));
     } catch (error) {
       return sendActivationError(reply, error);
     }
   });
 
-  app.post("/auth/activation/:token", async (request, reply) => {
+  app.post("/auth/activation/complete", async (request, reply) => {
     reply.header("Cache-Control", "no-store");
-    const params = tokenParamsSchema.safeParse(request.params);
     const body = activationBodySchema.safeParse(request.body);
-    if (!params.success) {
-      return reply.status(410).send({
-        code: "ACTIVATION_LINK_INVALID",
-        message: "Link aktivasi tidak berlaku atau sudah kedaluwarsa. Minta link aktivasi baru kepada administrator.",
-      });
-    }
     if (!body.success) {
+      const tokenValid = previewBodySchema.safeParse(request.body).success;
+      if (!tokenValid) {
+        return reply.status(410).send({
+          code: "ACTIVATION_LINK_INVALID",
+          message: "Link aktivasi tidak berlaku atau sudah kedaluwarsa. Minta link aktivasi baru kepada administrator.",
+        });
+      }
       return reply.status(400).send({
         code: "INVALID_ACTIVATION_PASSWORD",
         message: `Kata sandi harus ${ACCOUNT_ACTIVATION_PASSWORD_MIN_LENGTH}-${ACCOUNT_ACTIVATION_PASSWORD_MAX_LENGTH} karakter.`,
@@ -72,7 +71,7 @@ export async function registerAccountActivationRoutes(app: FastifyInstance, pool
 
     try {
       const result = await activation.activate(
-        params.data.token,
+        body.data.token,
         body.data.password,
         requestContext(request),
       );
