@@ -1,7 +1,11 @@
-import { ArrowLeft, Network, ShieldCheck, UserRoundCheck } from "lucide-react";
+import { ArrowLeft, Copy, Network, ShieldCheck, UserRoundCheck } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 
 import { AdminShell } from "@/layouts/AdminShell";
+import {
+  AccountActivationApiError,
+  issueAccountActivation,
+} from "@/lib/accountActivation";
 import { AdminApiError } from "@/lib/adminEmployees";
 import {
   getEmployeeDetail,
@@ -13,7 +17,7 @@ import {
 
 function accountStatusLabel(status: string | null) {
   if (status === "active") return "Aktif";
-  if (status === "invited") return "Disiapkan";
+  if (status === "invited") return "Menunggu aktivasi";
   if (status === "suspended") return "Ditangguhkan";
   if (status === "inactive") return "Nonaktif";
   return "Belum ada account";
@@ -25,9 +29,14 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
   const [accountEmail, setAccountEmail] = useState("");
   const [contactEmail, setContactEmail] = useState("");
   const [contactPhone, setContactPhone] = useState("");
+  const [activationLink, setActivationLink] = useState<{
+    url: string;
+    expiresAt: string;
+  } | null>(null);
   const [savingContact, setSavingContact] = useState(false);
   const [savingManager, setSavingManager] = useState(false);
   const [preparingAccount, setPreparingAccount] = useState(false);
+  const [issuingActivation, setIssuingActivation] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -96,21 +105,62 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
     }
   };
 
+  const issueActivation = async (accountId: string) => {
+    setIssuingActivation(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await issueAccountActivation(accountId);
+      setActivationLink({
+        url: new URL(result.activationPath, window.location.origin).toString(),
+        expiresAt: result.expiresAt,
+      });
+      setNotice("Link aktivasi siap dibagikan. Link sebelumnya untuk account ini otomatis tidak berlaku.");
+    } catch (cause) {
+      setError(
+        cause instanceof AccountActivationApiError
+          ? cause.message
+          : "Link aktivasi gagal dibuat.",
+      );
+    } finally {
+      setIssuingActivation(false);
+    }
+  };
+
   const prepareAccount = async () => {
     setPreparingAccount(true);
     setError(null);
     setNotice(null);
     try {
-      await prepareEmployeeAccount({
+      const account = await prepareEmployeeAccount({
         employeeId,
         ...(accountEmail.trim() ? { email: accountEmail.trim() } : {}),
       });
-      setNotice("Account pegawai berhasil disiapkan dalam status invited. Aktivasi login belum dibuka pada tahap ini.");
+      const activation = await issueAccountActivation(account.id);
+      setActivationLink({
+        url: new URL(activation.activationPath, window.location.origin).toString(),
+        expiresAt: activation.expiresAt,
+      });
+      setNotice("Account pegawai disiapkan dan link aktivasi siap dibagikan.");
       await reload();
     } catch (cause) {
-      setError(cause instanceof AdminApiError ? cause.message : "Account pegawai gagal disiapkan.");
+      if (cause instanceof AccountActivationApiError || cause instanceof AdminApiError) {
+        setError(cause.message);
+      } else {
+        setError("Account pegawai gagal disiapkan.");
+      }
     } finally {
       setPreparingAccount(false);
+    }
+  };
+
+  const copyActivation = async () => {
+    if (!activationLink) return;
+    try {
+      await navigator.clipboard.writeText(activationLink.url);
+      setNotice("Link aktivasi disalin.");
+    } catch {
+      setNotice("Pilih dan salin link aktivasi secara manual.");
     }
   };
 
@@ -129,6 +179,32 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
 
       {error ? <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div> : null}
       {notice ? <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{notice}</div> : null}
+
+      {activationLink ? (
+        <section className="mb-5 rounded-2xl border border-brand-primary/30 bg-brand-primary-pale p-4">
+          <p className="text-sm font-bold text-brand-heading">Link aktivasi</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            Berlaku sampai {new Date(activationLink.expiresAt).toLocaleString("id-ID")}. Link hanya ditampilkan pada sesi halaman ini.
+          </p>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            <input
+              readOnly
+              value={activationLink.url}
+              onFocus={(event) => event.currentTarget.select()}
+              className="h-10 min-w-0 flex-1 rounded-xl border border-border bg-white px-3 text-xs"
+              aria-label="Link aktivasi"
+            />
+            <button
+              type="button"
+              onClick={() => void copyActivation()}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white"
+            >
+              <Copy className="h-4 w-4" aria-hidden="true" />
+              Salin link
+            </button>
+          </div>
+        </section>
+      ) : null}
 
       <section className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
         <article className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
@@ -232,7 +308,17 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
           {employee?.accountId ? (
             <>
               <p className="mt-1 break-all text-sm text-muted-foreground">{employee.accountEmail}</p>
-              <a href="/admin/access" className="mt-4 inline-flex text-sm font-semibold text-brand-primary-deep">
+              {employee.accountStatus === "invited" ? (
+                <button
+                  type="button"
+                  onClick={() => void issueActivation(employee.accountId!)}
+                  disabled={issuingActivation}
+                  className="mt-4 h-10 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white disabled:opacity-50"
+                >
+                  {issuingActivation ? "Membuat link..." : "Buat link aktivasi"}
+                </button>
+              ) : null}
+              <a href="/admin/access" className="mt-4 block text-sm font-semibold text-brand-primary-deep">
                 Kelola role & scope →
               </a>
             </>
@@ -251,10 +337,10 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
                 disabled={preparingAccount || employee?.status !== "active"}
                 className="h-10 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white disabled:opacity-50"
               >
-                {preparingAccount ? "Menyiapkan..." : "Siapkan account pegawai"}
+                {preparingAccount ? "Menyiapkan..." : "Siapkan account & link aktivasi"}
               </button>
               <p className="text-xs leading-5 text-muted-foreground">
-                Account dibuat sebagai <strong>invited</strong>. Belum ada email undangan atau metode aktivasi otomatis pada milestone ini.
+                Account dibuat sebagai <strong>invited</strong>. Link aktivasi berlaku 24 jam dan password dibuat langsung oleh pegawai.
               </p>
             </div>
           )}
