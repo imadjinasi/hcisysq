@@ -6,6 +6,7 @@ import {
   Clock3,
   Loader2,
   ShieldCheck,
+  Stethoscope,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -104,7 +105,7 @@ export function EmployeeLeavePage() {
       setError(
         cause instanceof EmployeeLeaveApiError
           ? cause.message
-          : "Preview pengajuan tidak dapat dihitung.",
+          : "Pengajuan belum dapat diperiksa.",
       );
     } finally {
       setPreviewing(false);
@@ -153,10 +154,10 @@ export function EmployeeLeavePage() {
             Cuti & izin
           </p>
           <h1 className="mt-1 text-2xl font-bold tracking-[-0.02em] text-brand-heading sm:text-[1.75rem]">
-            Cuti Tahunan
+            Apa yang Anda butuhkan?
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Hak tahunan tetap 12 hari per tahun. Ketersediaan saat ini mengikuti masa kerja dan batas 3 hari per periode.
+            Pilih jenis kebutuhan terlebih dahulu. Sistem akan menampilkan langkah yang relevan saja.
           </p>
         </div>
         {(summary?.pendingApprovalCount ?? 0) > 0 ? (
@@ -165,9 +166,47 @@ export function EmployeeLeavePage() {
             className="inline-flex h-10 items-center gap-2 rounded-xl border border-brand-yellow/40 bg-brand-yellow/12 px-4 text-sm font-semibold text-amber-950"
           >
             <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-            {summary?.pendingApprovalCount} approval menunggu
+            {summary?.pendingApprovalCount} persetujuan menunggu
           </a>
         ) : null}
+      </section>
+
+      <section className="mt-5 grid gap-3 sm:grid-cols-2">
+        <a
+          href="#annual-form"
+          className="group rounded-3xl border border-brand-primary/25 bg-brand-primary-pale/45 p-4 shadow-[var(--shadow-soft)] transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <div className="flex items-start gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-brand-primary-deep shadow-sm">
+              <CalendarDays className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <div>
+              <p className="text-sm font-bold text-brand-heading">Cuti Tahunan</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                Untuk tenaga non-pendidikan. Hak tetap ditampilkan 12 hari/tahun dengan batas pemakaian 3 hari per periode.
+              </p>
+              <p className="mt-2 text-xs font-bold text-brand-primary-deep">Ajukan cuti tahunan →</p>
+            </div>
+          </div>
+        </a>
+
+        <a
+          href="/app/leave/special"
+          className="group rounded-3xl border border-border/70 bg-white p-4 shadow-[var(--shadow-soft)] transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <div className="flex items-start gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand-cyan/14 text-cyan-950">
+              <Stethoscope className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <div>
+              <p className="text-sm font-bold text-brand-heading">Sakit atau kondisi khusus</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                Sakit, melahirkan, keguguran, haid, pendampingan istri, atau keluarga meninggal dunia.
+              </p>
+              <p className="mt-2 text-xs font-bold text-brand-primary-deep">Laporkan kondisi →</p>
+            </div>
+          </div>
+        </a>
       </section>
 
       {error ? (
@@ -223,7 +262,7 @@ export function EmployeeLeavePage() {
                     <p className="mt-1 text-lg font-bold">{period.remainingDays}<span className="ml-1 text-xs font-medium text-muted-foreground">/ 3</span></p>
                     <p className="mt-1 text-[10px] text-muted-foreground">
                       {period.status === "not_eligible"
-                        ? "Belum eligible"
+                        ? "Belum dapat digunakan"
                         : period.status === "current"
                           ? "Periode berjalan"
                           : period.status === "closed"
@@ -237,10 +276,10 @@ export function EmployeeLeavePage() {
           ) : null}
         </article>
 
-        <article className="rounded-3xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)] sm:p-6">
+        <article id="annual-form" className="scroll-mt-24 rounded-3xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)] sm:p-6">
           <h2 className="text-base font-bold text-brand-heading">Ajukan Cuti Tahunan</h2>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            Sistem menghitung hari kerja dari kalender yang dikonfigurasi administrator dan mengecek H-7, masa kerja, kuota periode, serta rantai approval sebelum submit.
+            Isi tanggal cuti. Sistem akan memeriksa H-7, masa kerja, kuota periode, hari kerja, dan siapa yang perlu menyetujui.
           </p>
 
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
@@ -290,27 +329,28 @@ export function EmployeeLeavePage() {
             className="mt-4 inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-white px-4 text-sm font-semibold hover:bg-muted/50 disabled:opacity-50"
           >
             {previewing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Clock3 className="h-4 w-4" aria-hidden="true" />}
-            Cek pengajuan
+            Lanjutkan
           </button>
 
           {preview ? (
             <div className="mt-5 rounded-2xl border border-brand-primary/20 bg-brand-primary-pale/45 p-4">
-              <div className="grid gap-3 sm:grid-cols-3">
+              <p className="text-sm font-bold text-brand-heading">Periksa sebelum dikirim</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-3">
                 <div>
                   <p className="text-xs text-muted-foreground">Hari kerja</p>
                   <p className="mt-1 text-lg font-bold text-brand-heading">{preview.requestedWorkingDays}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">Sisa sebelum</p>
+                  <p className="text-xs text-muted-foreground">Tersedia sebelum</p>
                   <p className="mt-1 text-lg font-bold text-brand-heading">{preview.availableDaysBeforeRequest}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">Sisa setelah</p>
+                  <p className="text-xs text-muted-foreground">Tersisa setelah</p>
                   <p className="mt-1 text-lg font-bold text-brand-heading">{preview.availableDaysAfterRequest}</p>
                 </div>
               </div>
               <div className="mt-4 border-t border-brand-primary/15 pt-4">
-                <p className="text-xs font-semibold text-muted-foreground">Rantai approval</p>
+                <p className="text-xs font-semibold text-muted-foreground">Alur persetujuan</p>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   {preview.approvalChain.map((step, index) => (
                     <div key={step.employeeId} className="flex items-center gap-2">
@@ -338,11 +378,11 @@ export function EmployeeLeavePage() {
 
       <section className="mt-5 overflow-hidden rounded-3xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
         <div className="border-b border-border/70 px-5 py-4">
-          <h2 className="text-base font-bold text-brand-heading">Riwayat pengajuan</h2>
+          <h2 className="text-base font-bold text-brand-heading">Riwayat Cuti Tahunan</h2>
         </div>
         <div className="divide-y divide-border/70">
           {(summary?.requests ?? []).length === 0 ? (
-            <p className="px-5 py-8 text-sm text-muted-foreground">Belum ada pengajuan cuti.</p>
+            <p className="px-5 py-8 text-sm text-muted-foreground">Belum ada pengajuan Cuti Tahunan.</p>
           ) : (
             summary?.requests.map((item) => (
               <div key={item.id} className="flex flex-col gap-2 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
