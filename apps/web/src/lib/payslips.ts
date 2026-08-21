@@ -25,6 +25,18 @@ export interface PayslipImportBatch {
   publishedAt: string | null;
 }
 
+export interface PayslipImportRow {
+  rowNumber: number;
+  employeeNumber: string;
+  period: string | null;
+  lines: PayslipLine[] | null;
+  errors: string[];
+}
+
+export interface PayslipImportDetail extends PayslipImportBatch {
+  rows: PayslipImportRow[];
+}
+
 export class PayslipApiError extends Error {}
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -46,6 +58,10 @@ export function getMyPayslip(id: string) {
 
 export function listPayslipImports() {
   return request<{ items: PayslipImportBatch[] }>("/api/admin/payslip-imports");
+}
+
+export function getPayslipImport(batchId: string) {
+  return request<PayslipImportDetail>(`/api/admin/payslip-imports/${encodeURIComponent(batchId)}`);
 }
 
 export function previewPayslipImport(file: File) {
