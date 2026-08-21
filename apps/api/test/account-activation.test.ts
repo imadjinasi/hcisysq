@@ -22,7 +22,7 @@ describe("account activation policy", () => {
 
 describe("AccountActivationService", () => {
   it("stores only a SHA-256 token hash when issuing an activation link", async () => {
-    const query = vi.fn(async (sql: string) => {
+    const query = vi.fn(async (sql: string, _params: unknown[] = []) => {
       if (sql.includes("FROM accounts account")) {
         return {
           rows: [
@@ -51,14 +51,14 @@ describe("AccountActivationService", () => {
       String(sql).includes("INSERT INTO account_activation_tokens"),
     );
     expect(insertCall).toBeTruthy();
-    const tokenHash = insertCall?.[1]?.[2];
+    const tokenHash = String(insertCall?.[1]?.[2] ?? "");
     expect(tokenHash).toMatch(/^[a-f0-9]{64}$/);
     expect(tokenHash).not.toBe(result.token);
     expect(result.token.length).toBeGreaterThanOrEqual(40);
   });
 
   it("activates an invited board account and consumes the token", async () => {
-    const query = vi.fn(async (sql: string) => {
+    const query = vi.fn(async (sql: string, _params: unknown[] = []) => {
       if (sql.includes("FROM account_activation_tokens activation")) {
         return {
           rows: [
