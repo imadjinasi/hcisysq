@@ -156,12 +156,15 @@ function mapRecord(row: AttendanceRecordRow) {
   };
 }
 
-function mapEmployeeRecord(row: AttendanceRecordRow) {
-  const record = mapRecord(row);
+export function mapEmployeeRecord(row: AttendanceRecordRow) {
   return {
-    ...record,
-    sourceReference: null,
-    note: null,
+    employeeId: row.employeeId,
+    attendanceDate: row.attendanceDate,
+    checkInAt: row.checkInAt?.toISOString() ?? null,
+    checkOutAt: row.checkOutAt?.toISOString() ?? null,
+    source: row.source,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
   };
 }
 
@@ -250,6 +253,17 @@ function snapshotRecord(row: AttendanceRecordRow | undefined) {
   return row ? mapRecord(row) : null;
 }
 
+async function lockAttendanceKey(
+  client: PoolClient,
+  employeeId: string,
+  attendanceDate: string,
+): Promise<void> {
+  await client.query(
+    `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+    [`attendance:${employeeId}:${attendanceDate}`],
+  );
+}
+
 async function loadRecordForUpdate(
   client: PoolClient,
   employeeId: string,
@@ -272,6 +286,16 @@ async function loadRecordForUpdate(
     [employeeId, attendanceDate],
   );
   return result.rows[0];
+}
+
+export function assertManualAttendanceMutation(record: Pick<AttendanceRecordRow, "source"> | undefined) {
+  if (record?.source === "integration") {
+    throw new AttendanceError(
+      409,
+      "INTEGRATED_ATTENDANCE_IMMUTABLE",
+      "Rekaman integrasi tidak dapat diubah langsung melalui koreksi manual.",
+    );
+  }
 }
 
 async function authenticate(
@@ -388,11 +412,14 @@ export async function registerAttendanceRoutes(
         const client = await pool.connect();
         try {
           await client.query("BEGIN");
+          await lockAttendanceKey(client, params.data.employeeId, params.data.attendanceDate);
           const before = await loadRecordForUpdate(
             client,
             params.data.employeeId,
             params.data.attendanceDate,
           );
+          assertManualAttendanceMutation(before);
+
           const result = await client.query<AttendanceRecordRow>(
             `INSERT INTO attendance_daily_records (
               employee_id,
@@ -408,8 +435,6 @@ export async function registerAttendanceRoutes(
             ON CONFLICT (employee_id, attendance_date) DO UPDATE SET
               check_in_at = EXCLUDED.check_in_at,
               check_out_at = EXCLUDED.check_out_at,
-              source = 'manual',
-              source_reference = NULL,
               note = EXCLUDED.note,
               updated_by_account_id = EXCLUDED.updated_by_account_id,
               updated_at = now()
@@ -489,6 +514,7 @@ export async function registerAttendanceRoutes(
         const client = await pool.connect();
         try {
           await client.query("BEGIN");
+          await lockAttendanceKey(client, params.data.employeeId, params.data.attendanceDate);
           const before = await loadRecordForUpdate(
             client,
             params.data.employeeId,
@@ -501,6 +527,7 @@ export async function registerAttendanceRoutes(
               "Rekaman kehadiran tidak ditemukan.",
             );
           }
+          assertManualAttendanceMutation(before);
 
           await client.query(
             `DELETE FROM attendance_daily_records
