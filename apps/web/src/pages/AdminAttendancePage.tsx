@@ -47,7 +47,7 @@ function formatTime(value: string | null) {
   return new Intl.DateTimeFormat("id-ID", {
     hour: "2-digit",
     minute: "2-digit",
-    hour12: false,
+    hourCycle: "h23",
     timeZone: "Asia/Jakarta",
   }).format(new Date(value));
 }
@@ -61,11 +61,22 @@ function toJakartaLocalInput(value: string | null) {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-    hour12: false,
+    hourCycle: "h23",
   }).formatToParts(new Date(value));
   const read = (type: Intl.DateTimeFormatPartTypes) =>
     parts.find((part) => part.type === type)?.value ?? "";
   return `${read("year")}-${read("month")}-${read("day")}T${read("hour")}:${read("minute")}`;
+}
+
+function jakartaLocalInputToIso(value: string) {
+  const withSeconds = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)
+    ? `${value}:00`
+    : value;
+  const parsed = new Date(`${withSeconds}+07:00`);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error("Waktu kehadiran tidak valid.");
+  }
+  return parsed.toISOString();
 }
 
 async function loadAllActiveEmployees(): Promise<AdminEmployeeListItem[]> {
@@ -160,15 +171,15 @@ export function AdminAttendancePage() {
     setNotice(null);
     try {
       await saveAdminAttendanceRecord(employeeId, attendanceDate, {
-        checkInAt: checkInAt ? new Date(checkInAt).toISOString() : null,
-        checkOutAt: checkOutAt ? new Date(checkOutAt).toISOString() : null,
+        checkInAt: checkInAt ? jakartaLocalInputToIso(checkInAt) : null,
+        checkOutAt: checkOutAt ? jakartaLocalInputToIso(checkOutAt) : null,
         note: note.trim() || null,
       });
       setNotice("Rekaman kehadiran tersimpan dan perubahan dicatat pada audit.");
       await loadAttendance(employeeId);
     } catch (cause) {
       setError(
-        cause instanceof AttendanceApiError
+        cause instanceof AttendanceApiError || cause instanceof Error
           ? cause.message
           : "Rekaman kehadiran gagal disimpan.",
       );
@@ -301,8 +312,11 @@ export function AdminAttendancePage() {
                 />
               </label>
             </div>
+            <p className="text-[11px] leading-5 text-muted-foreground">
+              Jam pada formulir selalu diperlakukan sebagai Waktu Indonesia Barat (Asia/Jakarta), terlepas dari zona waktu perangkat Admin.
+            </p>
             <label className="block text-xs font-semibold text-muted-foreground">
-              Catatan opsional
+              Catatan internal opsional
               <textarea
                 value={note}
                 onChange={(event) => setNote(event.target.value)}
@@ -312,6 +326,9 @@ export function AdminAttendancePage() {
                 className="mt-1 w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand-primary"
               />
             </label>
+            <p className="text-[11px] leading-5 text-muted-foreground">
+              Catatan ini untuk administrasi dan audit; tidak ditampilkan pada halaman kehadiran pegawai.
+            </p>
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="submit"
