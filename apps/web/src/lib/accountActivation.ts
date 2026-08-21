@@ -55,8 +55,10 @@ export async function getActivationPreview(token: string): Promise<{
   principalType: Exclude<PrincipalType, "SUPER_ADMIN">;
   expiresAt: string;
 }> {
-  const response = await fetch(`/api/auth/activation/${encodeURIComponent(token)}`, {
-    headers: { Accept: "application/json" },
+  const response = await fetch("/api/auth/activation/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ token }),
   });
   return readJson(response);
 }
@@ -69,10 +71,10 @@ export async function activateAccount(
   principalType: Exclude<PrincipalType, "SUPER_ADMIN">;
   message: string;
 }> {
-  const response = await fetch(`/api/auth/activation/${encodeURIComponent(token)}`, {
+  const response = await fetch("/api/auth/activation/complete", {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({ password }),
+    body: JSON.stringify({ token, password }),
   });
   return readJson(response);
 }
