@@ -2,7 +2,7 @@
 
 **Status:** ACTIVE IMPLEMENTATION BASELINE  
 **Specification:** EMP-005  
-**Related:** EMP-001, LEAVE-004, LEAVE-005, LEAVE-007, APR-001
+**Related:** EMP-001, LEAVE-004, LEAVE-005, LEAVE-007, APR-001, ATT-001
 
 ## Goal
 
@@ -19,9 +19,13 @@ The dashboard composes existing authoritative employee endpoints:
 - Human Capital role signal;
 - attendance-resolution tasks that require the employee's decision.
 
+ATT-001 adds an authoritative employee attendance surface at `/app/attendance`. The dashboard links to that surface rather than manufacturing a check-in time or attendance status. Daily attendance records contain observed check-in/check-out facts only; late, absence, overtime, and work-hour conclusions remain unavailable until work schedules are defined.
+
 ## Features not yet backed by an authoritative module
 
-Attendance and payslip cards remain visible as product navigation, but must clearly state that live data is not yet connected. They must not show fabricated check-in times, salary periods, or status.
+Payslip remains visible as product navigation, but must clearly state that live payroll data is not yet connected. It must not show fabricated salary periods or nominal values.
+
+Attendance is now backed by ATT-001 for daily check-in/check-out records, but schedule-derived status is not yet backed by policy. The dashboard therefore must not label an employee late, absent, short on hours, or overtime.
 
 ## Leave presentation
 
@@ -49,6 +53,7 @@ A focused action links to the existing task screen instead of embedding complex 
 
 Quick actions use actual application routes:
 
+- `Kehadiran` -> `/app/attendance`;
 - `Cuti & Izin` -> `/app/leave`;
 - `Persetujuan` -> `/app/approvals` when relevant;
 - attendance-resolution employee task -> `/app/attendance-resolution`;
@@ -57,6 +62,8 @@ Quick actions use actual application routes:
 ## Empty and unavailable states
 
 A missing backend module is represented as `Belum tersedia` / `Belum terhubung`, not as zero or mock data.
+
+For attendance, the absence of a daily record is represented as `Belum ada rekaman`, not as `Tidak hadir`. A missing punch is not an absence decision until schedule and resolution rules exist.
 
 An employee with no requests sees a calm empty state rather than placeholder requests.
 
@@ -67,5 +74,5 @@ An employee with no requests sees a calm empty state rather than placeholder req
 - EMP-005-C: annual entitlement remains 12 days/year for eligible non-education policy display while period availability is shown separately.
 - EMP-005-D: education employees do not receive a fabricated individual annual-leave balance.
 - EMP-005-E: unresolved employee attendance-resolution decisions are visible as a priority action.
-- EMP-005-F: unavailable attendance/payroll integrations never render fabricated operational values.
-- EMP-005-G: dashboard actions navigate to the actual workflow pages.
+- EMP-005-F: unavailable payroll integration never renders fabricated operational values; attendance never renders fabricated schedule-derived status.
+- EMP-005-G: dashboard actions navigate to the actual workflow pages, including `/app/attendance` for ATT-001.
