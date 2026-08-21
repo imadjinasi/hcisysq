@@ -75,11 +75,11 @@ export function AdminPage() {
     },
     {
       title: "Account & Akses",
-      description: "Siapkan account pegawai dan kelola role tambahan beserta scope-nya.",
+      description: "Siapkan account, buat link aktivasi, dan kelola role tambahan beserta scope-nya.",
       href: "/admin/access",
       icon: KeyRound,
       metric: overview ? `${overview.accounts} account` : "Memuat...",
-      detail: overview ? `${overview.invitedAccounts} masih disiapkan` : "",
+      detail: overview ? `${overview.invitedAccounts} menunggu aktivasi` : "",
     },
     {
       title: "Impor Pegawai",
@@ -132,9 +132,9 @@ export function AdminPage() {
       </section>
 
       <section className="mt-5 rounded-2xl border border-brand-yellow/30 bg-brand-yellow/10 p-5">
-        <p className="text-sm font-bold text-amber-950">Batas aktivasi account</p>
+        <p className="text-sm font-bold text-amber-950">Aktivasi account</p>
         <p className="mt-1 max-w-4xl text-sm leading-6 text-amber-950/70">
-          Account pegawai dapat disiapkan dalam status invited dan role/scope dapat ditetapkan, tetapi account belum dapat diaktifkan sebelum metode autentikasi employee (Google atau password activation) tersedia. Ini mencegah account aktif tanpa kredensial.
+          Account pegawai dan Organ Yayasan dapat disiapkan sebagai invited, lalu Super Admin membuat link aktivasi sekali pakai yang berlaku 24 jam. Password dibuat langsung oleh pemilik account melalui link tersebut; sistem tidak menyimpan token aktivasi dalam bentuk plaintext.
         </p>
       </section>
     </AdminShell>
