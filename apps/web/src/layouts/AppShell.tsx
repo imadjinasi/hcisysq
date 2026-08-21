@@ -4,7 +4,6 @@ import {
   CalendarDays,
   ClipboardCheck,
   Clock3,
-  FileText,
   FolderOpen,
   GraduationCap,
   Home,
@@ -34,7 +33,6 @@ const employeeNavigation = [
   { label: "Beranda", href: "/app", icon: Home },
   { label: "Kehadiran", href: "#", icon: Clock3 },
   { label: "Cuti & Izin", href: "/app/leave", icon: CalendarDays },
-  { label: "Cuti Khusus", href: "/app/leave/special", icon: FileText },
   { label: "Slip Gaji", href: "#", icon: WalletCards },
   { label: "Dokumen", href: "#", icon: FolderOpen },
   { label: "Pengembangan", href: "#", icon: GraduationCap },
@@ -49,8 +47,8 @@ const mobileNavigation = [
   { label: "Beranda", activeLabel: "Beranda", href: "/app", icon: Home },
   { label: "Hadir", activeLabel: "Kehadiran", href: "#", icon: Clock3 },
   { label: "Cuti", activeLabel: "Cuti & Izin", href: "/app/leave", icon: CalendarDays },
-  { label: "Khusus", activeLabel: "Cuti Khusus", href: "/app/leave/special", icon: FileText },
   { label: "Approval", activeLabel: "Persetujuan", href: "/app/approvals", icon: ClipboardCheck },
+  { label: "Dokumen", activeLabel: "Dokumen", href: "#", icon: FolderOpen },
 ];
 
 function NavigationLink({
