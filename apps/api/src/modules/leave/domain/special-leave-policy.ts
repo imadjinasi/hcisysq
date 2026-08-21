@@ -45,7 +45,10 @@ interface RuleSupplement {
 }
 
 const RULE_SUPPLEMENTS: Partial<Record<SupportedSpecialLeaveKey, RuleSupplement>> = {
-  maternity: { maxCalendarMonths: 6 },
+  // The normal maternity request covers the three-month base right. The policy's
+  // additional period (up to three more months) is conditional on a special
+  // medical circumstance and therefore must not be granted by this generic flow.
+  maternity: { maxCalendarMonths: 3 },
   menstruation_rest: { maxWorkingDays: 2 },
   spouse_childbirth: { maxWorkingDays: 2 },
   spouse_miscarriage: { maxWorkingDays: 2 },
@@ -163,7 +166,9 @@ export function validateSpecialLeaveRequest(
     if (dateValue(input.endOn) >= dateValue(exclusiveLimit)) {
       throw new SpecialLeavePolicyError(
         "DURATION_LIMIT_EXCEEDED",
-        `${policy.name} pada baseline saat ini tidak boleh melampaui total ${supplement.maxCalendarMonths} bulan tanpa kebijakan lanjutan yang terpisah.`,
+        input.policyKey === "maternity"
+          ? "Cuti Hamil dan Melahirkan pada alur normal mencakup hak dasar 3 bulan. Tambahan karena kondisi khusus memerlukan surat medis dan alur keputusan terpisah."
+          : `${policy.name} pada baseline saat ini tidak boleh melampaui total ${supplement.maxCalendarMonths} bulan tanpa kebijakan lanjutan yang terpisah.`,
       );
     }
   }
