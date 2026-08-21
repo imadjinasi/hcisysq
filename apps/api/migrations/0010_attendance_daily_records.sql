@@ -16,6 +16,9 @@ CREATE TABLE IF NOT EXISTS attendance_daily_records (
   CHECK (check_in_at IS NULL OR check_out_at IS NULL OR check_out_at >= check_in_at)
 );
 
+ALTER TABLE attendance_daily_records
+  ALTER COLUMN source DROP DEFAULT;
+
 CREATE INDEX IF NOT EXISTS attendance_daily_records_date_idx
   ON attendance_daily_records (attendance_date DESC, employee_id);
 
