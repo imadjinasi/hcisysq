@@ -41,6 +41,7 @@ function getDateLabel() {
     day: "numeric",
     month: "long",
     year: "numeric",
+    timeZone: "Asia/Jakarta",
   }).format(new Date());
 }
 
