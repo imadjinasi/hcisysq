@@ -33,7 +33,7 @@ const employeeNavigation = [
   { label: "Beranda", href: "/app", icon: Home },
   { label: "Kehadiran", href: "/app/attendance", icon: Clock3 },
   { label: "Cuti & Izin", href: "/app/leave", icon: CalendarDays },
-  { label: "Slip Gaji", href: "#", icon: WalletCards },
+  { label: "Slip Gaji", href: "/app/payslips", icon: WalletCards },
   { label: "Dokumen", href: "#", icon: FolderOpen },
   { label: "Pengembangan", href: "#", icon: GraduationCap },
 ];
@@ -48,7 +48,7 @@ const mobileNavigation = [
   { label: "Hadir", activeLabel: "Kehadiran", href: "/app/attendance", icon: Clock3 },
   { label: "Cuti", activeLabel: "Cuti & Izin", href: "/app/leave", icon: CalendarDays },
   { label: "Approval", activeLabel: "Persetujuan", href: "/app/approvals", icon: ClipboardCheck },
-  { label: "Dokumen", activeLabel: "Dokumen", href: "#", icon: FolderOpen },
+  { label: "Slip", activeLabel: "Slip Gaji", href: "/app/payslips", icon: WalletCards },
 ];
 
 function NavigationLink({
