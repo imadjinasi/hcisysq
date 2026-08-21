@@ -141,6 +141,6 @@ describe("readCookie", () => {
     expect(readCookie("other=1; hcis_session=abc123; theme=dark", "hcis_session")).toBe(
       "abc123",
     );
-    expect(readCookie("other=1", "hcis_session=abc123" as never)).toBeNull();
+    expect(readCookie("other=1", "hcis_session")).toBeNull();
   });
 });
