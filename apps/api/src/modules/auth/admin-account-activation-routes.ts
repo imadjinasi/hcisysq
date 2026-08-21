@@ -139,7 +139,7 @@ export async function registerAccountActivationAdminRoutes(
       });
       reply.header("Cache-Control", "no-store");
       return reply.status(201).send({
-        activationPath: `/activate/${issued.token}`,
+        activationPath: `/activate#token=${issued.token}`,
         expiresAt: issued.expiresAt,
       });
     } catch (error) {
