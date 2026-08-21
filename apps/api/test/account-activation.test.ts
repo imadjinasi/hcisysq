@@ -32,6 +32,7 @@ describe("AccountActivationService", () => {
               principalType: "EMPLOYEE",
               status: "invited",
               employeeStatus: "active",
+              passwordHash: null,
             },
           ],
           rowCount: 1,
@@ -56,6 +57,41 @@ describe("AccountActivationService", () => {
     expect(tokenHash).toMatch(/^[a-f0-9]{64}$/);
     expect(tokenHash).not.toBe(result.token);
     expect(result.token.length).toBeGreaterThanOrEqual(40);
+  });
+
+  it("does not turn invitation activation into a password reset flow", async () => {
+    const query = vi.fn(async (sql: string, params: unknown[] = []) => {
+      void params;
+      if (sql.includes("FROM accounts account")) {
+        return {
+          rows: [
+            {
+              id: "10000000-0000-4000-8000-000000000002",
+              principalType: "EMPLOYEE",
+              status: "invited",
+              employeeStatus: "active",
+              passwordHash: "existing-password-hash",
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+    const client = { query, release: vi.fn() };
+    const pool = { connect: vi.fn(async () => client) } as unknown as Pool;
+    const service = new AccountActivationService(pool);
+
+    await expect(
+      service.issue(
+        "10000000-0000-4000-8000-000000000002",
+        "20000000-0000-4000-8000-000000000001",
+      ),
+    ).rejects.toMatchObject({ code: "ACCOUNT_ALREADY_ACTIVATED", statusCode: 409 });
+
+    expect(
+      query.mock.calls.some(([sql]) => String(sql).includes("INSERT INTO account_activation_tokens")),
+    ).toBe(false);
   });
 
   it("activates an invited board account and consumes the token", async () => {
