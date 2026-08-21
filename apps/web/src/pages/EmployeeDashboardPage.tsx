@@ -237,16 +237,19 @@ export function EmployeeDashboardPage() {
             <article className="rounded-[2rem] border border-border/80 bg-white p-5 shadow-[var(--shadow-raised)] sm:p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Kehadiran hari ini</p>
-                  <p className="mt-2 text-lg font-bold text-brand-heading">Belum terhubung</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Kehadiran</p>
+                  <p className="mt-2 text-lg font-bold text-brand-heading">Rekaman harian</p>
                   <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                    Modul kehadiran live belum diaktifkan. Dashboard tidak menampilkan jam masuk atau status sintetis.
+                    Lihat jam masuk dan jam keluar yang sudah tercatat. HCIS belum menyimpulkan telat atau absen sebelum jadwal kerja dihubungkan.
                   </p>
                 </div>
                 <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-cyan/14 text-cyan-900">
                   <Clock3 className="h-5 w-5" aria-hidden="true" />
                 </span>
               </div>
+              <a href="/app/attendance" className="mt-6 inline-flex min-h-10 items-center gap-2 text-sm font-bold text-brand-primary-deep">
+                Buka Kehadiran <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </a>
             </article>
           </section>
 
