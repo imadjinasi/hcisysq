@@ -1,7 +1,12 @@
-import { KeyRound, ShieldCheck, UserPlus, UsersRound } from "lucide-react";
+import { Copy, KeyRound, ShieldCheck, UserPlus, UsersRound } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { AdminShell } from "@/layouts/AdminShell";
+import {
+  AccountActivationApiError,
+  issueAccountActivation,
+  prepareBoardAccount,
+} from "@/lib/accountActivation";
 import { AdminApiError } from "@/lib/adminEmployees";
 import {
   createRoleAssignment,
@@ -27,6 +32,12 @@ export function AdminAccessPage() {
   const [startsOn, setStartsOn] = useState("");
   const [endsOn, setEndsOn] = useState("");
   const [reason, setReason] = useState("");
+  const [boardEmail, setBoardEmail] = useState("");
+  const [activationLink, setActivationLink] = useState<{
+    accountId: string;
+    url: string;
+    expiresAt: string;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -68,6 +79,67 @@ export function AdminAccessPage() {
     () => data?.accounts.filter((account) => account.principalType === "EMPLOYEE") ?? [],
     [data],
   );
+
+  const publishActivationLink = async (accountId: string) => {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await issueAccountActivation(accountId);
+      setActivationLink({
+        accountId,
+        url: new URL(result.activationPath, window.location.origin).toString(),
+        expiresAt: result.expiresAt,
+      });
+      setNotice("Link aktivasi baru dibuat. Link sebelumnya untuk account ini otomatis tidak berlaku.");
+    } catch (cause) {
+      setError(
+        cause instanceof AccountActivationApiError
+          ? cause.message
+          : "Link aktivasi gagal dibuat.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitBoardAccount = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!boardEmail.trim()) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const account = await prepareBoardAccount(boardEmail.trim());
+      const activation = await issueAccountActivation(account.id);
+      setActivationLink({
+        accountId: account.id,
+        url: new URL(activation.activationPath, window.location.origin).toString(),
+        expiresAt: activation.expiresAt,
+      });
+      setBoardEmail("");
+      setNotice("Account Organ Yayasan disiapkan dan link aktivasi siap dibagikan.");
+      await reload();
+    } catch (cause) {
+      setError(
+        cause instanceof AccountActivationApiError
+          ? cause.message
+          : "Account Organ Yayasan gagal disiapkan.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copyActivationLink = async () => {
+    if (!activationLink) return;
+    try {
+      await navigator.clipboard.writeText(activationLink.url);
+      setNotice("Link aktivasi disalin.");
+    } catch {
+      setNotice("Pilih dan salin link aktivasi secara manual.");
+    }
+  };
 
   const submitAssignment = async (event: FormEvent) => {
     event.preventDefault();
@@ -153,6 +225,32 @@ export function AdminAccessPage() {
       {error ? <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div> : null}
       {notice ? <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{notice}</div> : null}
 
+      {activationLink ? (
+        <section className="mb-5 rounded-2xl border border-brand-primary/30 bg-brand-primary-pale p-4">
+          <p className="text-sm font-bold text-brand-heading">Link aktivasi — tampil sekali di sesi ini</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            Berlaku sampai {new Date(activationLink.expiresAt).toLocaleString("id-ID")}. Membuat link baru akan menonaktifkan link sebelumnya.
+          </p>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            <input
+              readOnly
+              value={activationLink.url}
+              onFocus={(event) => event.currentTarget.select()}
+              className="h-10 min-w-0 flex-1 rounded-xl border border-border bg-white px-3 text-xs"
+              aria-label="Link aktivasi"
+            />
+            <button
+              type="button"
+              onClick={() => void copyActivationLink()}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white"
+            >
+              <Copy className="h-4 w-4" aria-hidden="true" />
+              Salin link
+            </button>
+          </div>
+        </section>
+      ) : null}
+
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {summaryCards.map(({ label, value, icon: Icon }) => (
           <article key={label} className="rounded-2xl border border-border/70 bg-white p-4 shadow-[var(--shadow-soft)]">
@@ -161,6 +259,29 @@ export function AdminAccessPage() {
             <p className="mt-1 text-xs font-semibold text-muted-foreground">{label}</p>
           </article>
         ))}
+      </section>
+
+      <section className="mt-5 rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+        <h2 className="text-base font-bold text-brand-heading">Account Organ Yayasan</h2>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          Account ini terpisah dari employee master dan setelah aktif masuk ke dashboard Organ Yayasan.
+        </p>
+        <form onSubmit={submitBoardAccount} className="mt-4 flex flex-col gap-3 sm:flex-row">
+          <input
+            type="email"
+            value={boardEmail}
+            onChange={(event) => setBoardEmail(event.target.value)}
+            placeholder="email@contoh.id"
+            className="h-10 min-w-0 flex-1 rounded-xl border border-border bg-surface px-3 text-sm"
+          />
+          <button
+            type="submit"
+            disabled={busy || !boardEmail.trim()}
+            className="h-10 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white disabled:opacity-50"
+          >
+            Siapkan account & link aktivasi
+          </button>
+        </form>
       </section>
 
       <section className="mt-5 rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
@@ -215,17 +336,29 @@ export function AdminAccessPage() {
                 <p className="mt-1 text-xs text-muted-foreground">{account.email}{account.employeeNumber ? ` · ${account.employeeNumber}` : ""}{account.unitName ? ` · ${account.unitName}` : ""}</p>
               </div>
               {account.principalType !== "SUPER_ADMIN" ? (
-                <select
-                  value={account.status}
-                  onChange={(event) => void changeStatus(account.id, event.target.value as "invited" | "active" | "suspended" | "inactive")}
-                  disabled={busy}
-                  className="h-9 rounded-xl border border-border bg-surface px-3 text-xs font-semibold"
-                >
-                  <option value="invited">Disiapkan</option>
-                  <option value="active">Aktif</option>
-                  <option value="suspended">Ditangguhkan</option>
-                  <option value="inactive">Nonaktif</option>
-                </select>
+                <div className="flex flex-wrap gap-2">
+                  {account.status === "invited" ? (
+                    <button
+                      type="button"
+                      onClick={() => void publishActivationLink(account.id)}
+                      disabled={busy}
+                      className="h-9 rounded-xl bg-brand-primary px-3 text-xs font-bold text-white disabled:opacity-50"
+                    >
+                      Buat link aktivasi
+                    </button>
+                  ) : null}
+                  <select
+                    value={account.status}
+                    onChange={(event) => void changeStatus(account.id, event.target.value as "invited" | "active" | "suspended" | "inactive")}
+                    disabled={busy}
+                    className="h-9 rounded-xl border border-border bg-surface px-3 text-xs font-semibold"
+                  >
+                    <option value="invited">Disiapkan</option>
+                    <option value="active">Aktif</option>
+                    <option value="suspended">Ditangguhkan</option>
+                    <option value="inactive">Nonaktif</option>
+                  </select>
+                </div>
               ) : null}
             </div>
 
