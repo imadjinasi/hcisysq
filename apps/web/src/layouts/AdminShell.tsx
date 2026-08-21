@@ -3,6 +3,7 @@ import {
   Building2,
   CalendarDays,
   CalendarRange,
+  Clock3,
   History,
   KeyRound,
   LayoutDashboard,
@@ -25,6 +26,7 @@ export type AdminNavKey =
   | "import"
   | "history"
   | "organization"
+  | "attendance"
   | "leave"
   | "leave-calendar"
   | "access";
@@ -40,6 +42,7 @@ const navItems: Array<{
   { key: "import", label: "Impor Pegawai", href: "/admin/employees/import", icon: Upload },
   { key: "history", label: "Riwayat Impor", href: "/admin/employees/imports", icon: History },
   { key: "organization", label: "Struktur Organisasi", href: "/admin/organization", icon: Building2 },
+  { key: "attendance", label: "Kehadiran", href: "/admin/attendance", icon: Clock3 },
   { key: "leave", label: "Konfigurasi Cuti", href: "/admin/leave", icon: CalendarDays },
   { key: "leave-calendar", label: "Kalender Kerja", href: "/admin/leave/calendar", icon: CalendarRange },
   { key: "access", label: "Account & Akses", href: "/admin/access", icon: KeyRound },
