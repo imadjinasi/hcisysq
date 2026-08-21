@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  assertManualAttendanceMutation,
   isIsoDate,
+  jakartaToday,
+  mapEmployeeRecord,
   resolveAttendanceRange,
   validateAttendanceTimes,
 } from "../src/modules/attendance/routes.js";
@@ -12,6 +15,10 @@ describe("ATT-001 attendance policy", () => {
     expect(isIsoDate("2026-02-29")).toBe(false);
     expect(isIsoDate("2026-13-01")).toBe(false);
     expect(isIsoDate("21-08-2026")).toBe(false);
+  });
+
+  it("uses Asia/Jakarta when resolving the reference date", () => {
+    expect(jakartaToday(new Date("2026-08-21T17:30:00.000Z"))).toBe("2026-08-22");
   });
 
   it("defaults to a 30-day range ending on the reference date", () => {
@@ -58,5 +65,31 @@ describe("ATT-001 attendance policy", () => {
         checkOutAt: "2026-08-21T07:59:00+07:00",
       }),
     ).toThrowError(expect.objectContaining({ code: "ATTENDANCE_TIME_ORDER_INVALID" }));
+  });
+
+  it("omits admin note and source reference from employee records", () => {
+    const employeeRecord = mapEmployeeRecord({
+      employeeId: "00000000-0000-4000-8000-000000000010",
+      attendanceDate: "2026-08-21",
+      checkInAt: new Date("2026-08-21T00:00:00.000Z"),
+      checkOutAt: new Date("2026-08-21T09:00:00.000Z"),
+      source: "manual",
+      sourceReference: "internal-source-reference",
+      note: "internal admin note",
+      createdAt: new Date("2026-08-21T00:00:00.000Z"),
+      updatedAt: new Date("2026-08-21T00:00:00.000Z"),
+    });
+
+    expect(employeeRecord).not.toHaveProperty("sourceReference");
+    expect(employeeRecord).not.toHaveProperty("note");
+    expect(employeeRecord.source).toBe("manual");
+  });
+
+  it("keeps integration records immutable through manual correction routes", () => {
+    expect(() => assertManualAttendanceMutation(undefined)).not.toThrow();
+    expect(() => assertManualAttendanceMutation({ source: "manual" })).not.toThrow();
+    expect(() => assertManualAttendanceMutation({ source: "integration" })).toThrowError(
+      expect.objectContaining({ code: "INTEGRATED_ATTENDANCE_IMMUTABLE" }),
+    );
   });
 });
