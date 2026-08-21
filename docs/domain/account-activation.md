@@ -44,6 +44,7 @@ Akun ini tetap read-only sesuai `AUTH-001` kecuali permission lain secara ekspli
 - Token hanya dapat digunakan sekali.
 - Token invalid, expired, revoked, atau consumed menghasilkan respons generik `ACTIVATION_LINK_INVALID`.
 - Endpoint aktivasi menggunakan `Cache-Control: no-store`.
+- Token tidak ditempatkan pada URL path/query request server. Link menggunakan fragment `#token=...`, sehingga fragment tidak dikirim ke reverse proxy/web server. Frontend mengirim token pada JSON request body ke endpoint aktivasi tetap.
 
 Sampai adapter email resmi tersedia, UI Super Admin menampilkan link aktivasi satu kali agar dapat disampaikan melalui kanal internal yang sesuai. Sistem tidak mengklaim telah mengirim email.
 
@@ -86,10 +87,10 @@ Admin, wajib principal `SUPER_ADMIN`:
 
 Public capability route:
 
-- `GET /auth/activation/:token`
-- `POST /auth/activation/:token`
+- `POST /auth/activation/preview` dengan body `{ token }`
+- `POST /auth/activation/complete` dengan body `{ token, password }`
 
-Respons penerbitan admin berisi `activationPath` dan `expiresAt`. Frontend membentuk absolute URL dari origin saat ini; backend tidak menyimpan hostname production.
+Respons penerbitan admin berisi `activationPath` berbentuk `/activate#token=...` dan `expiresAt`. Frontend membentuk absolute URL dari origin saat ini; backend tidak menyimpan hostname production.
 
 ## UX
 
@@ -103,11 +104,12 @@ Di detail pegawai/account:
 
 Di halaman aktivasi:
 
-1. validasi link;
-2. tampilkan email tujuan secara tersamarkan dan jenis akses dalam bahasa pengguna;
-3. pengguna membuat dan mengonfirmasi password;
-4. setelah sukses arahkan ke halaman login;
-5. setelah login backend menentukan `/app` atau `/board`.
+1. frontend mengambil token dari URL fragment lalu segera menghapus fragment dari address bar setelah token dibaca;
+2. validasi link melalui endpoint preview dengan token pada request body;
+3. tampilkan email tujuan secara tersamarkan dan jenis akses dalam bahasa pengguna;
+4. pengguna membuat dan mengonfirmasi password;
+5. setelah sukses arahkan ke halaman login;
+6. setelah login backend menentukan `/app` atau `/board`.
 
 ## Route lintas principal
 
@@ -128,6 +130,7 @@ Audit tidak boleh memuat token aktivasi, password, password hash, TOTP secret, a
 - Account `EMPLOYEE` invited dapat diaktivasi dan login ke `/app`.
 - Account `FOUNDATION_BOARD` invited dapat diaktivasi dan login ke `/board`.
 - Token hanya sekali pakai, hashed at rest, dan expire 24 jam.
+- Token tidak muncul pada server request URL/access log normal.
 - Reissue mencabut token lama.
 - Employee nonaktif tidak dapat menyelesaikan aktivasi.
 - Super Admin tetap wajib MFA.
