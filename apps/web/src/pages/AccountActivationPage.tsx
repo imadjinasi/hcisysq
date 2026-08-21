@@ -18,7 +18,8 @@ function accessLabel(principalType: Preview["principalType"]) {
   return principalType === "FOUNDATION_BOARD" ? "Dashboard Organ Yayasan" : "Portal Pegawai";
 }
 
-export function AccountActivationPage({ token }: { token: string }) {
+export function AccountActivationPage() {
+  const [token, setToken] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
   const [loading, setLoading] = useState(true);
   const [password, setPassword] = useState("");
@@ -29,7 +30,27 @@ export function AccountActivationPage({ token }: { token: string }) {
 
   useEffect(() => {
     let mounted = true;
-    void getActivationPreview(token)
+    const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const activationToken = fragment.get("token")?.trim() ?? "";
+
+    if (window.location.hash) {
+      window.history.replaceState(
+        window.history.state,
+        "",
+        `${window.location.pathname}${window.location.search}`,
+      );
+    }
+
+    setToken(activationToken);
+    if (!activationToken) {
+      setError("Link aktivasi tidak lengkap. Minta link aktivasi baru kepada administrator.");
+      setLoading(false);
+      return () => {
+        mounted = false;
+      };
+    }
+
+    void getActivationPreview(activationToken)
       .then((result) => {
         if (mounted) setPreview(result);
       })
@@ -44,14 +65,19 @@ export function AccountActivationPage({ token }: { token: string }) {
       .finally(() => {
         if (mounted) setLoading(false);
       });
+
     return () => {
       mounted = false;
     };
-  }, [token]);
+  }, []);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setError(null);
+    if (!token) {
+      setError("Link aktivasi tidak lengkap. Minta link aktivasi baru kepada administrator.");
+      return;
+    }
     if (password.length < 12) {
       setError("Kata sandi minimal 12 karakter.");
       return;
@@ -66,6 +92,7 @@ export function AccountActivationPage({ token }: { token: string }) {
       await activateAccount(token, password);
       setPassword("");
       setConfirmation("");
+      setToken("");
       setSuccess(true);
     } catch (cause) {
       setError(
