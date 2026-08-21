@@ -60,4 +60,32 @@ describe("leave approval snapshot workflow", () => {
       }),
     ).toThrowError(LeaveWorkflowError);
   });
+
+  it("fails closed when more than one approval step is active", () => {
+    expect(() =>
+      decideLeaveApprovalStep({
+        requestStatus: "in_review",
+        stepId: "step-1",
+        decision: "approve",
+        steps: [
+          { id: "step-1", order: 1, status: "pending" },
+          { id: "step-2", order: 2, status: "pending" },
+        ],
+      }),
+    ).toThrowError(expect.objectContaining({ code: "APPROVAL_STATE_INVALID" }));
+  });
+
+  it("fails closed when an earlier snapshotted step was not approved", () => {
+    expect(() =>
+      decideLeaveApprovalStep({
+        requestStatus: "in_review",
+        stepId: "step-2",
+        decision: "approve",
+        steps: [
+          { id: "step-1", order: 1, status: "waiting" },
+          { id: "step-2", order: 2, status: "pending" },
+        ],
+      }),
+    ).toThrowError(expect.objectContaining({ code: "APPROVAL_STATE_INVALID" }));
+  });
 });
