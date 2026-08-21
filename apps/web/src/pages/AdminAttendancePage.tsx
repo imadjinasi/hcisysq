@@ -6,7 +6,7 @@ import {
   Trash2,
   UserRound,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 import { AdminShell } from "@/layouts/AdminShell";
 import {
@@ -14,8 +14,8 @@ import {
   deleteAdminAttendanceRecord,
   getAdminEmployeeAttendance,
   saveAdminAttendanceRecord,
-  type AttendanceListResponse,
-  type AttendanceRecord,
+  type AdminAttendanceListResponse,
+  type AdminAttendanceRecord,
 } from "@/lib/attendance";
 import {
   AdminApiError,
@@ -94,7 +94,7 @@ async function loadAllActiveEmployees(): Promise<AdminEmployeeListItem[]> {
 export function AdminAttendancePage() {
   const [employees, setEmployees] = useState<AdminEmployeeListItem[] | null>(null);
   const [employeeId, setEmployeeId] = useState("");
-  const [attendance, setAttendance] = useState<AttendanceListResponse | null>(null);
+  const [attendance, setAttendance] = useState<AdminAttendanceListResponse | null>(null);
   const [attendanceDate, setAttendanceDate] = useState(jakartaToday());
   const [checkInAt, setCheckInAt] = useState("");
   const [checkOutAt, setCheckOutAt] = useState("");
@@ -104,6 +104,7 @@ export function AdminAttendancePage() {
   const [deletingDate, setDeletingDate] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const attendanceRequestSequence = useRef(0);
 
   useEffect(() => {
     let mounted = true;
@@ -123,27 +124,38 @@ export function AdminAttendancePage() {
   }, []);
 
   const loadAttendance = async (selectedEmployeeId: string) => {
+    const requestSequence = ++attendanceRequestSequence.current;
     if (!selectedEmployeeId) {
       setAttendance(null);
+      setLoadingAttendance(false);
       return;
     }
     setLoadingAttendance(true);
     try {
       const result = await getAdminEmployeeAttendance(selectedEmployeeId);
+      if (requestSequence !== attendanceRequestSequence.current) return;
       setAttendance(result);
       setError(null);
     } catch (cause) {
+      if (requestSequence !== attendanceRequestSequence.current) return;
+      setAttendance(null);
       setError(
         cause instanceof AttendanceApiError
           ? cause.message
           : "Rekaman kehadiran tidak dapat dimuat.",
       );
     } finally {
-      setLoadingAttendance(false);
+      if (requestSequence === attendanceRequestSequence.current) {
+        setLoadingAttendance(false);
+      }
     }
   };
 
   useEffect(() => {
+    setAttendance(null);
+    setCheckInAt("");
+    setCheckOutAt("");
+    setNote("");
     void loadAttendance(employeeId);
   }, [employeeId]);
 
@@ -160,23 +172,30 @@ export function AdminAttendancePage() {
 
   const save = async (event: FormEvent) => {
     event.preventDefault();
-    if (!employeeId) return;
+    if (!employeeId || loadingAttendance) return;
+    if (selectedRecord?.source === "integration") {
+      setError("Rekaman integrasi tidak dapat dikoreksi langsung melalui form manual.");
+      return;
+    }
     if (!checkInAt && !checkOutAt) {
       setError("Isi minimal jam masuk atau jam keluar.");
       return;
     }
 
+    const targetEmployeeId = employeeId;
     setSaving(true);
     setError(null);
     setNotice(null);
     try {
-      await saveAdminAttendanceRecord(employeeId, attendanceDate, {
+      await saveAdminAttendanceRecord(targetEmployeeId, attendanceDate, {
         checkInAt: checkInAt ? jakartaLocalInputToIso(checkInAt) : null,
         checkOutAt: checkOutAt ? jakartaLocalInputToIso(checkOutAt) : null,
         note: note.trim() || null,
       });
-      setNotice("Rekaman kehadiran tersimpan dan perubahan dicatat pada audit.");
-      await loadAttendance(employeeId);
+      if (targetEmployeeId === employeeId) {
+        setNotice("Rekaman kehadiran tersimpan dan perubahan dicatat pada audit.");
+        await loadAttendance(targetEmployeeId);
+      }
     } catch (cause) {
       setError(
         cause instanceof AttendanceApiError || cause instanceof Error
@@ -188,24 +207,31 @@ export function AdminAttendancePage() {
     }
   };
 
-  const remove = async (record: AttendanceRecord) => {
+  const remove = async (record: AdminAttendanceRecord) => {
     if (!employeeId) return;
+    if (record.source === "integration") {
+      setError("Rekaman integrasi tidak dapat dihapus melalui koreksi manual.");
+      return;
+    }
     if (!window.confirm(`Hapus rekaman kehadiran ${formatDate(record.attendanceDate)}? Riwayat audit tetap disimpan.`)) {
       return;
     }
 
+    const targetEmployeeId = employeeId;
     setDeletingDate(record.attendanceDate);
     setError(null);
     setNotice(null);
     try {
-      await deleteAdminAttendanceRecord(employeeId, record.attendanceDate);
-      setNotice("Rekaman kehadiran dihapus. Riwayat audit tetap tersedia di backend.");
-      if (attendanceDate === record.attendanceDate) {
-        setCheckInAt("");
-        setCheckOutAt("");
-        setNote("");
+      await deleteAdminAttendanceRecord(targetEmployeeId, record.attendanceDate);
+      if (targetEmployeeId === employeeId) {
+        setNotice("Rekaman kehadiran dihapus. Riwayat audit tetap tersedia di backend.");
+        if (attendanceDate === record.attendanceDate) {
+          setCheckInAt("");
+          setCheckOutAt("");
+          setNote("");
+        }
+        await loadAttendance(targetEmployeeId);
       }
-      await loadAttendance(employeeId);
     } catch (cause) {
       setError(
         cause instanceof AttendanceApiError
@@ -217,10 +243,13 @@ export function AdminAttendancePage() {
     }
   };
 
-  const chooseRecord = (record: AttendanceRecord) => {
+  const chooseRecord = (record: AdminAttendanceRecord) => {
+    if (record.source === "integration") return;
     setAttendanceDate(record.attendanceDate);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
+
+  const mutationInProgress = saving || deletingDate !== null;
 
   return (
     <AdminShell
@@ -248,10 +277,15 @@ export function AdminAttendancePage() {
             <select
               value={employeeId}
               onChange={(event) => {
+                attendanceRequestSequence.current += 1;
+                setAttendance(null);
+                setCheckInAt("");
+                setCheckOutAt("");
+                setNote("");
                 setEmployeeId(event.target.value);
                 setNotice(null);
               }}
-              disabled={!employees}
+              disabled={!employees || mutationInProgress}
               className="mt-1 h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm outline-none focus:border-brand-primary disabled:opacity-50"
             >
               {!employees ? <option>Memuat pegawai...</option> : null}
@@ -288,7 +322,8 @@ export function AdminAttendancePage() {
                 type="date"
                 value={attendanceDate}
                 onChange={(event) => setAttendanceDate(event.target.value)}
-                className="mt-1 h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm outline-none focus:border-brand-primary"
+                disabled={mutationInProgress}
+                className="mt-1 h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm outline-none focus:border-brand-primary disabled:opacity-50"
                 required
               />
             </label>
@@ -299,7 +334,8 @@ export function AdminAttendancePage() {
                   type="datetime-local"
                   value={checkInAt}
                   onChange={(event) => setCheckInAt(event.target.value)}
-                  className="mt-1 h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm outline-none focus:border-brand-primary"
+                  disabled={selectedRecord?.source === "integration" || mutationInProgress}
+                  className="mt-1 h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm outline-none focus:border-brand-primary disabled:opacity-50"
                 />
               </label>
               <label className="text-xs font-semibold text-muted-foreground">
@@ -308,7 +344,8 @@ export function AdminAttendancePage() {
                   type="datetime-local"
                   value={checkOutAt}
                   onChange={(event) => setCheckOutAt(event.target.value)}
-                  className="mt-1 h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm outline-none focus:border-brand-primary"
+                  disabled={selectedRecord?.source === "integration" || mutationInProgress}
+                  className="mt-1 h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm outline-none focus:border-brand-primary disabled:opacity-50"
                 />
               </label>
             </div>
@@ -320,25 +357,31 @@ export function AdminAttendancePage() {
               <textarea
                 value={note}
                 onChange={(event) => setNote(event.target.value)}
+                disabled={selectedRecord?.source === "integration" || mutationInProgress}
                 maxLength={1000}
                 rows={3}
                 placeholder="Contoh: koreksi berdasarkan catatan operasional"
-                className="mt-1 w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand-primary"
+                className="mt-1 w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand-primary disabled:opacity-50"
               />
             </label>
             <p className="text-[11px] leading-5 text-muted-foreground">
               Catatan ini untuk administrasi dan audit; tidak ditampilkan pada halaman kehadiran pegawai.
             </p>
+            {selectedRecord?.source === "integration" ? (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+                Rekaman ini berasal dari integrasi. Koreksi atau penghapusan langsung melalui form manual dinonaktifkan agar provenance sumber tetap terjaga.
+              </div>
+            ) : null}
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="submit"
-                disabled={saving || !employeeId}
+                disabled={saving || !employeeId || loadingAttendance || selectedRecord?.source === "integration"}
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white disabled:opacity-50"
               >
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Save className="h-4 w-4" aria-hidden="true" />}
                 {saving ? "Menyimpan..." : selectedRecord ? "Simpan koreksi" : "Simpan rekaman"}
               </button>
-              {selectedRecord ? (
+              {selectedRecord?.source === "manual" ? (
                 <button
                   type="button"
                   onClick={() => void remove(selectedRecord)}
@@ -358,7 +401,7 @@ export function AdminAttendancePage() {
         <div className="flex items-center justify-between gap-3 border-b border-border/70 px-5 py-4">
           <div>
             <h2 className="text-base font-bold text-brand-heading">Riwayat 30 hari</h2>
-            <p className="mt-1 text-xs text-muted-foreground">Klik Edit untuk memuat rekaman ke formulir di atas.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Rekaman manual dapat dibuka untuk koreksi. Rekaman integrasi tetap read-only.</p>
           </div>
           {loadingAttendance ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-hidden="true" /> : null}
         </div>
@@ -385,22 +428,29 @@ export function AdminAttendancePage() {
                   Diubah {new Date(record.updatedAt).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}
                 </div>
                 <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => chooseRecord(record)}
-                    className="h-9 rounded-xl border border-border bg-white px-3 text-xs font-bold text-brand-primary-deep"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void remove(record)}
-                    disabled={deletingDate === record.attendanceDate}
-                    aria-label={`Hapus rekaman ${record.attendanceDate}`}
-                    className="flex h-9 w-9 items-center justify-center rounded-xl border border-red-200 bg-white text-red-700 disabled:opacity-50"
-                  >
-                    <Trash2 className="h-4 w-4" aria-hidden="true" />
-                  </button>
+                  {record.source === "manual" ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => chooseRecord(record)}
+                        disabled={mutationInProgress}
+                        className="h-9 rounded-xl border border-border bg-white px-3 text-xs font-bold text-brand-primary-deep disabled:opacity-50"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void remove(record)}
+                        disabled={deletingDate === record.attendanceDate || saving}
+                        aria-label={`Hapus rekaman ${record.attendanceDate}`}
+                        className="flex h-9 w-9 items-center justify-center rounded-xl border border-red-200 bg-white text-red-700 disabled:opacity-50"
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden="true" />
+                      </button>
+                    </>
+                  ) : (
+                    <span className="rounded-lg bg-surface px-2.5 py-1.5 text-[11px] font-semibold text-muted-foreground">Read-only</span>
+                  )}
                 </div>
               </div>
             ))}
