@@ -17,6 +17,7 @@ const E = "00000000-0000-4000-8000-000000000010";
 const M = "00000000-0000-4000-8000-000000000020";
 const U = "00000000-0000-4000-8000-000000000030";
 const X = "00000000-0000-4000-8000-000000000040";
+const H = "00000000-0000-4000-8000-000000000050";
 const REQUEST = "00000000-0000-4000-8000-000000000100";
 const DM_STEP = "00000000-0000-4000-8000-000000000110";
 const UNIT_STEP = "00000000-0000-4000-8000-000000000120";
@@ -140,6 +141,18 @@ describe("leave approval multi-account authorization", () => {
   it("rejects requester E from approving the requester's own active step", async () => {
     const { pool } = createDecisionPool({
       actorEmployeeId: E,
+      requestedStepId: DM_STEP,
+      stepApproverEmployeeId: M,
+      stepStatus: "pending",
+    });
+    const response = await decide(pool, DM_STEP);
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ code: "APPROVAL_FORBIDDEN" });
+  });
+
+  it("does not let Human Capital H take a line-approval step just because H is privileged elsewhere", async () => {
+    const { pool } = createDecisionPool({
+      actorEmployeeId: H,
       requestedStepId: DM_STEP,
       stepApproverEmployeeId: M,
       stepStatus: "pending",
