@@ -156,6 +156,15 @@ function mapRecord(row: AttendanceRecordRow) {
   };
 }
 
+function mapEmployeeRecord(row: AttendanceRecordRow) {
+  const record = mapRecord(row);
+  return {
+    ...record,
+    sourceReference: null,
+    note: null,
+  };
+}
+
 async function loadEmployeeByAccount(
   db: Pool | PoolClient,
   accountId: string,
@@ -326,7 +335,7 @@ export async function registerAttendanceRoutes(
         referenceDate: jakartaToday(),
         range,
         employee,
-        items: records.map(mapRecord),
+        items: records.map(mapEmployeeRecord),
       });
     } catch (error) {
       return sendAttendanceError(reply, error);
