@@ -71,6 +71,7 @@ interface DashboardState {
 
 export function EmployeeDashboardPage() {
   const [data, setData] = useState<DashboardState | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -84,7 +85,10 @@ export function EmployeeDashboardPage() {
         setData({ annual, special, resolutions: resolutions.items });
         setError(null);
       } catch (cause) {
+        setData(null);
         setError(cause instanceof Error ? cause.message : "Dashboard tidak dapat dimuat.");
+      } finally {
+        setLoading(false);
       }
     };
     void load();
@@ -161,9 +165,13 @@ export function EmployeeDashboardPage() {
         </div>
       ) : null}
 
-      {!data ? (
+      {loading ? (
         <div className="mt-6 flex items-center gap-2 rounded-3xl border border-border/70 bg-white p-6 text-sm text-muted-foreground shadow-[var(--shadow-soft)]">
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Memuat dashboard Anda...
+        </div>
+      ) : !data ? (
+        <div className="mt-6 rounded-3xl border border-border/70 bg-white p-6 text-sm text-muted-foreground shadow-[var(--shadow-soft)]">
+          Dashboard belum dapat ditampilkan. Muat ulang halaman setelah koneksi tersedia kembali.
         </div>
       ) : (
         <>
