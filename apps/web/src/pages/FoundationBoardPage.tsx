@@ -1,7 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import {
   AlertTriangle,
-  ArrowRight,
   Building2,
   CalendarDays,
   CheckCircle2,
@@ -16,12 +15,12 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 import ysqMark from "@/assets/brand/ysq-mark.png";
+import { logout } from "@/lib/auth";
 import {
   BoardDashboardApiError,
   getBoardDashboard,
   type BoardDashboardData,
 } from "@/lib/boardDashboard";
-import { logout } from "@/lib/auth";
 
 function percent(value: number, total: number) {
   if (total <= 0) return 0;
