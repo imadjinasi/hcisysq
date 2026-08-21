@@ -3,6 +3,7 @@ import type { Pool } from "pg";
 
 import type { ApiConfig } from "./config/env.js";
 import { createPool } from "./db/pool.js";
+import { registerAttendanceRoutes } from "./modules/attendance/routes.js";
 import { registerAccountActivationAdminRoutes } from "./modules/auth/admin-account-activation-routes.js";
 import { registerAccountActivationRoutes } from "./modules/auth/activation-routes.js";
 import { registerAuthRoutes } from "./modules/auth/routes.js";
@@ -42,6 +43,7 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerEmployeeAdminRoutes(app, pool, config);
   await registerOrgAccessAdminRoutes(app, pool, config);
   await registerEmployeeContactAdminRoutes(app, pool, config);
+  await registerAttendanceRoutes(app, pool, config);
   await registerLeaveAdminRoutes(app, pool, config);
   await registerLeaveCalendarAdminRoutes(app, pool, config);
   await registerEmployeeLeaveRoutes(app, pool, config);
