@@ -187,7 +187,6 @@ export function EmployeeAttendancePage() {
                       <p className="text-sm font-bold text-brand-heading">{formatDate(item.attendanceDate)}</p>
                       <p className="mt-1 text-[11px] text-muted-foreground">
                         {item.source === "manual" ? "Rekaman administrasi" : "Rekaman integrasi"}
-                        {item.note ? ` · ${item.note}` : ""}
                       </p>
                     </div>
                     <div>
