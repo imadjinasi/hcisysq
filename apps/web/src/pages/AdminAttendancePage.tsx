@@ -100,6 +100,7 @@ export function AdminAttendancePage() {
   const [checkOutAt, setCheckOutAt] = useState("");
   const [note, setNote] = useState("");
   const [loadingAttendance, setLoadingAttendance] = useState(false);
+  const [attendanceLoadError, setAttendanceLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deletingDate, setDeletingDate] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -127,19 +128,22 @@ export function AdminAttendancePage() {
     const requestSequence = ++attendanceRequestSequence.current;
     if (!selectedEmployeeId) {
       setAttendance(null);
+      setAttendanceLoadError(null);
       setLoadingAttendance(false);
       return;
     }
     setLoadingAttendance(true);
+    setAttendanceLoadError(null);
     try {
       const result = await getAdminEmployeeAttendance(selectedEmployeeId);
       if (requestSequence !== attendanceRequestSequence.current) return;
       setAttendance(result);
+      setAttendanceLoadError(null);
       setError(null);
     } catch (cause) {
       if (requestSequence !== attendanceRequestSequence.current) return;
       setAttendance(null);
-      setError(
+      setAttendanceLoadError(
         cause instanceof AttendanceApiError
           ? cause.message
           : "Rekaman kehadiran tidak dapat dimuat.",
@@ -153,6 +157,7 @@ export function AdminAttendancePage() {
 
   useEffect(() => {
     setAttendance(null);
+    setAttendanceLoadError(null);
     setCheckInAt("");
     setCheckOutAt("");
     setNote("");
@@ -172,7 +177,7 @@ export function AdminAttendancePage() {
 
   const save = async (event: FormEvent) => {
     event.preventDefault();
-    if (!employeeId || loadingAttendance) return;
+    if (!employeeId || loadingAttendance || !attendance) return;
     if (selectedRecord?.source === "integration") {
       setError("Rekaman integrasi tidak dapat dikoreksi langsung melalui form manual.");
       return;
@@ -279,6 +284,7 @@ export function AdminAttendancePage() {
               onChange={(event) => {
                 attendanceRequestSequence.current += 1;
                 setAttendance(null);
+                setAttendanceLoadError(null);
                 setCheckInAt("");
                 setCheckOutAt("");
                 setNote("");
@@ -334,7 +340,7 @@ export function AdminAttendancePage() {
                   type="datetime-local"
                   value={checkInAt}
                   onChange={(event) => setCheckInAt(event.target.value)}
-                  disabled={selectedRecord?.source === "integration" || mutationInProgress}
+                  disabled={selectedRecord?.source === "integration" || mutationInProgress || !attendance}
                   className="mt-1 h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm outline-none focus:border-brand-primary disabled:opacity-50"
                 />
               </label>
@@ -344,7 +350,7 @@ export function AdminAttendancePage() {
                   type="datetime-local"
                   value={checkOutAt}
                   onChange={(event) => setCheckOutAt(event.target.value)}
-                  disabled={selectedRecord?.source === "integration" || mutationInProgress}
+                  disabled={selectedRecord?.source === "integration" || mutationInProgress || !attendance}
                   className="mt-1 h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm outline-none focus:border-brand-primary disabled:opacity-50"
                 />
               </label>
@@ -357,7 +363,7 @@ export function AdminAttendancePage() {
               <textarea
                 value={note}
                 onChange={(event) => setNote(event.target.value)}
-                disabled={selectedRecord?.source === "integration" || mutationInProgress}
+                disabled={selectedRecord?.source === "integration" || mutationInProgress || !attendance}
                 maxLength={1000}
                 rows={3}
                 placeholder="Contoh: koreksi berdasarkan catatan operasional"
@@ -372,10 +378,15 @@ export function AdminAttendancePage() {
                 Rekaman ini berasal dari integrasi. Koreksi atau penghapusan langsung melalui form manual dinonaktifkan agar provenance sumber tetap terjaga.
               </div>
             ) : null}
+            {attendanceLoadError ? (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs leading-5 text-red-800">
+                Data pegawai ini belum berhasil dimuat. Koreksi dinonaktifkan agar rekaman yang belum terlihat tidak tertimpa.
+              </div>
+            ) : null}
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="submit"
-                disabled={saving || !employeeId || loadingAttendance || selectedRecord?.source === "integration"}
+                disabled={saving || !employeeId || loadingAttendance || !attendance || selectedRecord?.source === "integration"}
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white disabled:opacity-50"
               >
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Save className="h-4 w-4" aria-hidden="true" />}
@@ -406,7 +417,13 @@ export function AdminAttendancePage() {
           {loadingAttendance ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-hidden="true" /> : null}
         </div>
 
-        {attendance?.items.length ? (
+        {loadingAttendance ? (
+          <div className="px-5 py-8 text-sm text-muted-foreground">Memuat rekaman...</div>
+        ) : attendanceLoadError ? (
+          <div className="px-5 py-8 text-sm text-red-700">
+            Rekaman kehadiran tidak dapat dimuat: {attendanceLoadError}
+          </div>
+        ) : attendance?.items.length ? (
           <div className="divide-y divide-border/70">
             {attendance.items.map((record) => (
               <div key={record.attendanceDate} className="grid gap-3 px-5 py-4 lg:grid-cols-[1.1fr_0.6fr_0.6fr_0.8fr_auto] lg:items-center">
@@ -457,7 +474,7 @@ export function AdminAttendancePage() {
           </div>
         ) : (
           <div className="px-5 py-8 text-sm text-muted-foreground">
-            {loadingAttendance ? "Memuat rekaman..." : "Belum ada rekaman kehadiran untuk pegawai ini."}
+            {attendance ? "Belum ada rekaman kehadiran untuk pegawai ini." : "Pilih pegawai untuk memuat rekaman kehadiran."}
           </div>
         )}
       </section>
