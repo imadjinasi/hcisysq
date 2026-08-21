@@ -8,7 +8,7 @@ import {
 } from "@tanstack/react-router";
 
 import { getCurrentSession, landingPath } from "@/lib/auth";
-import { AccountActivationRoutePage } from "@/pages/AccountActivationRoutePage";
+import { AccountActivationPage } from "@/pages/AccountActivationPage";
 import { AdminAccessPage } from "@/pages/AdminAccessPage";
 import { AdminEmployeeDetailRoutePage } from "@/pages/AdminEmployeeDetailRoutePage";
 import { AdminEmployeeImportHistoryPage } from "@/pages/AdminEmployeeImportHistoryPage";
@@ -58,8 +58,8 @@ const loginRoute = createRoute({
 
 const activationRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/activate/$token",
-  component: AccountActivationRoutePage,
+  path: "/activate",
+  component: AccountActivationPage,
 });
 
 const appRoute = createRoute({
