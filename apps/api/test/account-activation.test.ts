@@ -22,7 +22,8 @@ describe("account activation policy", () => {
 
 describe("AccountActivationService", () => {
   it("stores only a SHA-256 token hash when issuing an activation link", async () => {
-    const query = vi.fn(async (sql: string, _params: unknown[] = []) => {
+    const query = vi.fn(async (sql: string, params: unknown[] = []) => {
+      void params;
       if (sql.includes("FROM accounts account")) {
         return {
           rows: [
@@ -58,7 +59,8 @@ describe("AccountActivationService", () => {
   });
 
   it("activates an invited board account and consumes the token", async () => {
-    const query = vi.fn(async (sql: string, _params: unknown[] = []) => {
+    const query = vi.fn(async (sql: string, params: unknown[] = []) => {
+      void params;
       if (sql.includes("FROM account_activation_tokens activation")) {
         return {
           rows: [
