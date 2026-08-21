@@ -21,17 +21,35 @@ describe("YSQ special leave policy", () => {
     expect(result.warnings.map((item) => item.code)).toContain("EVIDENCE_DEFERRED");
   });
 
-  it("caps maternity at the six-month total policy boundary", () => {
+  it("allows the three-month maternity base period", () => {
     expect(() =>
       validateSpecialLeaveRequest({
         policyKey: "maternity",
         submittedOn: "2026-08-01",
         startOn: "2026-09-15",
-        endOn: "2027-03-15",
-        workingDays: 120,
+        endOn: "2026-12-14",
+        workingDays: 65,
         hasEvidence: true,
       }),
-    ).toThrowError(SpecialLeavePolicyError);
+    ).not.toThrow();
+  });
+
+  it("does not grant the conditional maternity extension through the normal flow", () => {
+    expect(() =>
+      validateSpecialLeaveRequest({
+        policyKey: "maternity",
+        submittedOn: "2026-08-01",
+        startOn: "2026-09-15",
+        endOn: "2027-01-15",
+        workingDays: 85,
+        hasEvidence: true,
+      }),
+    ).toThrowError(
+      expect.objectContaining({
+        code: "DURATION_LIMIT_EXCEEDED",
+        message: expect.stringContaining("alur keputusan terpisah"),
+      }),
+    );
   });
 
   it("requires maternity evidence at initial submission", () => {
