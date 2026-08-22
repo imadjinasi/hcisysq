@@ -21,6 +21,7 @@ rules:
   - MVP scope is defined in docs/product/mvp.md.
   - MVP verification evidence is frozen in docs/product/mvp-release-checkpoint.md.
   - A verified MVP feature does not imply full legacy parity or production cutover readiness.
+  - ORG-004 is an accepted post-MVP design direction and must not be treated as current runtime behavior until explicitly implemented and activated.
 
 features:
   - id: AUTH-001
@@ -89,14 +90,30 @@ features:
 
   - id: ORG-001
     module: organization
-    name: Unit, position, and reporting hierarchy
+    name: Unit, position reference, and current reporting hierarchy
     legacy_evidence: units, positions, and direct-manager hierarchy exist
     target_status: verified
     priority: foundation
     risk: high
+    mvp_note: Verified MVP uses explicit current Direct Manager and Unit Approver relationships; ORG-004 is the planned successor for modular structure-driven administration.
     docs:
       - docs/domain/organization-access-foundation.md
       - docs/domain/organization-mapping.md
+
+  - id: ORG-004
+    module: organization
+    name: Dynamic organization structure and authority resolution
+    legacy_evidence: YSQ organization, leadership layers, vacancies, acting responsibility, and approval authority can change over time
+    target_status: planned
+    priority: immediate-post-mvp-foundation
+    risk: critical
+    planning_note: Structure changes must become effective-dated configuration data rather than source-code rules or repetitive employee-by-employee manager maintenance.
+    docs:
+      - docs/domain/dynamic-organization-structure.md
+      - docs/domain/organization-mapping.md
+      - docs/domain/workflows/approval-engine.md
+      - docs/domain/access-model.md
+      - docs/product/scope.md
 
   - id: AUTH-010
     module: authorization
@@ -117,6 +134,7 @@ features:
     target_status: verified
     priority: foundation
     risk: critical
+    mvp_note: Concrete approval snapshots are verified. ORG-004 may change authority resolution but must preserve snapshot semantics.
     docs:
       - docs/domain/workflows/approval-engine.md
       - docs/product/mvp.md
@@ -155,6 +173,7 @@ features:
     target_status: verified
     priority: first-slice
     risk: high
+    mvp_note: Current MVP line approval is verified; ORG-004 plans structure-driven authority resolution plus one-level-above notification after final approval.
     docs:
       - docs/domain/workflows/leave-request.md
       - docs/domain/annual-leave-vertical-slice.md
