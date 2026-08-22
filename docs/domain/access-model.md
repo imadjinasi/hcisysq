@@ -1,29 +1,31 @@
 # Access Model
 
-**Status:** ACCEPTED  
-**Specifications:** AUTH-001, AUTH-010, SEC-001
+**Status:** ACCEPTED — ORG-004 STRUCTURAL AUTHORITY EXTENSION PLANNED  
+**Specifications:** AUTH-001, AUTH-010, SEC-001  
+**Related:** ORG-001, ORG-002, ORG-004
 
-Dokumen ini menetapkan model akses target HCIS YSQ. Nama role pada legacy HCIS hanya menjadi bahan discovery dan tidak boleh otomatis dibawa ke implementasi baru.
+This document defines the target access model for HCIS YSQ. Legacy HCIS role names are discovery evidence only and must not be copied automatically into the new implementation.
 
-## Keputusan utama
+## Core decisions
 
-- Satu halaman login untuk semua pengguna.
-- Tidak ada registrasi publik dan tidak ada pilihan role pada halaman login.
-- Google sign-in menjadi jalur utama; email + password dapat menjadi fallback.
-- Setelah autentikasi, backend menentukan jenis akun, permission, scope, dan tujuan awal pengguna.
-- Jenis akun, role, permission, dan scope adalah konsep yang berbeda.
+- One login page serves all users.
+- No public registration and no role/account-type selector on the login page.
+- Google sign-in is the target primary route; email + password may remain a fallback.
+- After authentication, the backend determines account type, permissions, scopes, capabilities, and landing area.
+- Account type, organizational structure, role, permission, and scope are separate concepts.
+- Organization structure may help resolve operational authority, but it does not replace backend RBAC.
 
-## Jenis akun
+## Account types
 
 ### `EMPLOYEE`
 
-Akun yang terhubung ke employee aktif.
+An account linked to an active employee.
 
-Semua employee aktif otomatis mendapat **base employee access** untuk self-service miliknya sendiri, misalnya profil, kehadiran, cuti, reimbursement, slip gaji, pinjaman, dan dokumen pribadi sesuai modul yang sudah tersedia.
+Every active employee receives **base employee self-service access** for their own data in modules that exist, such as profile, attendance, leave, reimbursement, payslip, loan, and personal documents.
 
-Employee dapat menerima akses tambahan melalui role assignment.
+An employee may receive additional access through role assignment or a documented structure-to-authority binding.
 
-Contoh:
+Example:
 
 ```text
 Ahmad
@@ -36,40 +38,40 @@ Base employee access
 
 ### `FOUNDATION_BOARD`
 
-Akun Organ Yayasan yang tidak diperlakukan sebagai employee palsu.
+An account for a Foundation governance principal that is not represented as a fake employee.
 
-Akses default:
+Default access is aggregate-first and read-only, for example:
 
 - executive/governance dashboard;
-- statistik SDM;
-- laporan organisasi;
-- ringkasan finansial yang memang diizinkan;
-- export report bila memiliki permission.
+- workforce statistics;
+- organization reports;
+- explicitly authorized financial summaries;
+- report export when permission exists.
 
-Akses ini **read only**. Akun Organ Yayasan tidak otomatis dapat mengubah employee, melakukan approval, mengubah payroll, mengubah role, atau mengubah konfigurasi sistem.
+This account type does **not** automatically allow employee mutation, operational approval, payroll mutation, role management, or system configuration.
 
-Data sensitif harus menggunakan prinsip aggregate-first. Detail individu hanya tersedia bila ada permission eksplisit.
+Individual sensitive data is available only through explicit authorization.
 
 ### `SUPER_ADMIN`
 
-Akun administrasi teknis sistem.
+A technical system-administration account.
 
-Super Admin bukan representasi jabatan tertinggi di organisasi. Pimpinan Yayasan tidak otomatis menjadi Super Admin.
+Super Admin is not the representation of the highest organizational position. Foundation leadership does not automatically become Super Admin.
 
-Kewenangan utama:
+Primary responsibilities include:
 
-- role dan permission;
+- role and permission administration;
 - role assignment;
-- konfigurasi sistem;
-- integrasi;
+- system configuration;
+- integrations;
 - audit log;
-- recovery/reassignment administratif yang terdokumentasi.
+- documented administrative recovery/reassignment.
 
-Akses privileged harus diaudit dan MFA wajib ketika autentikasi production sudah diimplementasikan.
+Privileged access must be audited and MFA is mandatory for the implemented production-style Super Admin authentication path.
 
 ## Landing area
 
-Setelah login berhasil:
+After successful login:
 
 ```text
 EMPLOYEE         -> /app
@@ -77,40 +79,40 @@ FOUNDATION_BOARD -> /board
 SUPER_ADMIN      -> /admin
 ```
 
-Ini adalah landing area, bukan mekanisme authorization. Setiap route tetap wajib melakukan permission check di backend.
+This is navigation behavior, not authorization. Every backend route still performs its own authorization check.
 
-## Employee access: base + tambahan
+## Employee access: base plus additional authority
 
-Base employee access berasal dari status employee aktif, bukan dari role `pegawai` yang harus ditempel manual ke setiap akun.
+Base employee access comes from active employee/account state, not from a manually attached `employee` role.
 
-Akses tambahan menggunakan:
+Additional authority uses:
 
 ```text
 ROLE + SCOPE
 ```
 
-Contoh role tambahan:
+Examples:
 
 - Unit Manager;
-- HC;
+- Human Capital;
 - Finance;
 - Management;
-- Approver khusus.
+- Special Approver.
 
-Role adalah kumpulan permission. Role tidak boleh dibentuk dari kombinasi nama seperti `pegawai-kepala-unit-finance`.
+A role is a permission bundle. Do not create combination roles such as `employee-unit-head-finance` to encode multiple concerns in one name.
 
 ## Scope
 
-Scope menjawab **akses ini berlaku untuk siapa**.
+Scope answers **for whom / where does this authority apply?**
 
 Baseline scope:
 
-- `own` — data milik sendiri;
-- `unit` — unit yang ditugaskan;
-- `organization` — seluruh organisasi;
-- explicit/custom scope hanya bila kebutuhan nyata muncul.
+- `own` — the principal's own data;
+- `unit` — one assigned organizational unit;
+- `organization` — the whole organization;
+- explicit/custom scope only when a real requirement exists.
 
-Contoh:
+Example:
 
 ```text
 Role: Unit Manager
@@ -121,20 +123,94 @@ leave.approve
 attendance.read.unit
 ```
 
-Role menjawab "boleh melakukan apa". Scope menjawab "kepada siapa / area mana".
+Role answers *what may this actor do?* Scope answers *to whom / in which area?*
 
-## Assignment
+## Assignment sources
 
-Role assignment tambahan dapat berasal dari:
+Additional authority may come from:
 
-1. struktur/jabatan yang memiliki aturan otomatis yang terdokumentasi; atau
-2. assignment manual oleh administrator berwenang.
+1. manual role assignment by an authorized administrator; or
+2. a documented structural responsibility that is explicitly bound to a role/capability model.
 
-Assignment manual dapat memiliki tanggal mulai, tanggal selesai, dan alasan, terutama untuk PLT atau kewenangan sementara.
+A structure-derived assignment must not be implicit magic. The relationship between the position/responsibility and its permissions must be explicit, testable, and auditable.
+
+Manual assignments may have start date, end date, and reason, especially for temporary authority.
+
+## ORG-004 structural authority boundary
+
+`docs/domain/dynamic-organization-structure.md` defines the accepted post-MVP direction for dynamic organization structure.
+
+ORG-004 introduces concepts such as:
+
+- organizational nodes/teams;
+- authority-bearing positions/seats;
+- effective incumbencies;
+- acting assignments;
+- supervisory and governance relationships;
+- authority bindings;
+- vacancy policies;
+- employee reporting overrides.
+
+These concepts may be used to **resolve which employee should receive an operational authority**, but they must not bypass the access model.
+
+Example target flow:
+
+```text
+Position: Head of SDIT
+  -> structural responsibility: unit_approver for SDIT
+  -> documented capability binding: leave.approve for SDIT
+  -> effective incumbent: Hasan
+  -> Hasan receives effective approval capability for the relevant context
+```
+
+This is different from:
+
+```text
+Has job title containing "Head"
+  -> automatically receives every manager permission
+```
+
+The second pattern is forbidden.
+
+### Position is not an account type
+
+`Director`, `Secretary`, `Head of SDIT`, or `Curriculum Vice Principal` are organizational responsibilities/positions, not login account types.
+
+A person occupying such a position normally authenticates through their `EMPLOYEE` account and receives additional capabilities according to explicit authority bindings.
+
+### Governance approval vs Foundation Board account
+
+The accepted ORG-004 planning rule for Director leave is:
+
+```text
+Director employee
+-> Secretary employee approves
+-> Chair is notified after final approval
+```
+
+This operational approval relationship must not be confused with `FOUNDATION_BOARD` account type.
+
+If a governance actor must perform an operational approval, HCIS requires an explicitly modeled authorized principal/capability for that workflow. The system must not silently grant mutation capability to every Foundation Board account merely because a similarly named governance position exists.
+
+The exact principal/account mapping for governance positions must be verified during ORG-004 implementation before real activation.
+
+## Temporary and acting authority
+
+ORG-004 may represent an acting position assignment with effective dates.
+
+An acting assignment grants operational authority only when:
+
+- the assignment is effective;
+- the structural responsibility explicitly carries the relevant authority/capability binding;
+- the employee/account is active;
+- the requested action is within the permitted scope;
+- backend authorization validates the effective authority.
+
+Acting assignment must never create `SUPER_ADMIN` implicitly.
 
 ## Account state
 
-Gunakan state sederhana:
+Use simple account states:
 
 ```text
 invited
@@ -143,37 +219,37 @@ suspended
 inactive
 ```
 
-- `invited`: belum menyelesaikan aktivasi jika flow aktivasi digunakan;
-- `active`: dapat login sesuai permission;
-- `suspended`: akses ditutup sementara tanpa mengubah status kepegawaian;
-- `inactive`: tidak boleh login, umumnya karena hubungan/mandat sudah berakhir.
+- `invited`: activation not completed where activation flow applies;
+- `active`: may authenticate according to available methods and permissions;
+- `suspended`: access temporarily closed without changing employment status;
+- `inactive`: login disabled because the account/mandate ended.
 
-Status employee dan status account tetap divalidasi terpisah.
+Employee status and account status are validated independently.
 
 ## Login behavior
 
-Flow target:
+Target flow:
 
 ```text
 /login
-  -> Google atau email/password
-  -> identitas terverifikasi
-  -> account ditemukan dan active
-  -> load account type + permissions + scopes
-  -> redirect ke landing area
+  -> Google or email/password
+  -> identity verified
+  -> active account found
+  -> load account type + permissions + scopes + structural capabilities
+  -> redirect to landing area
 ```
 
-Tidak boleh ada dropdown "Masuk sebagai Pegawai / Admin / Pimpinan".
+The login page must not ask the user to choose `Employee / Admin / Leadership`.
 
 ## Permission naming
 
-Gunakan pola:
+Use:
 
 ```text
 <resource>.<action>[.<scope>]
 ```
 
-Contoh:
+Examples:
 
 ```text
 employees.read.own
@@ -187,23 +263,52 @@ roles.manage
 approvals.reassign
 ```
 
+## Backend authority remains final
+
+A structural resolver can help identify a candidate authority, but authorization still checks the effective principal and capability server-side.
+
+Example:
+
+```text
+Organization resolver says:
+Hasan is current Head of SDIT
+
+Backend still verifies:
+- Hasan employee active
+- Hasan account active
+- position assignment effective
+- authority binding effective
+- permission/capability valid
+- requested object is within scope
+```
+
+A stale frontend chart or client-side navigation state must never be an authorization source.
+
 ## Security invariants
 
-- Authorization dimiliki backend; frontend hanya menyembunyikan/menampilkan UI berdasarkan capability yang diberikan backend.
-- Navigasi administrasi Human Capital lintas organisasi hanya ditampilkan dari capability efektif yang sudah memperhitungkan role, `organization` scope, dan periode assignment; assignment role yang sama dengan `unit` scope tidak cukup.
-- Mengetik URL secara manual tidak boleh melewati authorization.
-- Tidak ada akses lintas unit hanya karena seseorang memiliki role yang sama di unit lain.
-- Foundation Board bersifat read only kecuali dokumen target secara eksplisit diubah.
-- Super Admin tidak otomatis memiliki employee self-service.
-- Perubahan role, scope, account state, dan permission sensitif menghasilkan audit event.
+- Backend owns authorization; frontend only renders UI from backend-provided effective capabilities.
+- Organization-wide Human Capital navigation requires effective role/capability with organization scope and valid assignment dates; a unit-scoped HC role is insufficient.
+- Manually typing a URL cannot bypass authorization.
+- Same role in another unit does not create cross-unit access.
+- Foundation Board remains read-only unless a future target specification explicitly grants a narrow operational capability.
+- Super Admin does not automatically receive employee self-service.
+- Role, scope, account-state, permission, structural authority-binding, acting assignment, and other sensitive changes produce audit events.
+- Free-text job titles never grant authority.
+- Numeric organization level never grants authority by itself.
+- Structural vacancy fallback never grants a capability to an arbitrary employee.
+- Organization structure must never silently create or elevate `SUPER_ADMIN`.
 
 ## Acceptance criteria
 
-- AUTH-010-A: employee aktif mendapat base employee self-service tanpa assignment role `pegawai` manual.
-- AUTH-010-B: role tambahan bersifat additive dan dapat memiliki scope.
-- AUTH-010-C: Foundation Board dapat membaca dashboard/report yang diizinkan tetapi tidak dapat melakukan mutation operasional.
-- AUTH-010-D: Super Admin dapat mengelola akses sistem tetapi tidak dianggap sebagai pimpinan organisasi.
-- AUTH-010-E: satu login page melayani seluruh jenis akun dan tidak menampilkan selector role.
-- AUTH-010-F: route backend tetap menolak principal yang tidak memiliki permission walaupun UI/URL dapat diakses secara langsung.
-- AUTH-010-G: assignment sementara menyimpan periode berlaku dan alasan bila digunakan.
-- AUTH-010-H: UI tidak menampilkan capability atau navigasi administrasi organization-wide hanya dari `role_key`; scope dan periode assignment efektif harus ikut dipertimbangkan.
+- AUTH-010-A: active employees receive base self-service without a manual `employee` role assignment.
+- AUTH-010-B: additional roles are additive and can carry scope.
+- AUTH-010-C: Foundation Board can read explicitly authorized governance reports but cannot perform operational mutation by default.
+- AUTH-010-D: Super Admin manages system access but is not treated as an organizational leader.
+- AUTH-010-E: one login page serves all account types without a role selector.
+- AUTH-010-F: backend rejects principals without permission even when a client can reach the URL/UI.
+- AUTH-010-G: temporary assignments store effective period and reason when used.
+- AUTH-010-H: organization-wide admin navigation/capability cannot be derived from `role_key` alone; scope and effective dates must be considered.
+- AUTH-010-I: when ORG-004 is implemented, structural position/incumbency alone does not bypass explicit permission/capability binding.
+- AUTH-010-J: acting structural authority is effective-dated, auditable, scope-bound, and never implies Super Admin access.
+- AUTH-010-K: job-title text and numeric organization level are never authorization inputs by themselves.
+- AUTH-010-L: governance organizational positions and `FOUNDATION_BOARD` account type remain distinct concepts unless an explicit mapping specification is approved.
