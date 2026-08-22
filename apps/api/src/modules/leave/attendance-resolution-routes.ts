@@ -25,6 +25,7 @@ import {
   type AnnualConversionOffer,
 } from "./domain/attendance-resolution.js";
 import { getLeavePolicy, type LeavePolicyKey } from "./domain/policy-catalog.js";
+import { SUPPORTED_SPECIAL_LEAVE_KEYS } from "./domain/special-leave-policy.js";
 import {
   calculateWorkingDays,
   decodeWorkingWeekdays,
@@ -414,7 +415,9 @@ export async function registerAttendanceResolutionRoutes(
         WHERE task.task_kind = 'validate'
           AND task.status = 'pending'
           AND leave_request.status = 'in_review'
+          AND leave_request.policy_key = ANY($1::text[])
         ORDER BY leave_request.submitted_at ASC`,
+        [[...SUPPORTED_SPECIAL_LEAVE_KEYS]],
       );
 
       const items = await Promise.all(
@@ -489,9 +492,11 @@ export async function registerAttendanceResolutionRoutes(
           leave_request.evidence_requirement AS "evidenceRequirement"
         FROM leave_request_hc_tasks task
         JOIN leave_requests leave_request ON leave_request.id = task.leave_request_id
-        WHERE task.id = $1 AND task.task_kind = 'validate'
+        WHERE task.id = $1
+          AND task.task_kind = 'validate'
+          AND leave_request.policy_key = ANY($2::text[])
         FOR UPDATE OF task, leave_request`,
-        [params.data.taskId],
+        [params.data.taskId, [...SUPPORTED_SPECIAL_LEAVE_KEYS]],
       );
       const task = result.rows[0];
       if (!task) {
