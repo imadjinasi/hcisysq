@@ -113,12 +113,16 @@ async function readJson<T>(response: Response): Promise<T> {
 }
 
 export async function getEmployeeLeaveSummary(): Promise<EmployeeLeaveSummary> {
-  return readJson(
+  const summary = await readJson<EmployeeLeaveSummary>(
     await fetch("/api/leave/me/summary", {
       credentials: "include",
       headers: { Accept: "application/json" },
     }),
   );
+  return {
+    ...summary,
+    requests: summary.requests.filter((request) => request.policyKey === "annual"),
+  };
 }
 
 export async function previewAnnualLeave(input: {
