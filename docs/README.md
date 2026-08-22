@@ -4,18 +4,23 @@ Dokumentasi ini adalah spesifikasi kerja, bukan arsip pasif. Perubahan perilaku 
 
 ## Urutan membaca
 
-1. `product/vision.md`
+Untuk pekerjaan setelah MVP freeze, mulai dari checkpoint agar tidak mengulang audit yang sudah selesai:
+
+1. `product/mvp-release-checkpoint.md`
 2. `product/mvp.md`
 3. `product/scope.md`
 4. `product/feature-parity.yaml`
-5. `domain/glossary.md`
-6. `domain/access-model.md`
-7. `domain/roles-permissions.md`
-8. specification/workflow modul yang akan dikerjakan, termasuk `domain/employee-import.md` untuk EMP-004
-9. `architecture/system-context.md`
-10. ADR yang relevan
-11. `api/openapi.yaml`
-12. security dan testing guidance
+5. `product/vision.md`
+6. `domain/glossary.md`
+7. `domain/access-model.md`
+8. `domain/roles-permissions.md`
+9. specification/workflow modul yang akan dikerjakan, termasuk `domain/employee-import.md` untuk EMP-004
+10. `architecture/system-context.md`
+11. ADR yang relevan
+12. `api/openapi.yaml`
+13. security dan testing guidance
+
+`product/mvp-release-checkpoint.md` adalah durable evidence anchor untuk MVP yang diverifikasi pada 2026-08-22. Jangan menganggap docs-only commit setelah verified application SHA sebagai aplikasi baru yang sudah diuji/deploy. Jika runtime code berubah setelah checkpoint, lakukan targeted verification untuk area yang terdampak dan buat checkpoint baru bila perlu.
 
 Untuk frontend, baca juga:
 
@@ -30,6 +35,8 @@ Untuk frontend, baca juga:
 - `PROPOSED` — keputusan diajukan, belum menjadi aturan wajib.
 - `ACCEPTED` — menjadi acuan implementasi.
 - `ACTIVE` — foundation/direction yang sedang berlaku.
+- `VERIFIED MVP BASELINE` — perilaku/slice MVP sudah memiliki implementation + verification evidence yang dirujuk checkpoint; bukan pernyataan Pilot/Production Ready.
+- `VERIFIED COMPLETE` — completion criteria dokumen tersebut sudah dipenuhi pada checkpoint yang disebutkan.
 - `SUPERSEDED` — digantikan dokumen/ADR lain.
 
 ## Konvensi specification ID
@@ -73,3 +80,5 @@ Sebuah item siap diimplementasikan ketika minimal memiliki:
 ## Pemeliharaan
 
 Dokumentasi tidak boleh dibiarkan tertinggal dari implementasi. Pull request yang mengubah perilaku tanpa memperbarui spesifikasi dianggap belum selesai.
+
+Setelah MVP freeze, perubahan post-MVP tidak boleh diam-diam mengubah frozen domain boundary. Jika requirement baru bertentangan dengan checkpoint/specification yang sudah verified, ubah specification secara eksplisit dan catat migration/authorization/regression impact-nya.
