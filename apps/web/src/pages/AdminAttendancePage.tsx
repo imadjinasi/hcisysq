@@ -6,7 +6,7 @@ import {
   Trash2,
   UserRound,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 import { AdminShell } from "@/layouts/AdminShell";
 import {
@@ -124,7 +124,7 @@ export function AdminAttendancePage() {
     };
   }, []);
 
-  const loadAttendance = async (selectedEmployeeId: string) => {
+  const loadAttendance = useCallback(async (selectedEmployeeId: string) => {
     const requestSequence = ++attendanceRequestSequence.current;
     if (!selectedEmployeeId) {
       setAttendance(null);
@@ -153,7 +153,7 @@ export function AdminAttendancePage() {
         setLoadingAttendance(false);
       }
     }
-  };
+  }, []);
 
   useEffect(() => {
     setAttendance(null);
@@ -162,7 +162,7 @@ export function AdminAttendancePage() {
     setCheckOutAt("");
     setNote("");
     void loadAttendance(employeeId);
-  }, [employeeId]);
+  }, [employeeId, loadAttendance]);
 
   const selectedRecord = useMemo(
     () => attendance?.items.find((item) => item.attendanceDate === attendanceDate) ?? null,
