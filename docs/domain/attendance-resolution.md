@@ -1,6 +1,6 @@
 # Attendance Resolution after Leave Validation
 
-**Status:** ACTIVE IMPLEMENTATION BASELINE  
+**Status:** VERIFIED MVP BASELINE  
 **Specification:** LEAVE-007  
 **Related:** LEAVE-003, LEAVE-005, LEAVE-006, APR-001
 
@@ -99,6 +99,8 @@ Only the third action expands date-level controls. Human Capital checks the date
 
 The resolution queue then presents a small set of explicit actions instead of payroll or disciplinary jargon.
 
+Global HC queue access requires the effective organization-scoped Human Capital capability. A unit-scoped `human_capital` assignment does not grant organization-wide resolution access.
+
 ## Employee GUI
 
 Employees are not expected to understand resolver/workflow terminology.
@@ -114,6 +116,12 @@ Sisa periode sebelum konversi: 2 hari
 ```
 
 Rejecting the proposal returns the case to Human Capital for another resolution. It does not silently apply another consequence.
+
+## Verification
+
+Final isolated synthetic browser UAT verified a partial-administration path that created an Attendance Resolution case and completed a Human Capital resolution using synthetic data only. Organization-scoped HC positive access and unit-scoped HC denial were both verified.
+
+Production/pre-release post-fix UAT also verified that a `403` on the HC resolution queue terminates the loading state and renders a clear error rather than leaving an infinite spinner.
 
 ## Audit and invariants
 
