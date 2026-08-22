@@ -148,10 +148,12 @@ export async function registerPlannedEvidenceRoutes(
             request.evidence_requirement AS "evidenceRequirement"
           FROM leave_requests request
           JOIN accounts account ON account.employee_id = request.employee_id
+          JOIN employees employee ON employee.id = request.employee_id
           WHERE request.id = $1
             AND account.id = $2
             AND account.principal_type = 'EMPLOYEE'
             AND account.status = 'active'
+            AND employee.status = 'active'
             AND request.policy_key = ANY($3::text[])
           FOR UPDATE OF request`,
           [params.data.requestId, principal.id, [...SUPPORTED_PLANNED_LEAVE_KEYS]],
