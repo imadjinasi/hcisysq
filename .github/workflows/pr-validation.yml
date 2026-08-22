@@ -1,0 +1,81 @@
+# PR validation for HCIS integration branches.
+name: Pull Request Validation
+
+on:
+  pull_request:
+    branches:
+      - agent/uat-fixes
+
+permissions:
+  contents: read
+
+env:
+  CI_PG_USER: hcis
+  CI_PG_PASSWORD: hcis_ci_password
+  CI_AUTH_ENCRYPTION_KEY: "1111111111111111111111111111111111111111111111111111111111111111"
+
+jobs:
+  validate:
+    name: Typecheck, lint, test, build, migrate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: hcis
+          POSTGRES_PASSWORD: hcis_ci_password
+          POSTGRES_DB: hcis_pr
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hcis -d hcis_pr"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: test
+      HOST: 127.0.0.1
+      PORT: 3001
+      DATABASE_URL: postgres://hcis:hcis_ci_password@127.0.0.1:5432/hcis_pr
+      AUTH_ENCRYPTION_KEY: "1111111111111111111111111111111111111111111111111111111111111111"
+      AUTH_SESSION_TTL_HOURS: 8
+
+    steps:
+      - name: Checkout PR tree
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create synthetic API environment
+        run: |
+          cat > apps/api/.env.local <<'EOF'
+          NODE_ENV=test
+          HOST=127.0.0.1
+          PORT=3001
+          DATABASE_URL=postgres://hcis:hcis_ci_password@127.0.0.1:5432/hcis_pr
+          AUTH_ENCRYPTION_KEY=1111111111111111111111111111111111111111111111111111111111111111
+          AUTH_SESSION_TTL_HOURS=8
+          EOF
+
+      - name: Run clean migration
+        run: npm run migrate:api
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm run test
+
+      - name: Build
+        run: npm run build
