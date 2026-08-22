@@ -1,6 +1,6 @@
 # Organization Mapping and Approval Context
 
-**Status:** VERIFIED MVP BASELINE — ORG-004 SUCCESSOR PLANNED  
+**Status:** VERIFIED MVP BASELINE — ORG-004 SUCCESSOR IMPLEMENTED LOCALLY, LEGACY DEFAULT PRESERVED
 **Specification:** ORG-002  
 **Related:** ORG-001, ORG-004, APR-001, AUTH-010, EMP-001, LEAVE-001
 
@@ -26,9 +26,9 @@ Unit
 
 This model remains the authoritative description of the already-implemented MVP behavior until ORG-004 is implemented and activated.
 
-The accepted post-MVP successor is `docs/domain/dynamic-organization-structure.md` (ORG-004). ORG-004 will move normal administration toward effective-dated organizational nodes, authority-bearing positions, incumbencies, acting assignments, structural vacancy fallback, and a visual Organization Designer.
+The implemented-local post-MVP successor is `docs/domain/dynamic-organization-structure.md` (ORG-004). ORG-004 moves normal administration toward effective-dated organizational nodes, authority-bearing positions, incumbencies, acting assignments, structural vacancy fallback, and a visual Organization Designer.
 
-**Do not treat ORG-004 as current runtime behavior yet.** Migration must be incremental and must not rewrite existing approval snapshots.
+**Do not treat ORG-004 as deployed or authoritative runtime behavior yet.** The additive migration defaults to `LEGACY`; activation is explicit and must not rewrite existing approval snapshots.
 
 ## Current-state organization model
 

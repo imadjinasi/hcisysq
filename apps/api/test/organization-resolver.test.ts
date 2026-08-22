@@ -1,0 +1,468 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  jakartaBusinessDate,
+  OrganizationAuthorityResolver,
+  OrganizationDraftService,
+  OrganizationResolutionError,
+  OrganizationRolloutService,
+  type AuthorityEligibilityResult,
+  type OrganizationRolloutMode,
+  type OrganizationSnapshot,
+  type PostgresOrganizationRepository,
+} from "../src/modules/organization/index.js";
+
+const effectiveFrom = "2026-01-01";
+const employeeIds = {
+  staff: "employee-staff",
+  staffTwo: "employee-staff-two",
+  head: "employee-head",
+  director: "employee-director",
+  acting: "employee-acting",
+  secretary: "employee-secretary",
+  chair: "employee-chair",
+};
+
+function snapshot(
+  overrides: Partial<OrganizationSnapshot> = {},
+  id = "change-set-current",
+): OrganizationSnapshot {
+  return {
+    changeSet: {
+      id,
+      name: "Synthetic structure",
+      effectiveOn: effectiveFrom,
+      status: "PUBLISHED",
+      baseChangeSetId: null,
+      validationReport: { valid: true, issues: [] },
+      createdByAccountId: "admin",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      validatedAt: "2026-01-01T00:00:00.000Z",
+      publishedAt: "2026-01-01T00:00:00.000Z",
+    },
+    nodes: [
+      node("node-root", null, 0),
+      node("node-team", "node-root", 0),
+    ],
+    jobProfiles: [],
+    positions: [
+      position("position-director", "node-root", null),
+      position("position-head", "node-team", "position-director"),
+    ],
+    memberships: [
+      membership("membership-staff", employeeIds.staff),
+      membership("membership-staff-two", employeeIds.staffTwo),
+    ],
+    incumbencies: [
+      incumbency("incumbency-head", "position-head", employeeIds.head, "PRIMARY"),
+      incumbency("incumbency-director", "position-director", employeeIds.director, "PRIMARY"),
+    ],
+    authorityBindings: [
+      binding("binding-leader", "NODE", "node-team", "LEADER", "position-head"),
+      binding("binding-unit", "NODE", "node-team", "UNIT_APPROVER", "position-director"),
+    ],
+    reportingOverrides: [],
+    ...overrides,
+  };
+}
+
+function node(stableKey: string, parentNodeKey: string | null, visualRankOffset: number) {
+  return {
+    id: `row-${stableKey}`,
+    stableKey,
+    name: stableKey,
+    nodeType: "team",
+    parentNodeKey,
+    active: true,
+    effectiveFrom,
+    effectiveTo: null,
+    visualRankOffset,
+    integrationCode: null,
+  };
+}
+
+function position(
+  stableKey: string,
+  nodeKey: string,
+  parentPositionKey: string | null,
+  visualRankOffset = 0,
+) {
+  return {
+    id: `row-${stableKey}`,
+    stableKey,
+    nodeKey,
+    title: stableKey,
+    parentPositionKey,
+    singleIncumbent: true,
+    vacancyPolicy: "CLIMB_TO_PARENT" as const,
+    active: true,
+    effectiveFrom,
+    effectiveTo: null,
+    visualRankOffset,
+  };
+}
+
+function membership(id: string, employeeId: string) {
+  return {
+    id,
+    employeeId,
+    nodeKey: "node-team",
+    jobProfileKey: null,
+    isPrimary: true,
+    effectiveFrom,
+    effectiveTo: null,
+  };
+}
+
+function incumbency(
+  id: string,
+  positionKey: string,
+  employeeId: string,
+  kind: "PRIMARY" | "ACTING",
+  from = effectiveFrom,
+  to: string | null = null,
+) {
+  return {
+    id,
+    positionKey,
+    employeeId,
+    kind,
+    effectiveFrom: from,
+    effectiveTo: to,
+    reason: kind === "ACTING" ? "Synthetic acting mandate" : null,
+  };
+}
+
+function binding(
+  id: string,
+  subjectKind: "NODE" | "POSITION",
+  subjectKey: string,
+  bindingType: "SUPERVISORY_PARENT" | "LEADER" | "UNIT_APPROVER" | "GOVERNANCE_APPROVER" | "OVERSIGHT_PARENT",
+  targetPositionKey: string,
+) {
+  return {
+    id,
+    subjectKind,
+    subjectKey,
+    bindingType,
+    targetPositionKey,
+    vacancyPolicy: "CLIMB_TO_PARENT" as const,
+    effectiveFrom,
+    effectiveTo: null,
+  };
+}
+
+function resolver(
+  structure: OrganizationSnapshot,
+  ineligible = new Set<string>(),
+): OrganizationAuthorityResolver {
+  return new OrganizationAuthorityResolver(
+    { loadEffectiveSnapshot: async () => structure },
+    {
+      eligibilityValidator: {
+        validate: async (employeeId): Promise<AuthorityEligibilityResult> => ineligible.has(employeeId)
+          ? { eligible: false, reason: "EMPLOYEE_NOT_ACTIVE" }
+          : { eligible: true, reason: null },
+      },
+    },
+  );
+}
+
+describe("ORG-004 authority resolver", () => {
+  it("resolves one structural team leader for many members", async () => {
+    const subject = resolver(snapshot());
+    await expect(subject.resolveDirectManager({ requesterEmployeeId: employeeIds.staff, effectiveDate: "2026-08-22" }))
+      .resolves.toMatchObject({ employeeId: employeeIds.head, source: "DIRECT_MANAGER" });
+    await expect(subject.resolveDirectManager({ requesterEmployeeId: employeeIds.staffTwo, effectiveDate: "2026-08-22" }))
+      .resolves.toMatchObject({ employeeId: employeeIds.head });
+  });
+
+  it("gives an effective employee reporting override precedence", async () => {
+    const structure = snapshot({
+      reportingOverrides: [{
+        id: "override", employeeId: employeeIds.staff,
+        managerPositionKey: null, managerEmployeeId: employeeIds.director,
+        reason: "Documented exception", effectiveFrom, effectiveTo: null,
+      }],
+    });
+    await expect(resolver(structure).resolveDirectManager({ requesterEmployeeId: employeeIds.staff, effectiveDate: "2026-08-22" }))
+      .resolves.toMatchObject({ employeeId: employeeIds.director, incumbentKind: "OVERRIDE" });
+  });
+
+  it("climbs past one or two vacant positions", async () => {
+    const oneVacancy = snapshot({
+      incumbencies: [incumbency("director", "position-director", employeeIds.director, "PRIMARY")],
+    });
+    await expect(resolver(oneVacancy).resolveDirectManager({ requesterEmployeeId: employeeIds.staff, effectiveDate: "2026-08-22" }))
+      .resolves.toMatchObject({ employeeId: employeeIds.director });
+
+    const twoVacancies = snapshot({
+      positions: [
+        position("position-director", "node-root", null),
+        position("position-affairs", "node-root", "position-director"),
+        position("position-head", "node-team", "position-affairs"),
+      ],
+      incumbencies: [incumbency("director", "position-director", employeeIds.director, "PRIMARY")],
+    });
+    await expect(resolver(twoVacancies).resolveDirectManager({ requesterEmployeeId: employeeIds.staff, effectiveDate: "2026-08-22" }))
+      .resolves.toMatchObject({ employeeId: employeeIds.director });
+  });
+
+  it("uses an effective acting incumbent and ignores an expired acting period", async () => {
+    const structure = snapshot({
+      incumbencies: [
+        incumbency("acting", "position-head", employeeIds.acting, "ACTING", "2026-05-01", "2026-06-30"),
+        incumbency("director", "position-director", employeeIds.director, "PRIMARY"),
+      ],
+    });
+    await expect(resolver(structure).resolveDirectManager({ requesterEmployeeId: employeeIds.staff, effectiveDate: "2026-06-01" }))
+      .resolves.toMatchObject({ employeeId: employeeIds.acting, incumbentKind: "ACTING" });
+    await expect(resolver(structure).resolveDirectManager({ requesterEmployeeId: employeeIds.staff, effectiveDate: "2026-07-01" }))
+      .resolves.toMatchObject({ employeeId: employeeIds.director });
+  });
+
+  it("detects cycles and bounded traversal safely", async () => {
+    const structure = snapshot({
+      positions: [
+        position("position-director", "node-root", "position-head"),
+        position("position-head", "node-team", "position-director"),
+      ],
+      incumbencies: [],
+    });
+    await expect(resolver(structure).resolveDirectManager({ requesterEmployeeId: employeeIds.staff, effectiveDate: "2026-08-22" }))
+      .rejects.toMatchObject({ code: "AUTHORITY_CYCLE" });
+  });
+
+  it("skips an inactive incumbent only when vacancy climbing permits it", async () => {
+    const structure = snapshot();
+    await expect(resolver(structure, new Set([employeeIds.head])).resolveDirectManager({
+      requesterEmployeeId: employeeIds.staff,
+      effectiveDate: "2026-08-22",
+    })).resolves.toMatchObject({ employeeId: employeeIds.director });
+
+    structure.positions[1] = { ...structure.positions[1]!, vacancyPolicy: "BLOCK" };
+    structure.authorityBindings[0] = { ...structure.authorityBindings[0]!, vacancyPolicy: "BLOCK" };
+    await expect(resolver(structure, new Set([employeeIds.head])).resolveDirectManager({
+      requesterEmployeeId: employeeIds.staff,
+      effectiveDate: "2026-08-22",
+    })).rejects.toMatchObject({ code: "AUTHORITY_INELIGIBLE" });
+  });
+
+  it("deduplicates a concrete approver while preserving both semantic sources", async () => {
+    const structure = snapshot({
+      authorityBindings: [
+        binding("leader", "NODE", "node-team", "LEADER", "position-director"),
+        binding("unit", "NODE", "node-team", "UNIT_APPROVER", "position-director"),
+      ],
+    });
+    const result = await resolver(structure).resolveLineAuthorities({
+      requesterEmployeeId: employeeIds.staff,
+      effectiveDate: "2026-08-22",
+    });
+    expect(result.authorities).toHaveLength(1);
+    expect(result.authorities[0]).toMatchObject({
+      employeeId: employeeIds.director,
+      source: "DIRECT_MANAGER",
+      sources: ["DIRECT_MANAGER", "UNIT_APPROVER"],
+    });
+  });
+
+  it("never uses node or position visual offsets in resolution", async () => {
+    const normal = snapshot();
+    const offset = snapshot({
+      nodes: [node("node-root", null, 0), node("node-team", "node-root", 2)],
+      positions: [
+        position("position-director", "node-root", null, 4),
+        position("position-head", "node-team", "position-director", 3),
+      ],
+    });
+    const input = { requesterEmployeeId: employeeIds.staff, effectiveDate: "2026-08-22" };
+    const first = await resolver(normal).resolveLineAuthorities(input);
+    const second = await resolver(offset).resolveLineAuthorities(input);
+    expect(second.authorities).toEqual(first.authorities);
+  });
+
+  it("resolves historical incumbents and does not activate a future snapshot early", async () => {
+    const historical = snapshot({
+      incumbencies: [
+        incumbency("old", "position-head", employeeIds.head, "PRIMARY"),
+        incumbency("director", "position-director", employeeIds.director, "PRIMARY"),
+      ],
+    }, "historical");
+    const future = snapshot({
+      incumbencies: [
+        incumbency("new", "position-head", employeeIds.acting, "PRIMARY"),
+        incumbency("director", "position-director", employeeIds.director, "PRIMARY"),
+      ],
+    }, "future");
+    const subject = new OrganizationAuthorityResolver(
+      { loadEffectiveSnapshot: async (date) => date < "2027-01-01" ? historical : future },
+      { eligibilityValidator: { validate: async () => ({ eligible: true, reason: null }) } },
+    );
+    await expect(subject.resolveDirectManager({ requesterEmployeeId: employeeIds.staff, effectiveDate: "2026-12-31" }))
+      .resolves.toMatchObject({ employeeId: employeeIds.head });
+    await expect(subject.resolveDirectManager({ requesterEmployeeId: employeeIds.staff, effectiveDate: "2027-01-01" }))
+      .resolves.toMatchObject({ employeeId: employeeIds.acting });
+  });
+
+  it("uses governance and oversight bindings without title checks", async () => {
+    const structure = snapshot({
+      positions: [
+        position("position-director", "node-root", null),
+        position("position-secretary", "node-root", null),
+        position("position-chair", "node-root", null),
+      ],
+      memberships: [membership("director-membership", employeeIds.director)],
+      incumbencies: [
+        incumbency("director", "position-director", employeeIds.director, "PRIMARY"),
+        incumbency("secretary", "position-secretary", employeeIds.secretary, "PRIMARY"),
+        incumbency("chair", "position-chair", employeeIds.chair, "PRIMARY"),
+      ],
+      authorityBindings: [
+        binding("governance", "POSITION", "position-director", "GOVERNANCE_APPROVER", "position-secretary"),
+        binding("oversight", "POSITION", "position-secretary", "OVERSIGHT_PARENT", "position-chair"),
+      ],
+    });
+    const subject = resolver(structure);
+    const line = await subject.resolveLineAuthorities({
+      requesterEmployeeId: employeeIds.director,
+      effectiveDate: "2026-08-22",
+    });
+    expect(line.governanceApplied).toBe(true);
+    expect(line.authorities).toEqual([
+      expect.objectContaining({ employeeId: employeeIds.secretary, source: "GOVERNANCE_APPROVER" }),
+    ]);
+    await expect(subject.resolveOversightAbove({
+      approverEmployeeId: employeeIds.secretary,
+      effectiveDate: "2026-08-22",
+    })).resolves.toMatchObject({ employeeId: employeeIds.chair, source: "OVERSIGHT_PARENT" });
+  });
+
+  it("rejects self resolution", async () => {
+    const structure = snapshot({
+      reportingOverrides: [{
+        id: "invalid-self-override", employeeId: employeeIds.staff,
+        managerPositionKey: null, managerEmployeeId: employeeIds.staff,
+        reason: "Invalid synthetic override", effectiveFrom, effectiveTo: null,
+      }],
+    });
+    await expect(resolver(structure).resolveDirectManager({
+      requesterEmployeeId: employeeIds.staff,
+      effectiveDate: "2026-08-22",
+    })).rejects.toBeInstanceOf(OrganizationResolutionError);
+  });
+
+  it("uses Asia/Jakarta when deriving the business date", () => {
+    expect(jakartaBusinessDate(new Date("2026-08-21T17:00:00.000Z"))).toBe("2026-08-22");
+  });
+});
+
+describe("ORG-004 rollout service", () => {
+  function rollout(mode: OrganizationRolloutMode, structure = snapshot()) {
+    return new OrganizationRolloutService(
+      { getRolloutMode: async () => mode },
+      resolver(structure),
+    );
+  }
+  const input = {
+    workflowKey: "leave.annual",
+    requesterEmployeeId: employeeIds.staff,
+    effectiveDate: "2026-08-22",
+    legacy: {
+      directManagerEmployeeId: employeeIds.director,
+      unitApproverEmployeeId: employeeIds.director,
+    },
+  };
+
+  it("keeps LEGACY authoritative and deduplicates semantic sources", async () => {
+    const result = await rollout("LEGACY").resolveAuthorities(input);
+    expect(result.authoritativeSource).toBe("LEGACY");
+    expect(result.authorities).toHaveLength(1);
+    expect(result.authorities[0]).toMatchObject({
+      source: "DIRECT_MANAGER",
+      sources: ["DIRECT_MANAGER", "UNIT_APPROVER"],
+    });
+  });
+
+  it("reports SHADOW differences while keeping legacy authority", async () => {
+    const result = await rollout("SHADOW").resolveAuthorities(input);
+    expect(result.authoritativeSource).toBe("LEGACY");
+    expect(result.authorities.every((item) => item.employeeId === employeeIds.director)).toBe(true);
+    expect(result.shadow?.matches).toBe(false);
+  });
+
+  it("uses STRUCTURE authoritatively and fails closed without configuration", async () => {
+    const result = await rollout("STRUCTURE").resolveAuthorities(input);
+    expect(result.authoritativeSource).toBe("STRUCTURE");
+    expect(result.authorities[0]?.employeeId).toBe(employeeIds.head);
+
+    const missing = snapshot({ authorityBindings: [] });
+    await expect(rollout("STRUCTURE", missing).resolveAuthorities(input))
+      .rejects.toMatchObject({ code: "AUTHORITY_NOT_CONFIGURED" });
+  });
+
+  it("allows UNIT_ONLY workflows without a Direct Manager", async () => {
+    const structure = snapshot({
+      authorityBindings: [binding("unit", "NODE", "node-team", "UNIT_APPROVER", "position-director")],
+    });
+    const result = await rollout("STRUCTURE", structure).resolveAuthorities({
+      ...input,
+      authorityRequirement: "UNIT_ONLY",
+      legacy: { directManagerEmployeeId: null, unitApproverEmployeeId: employeeIds.director },
+    });
+    expect(result.authorities).toEqual([
+      expect.objectContaining({ employeeId: employeeIds.director, source: "UNIT_APPROVER" }),
+    ]);
+  });
+});
+
+describe("ORG-004 draft validation and impact", () => {
+  it("rejects overlapping primary incumbencies during draft validation", async () => {
+    const draft = snapshot({
+      incumbencies: [
+        incumbency("first", "position-head", employeeIds.head, "PRIMARY", "2026-01-01", "2026-12-31"),
+        incumbency("second", "position-head", employeeIds.acting, "PRIMARY", "2026-06-01", null),
+        incumbency("director", "position-director", employeeIds.director, "PRIMARY"),
+      ],
+    });
+    draft.changeSet.status = "DRAFT";
+    draft.changeSet.validatedAt = null;
+    draft.changeSet.publishedAt = null;
+    let persistedValid: boolean | null = null;
+    const fakeRepository = {
+      loadChangeSetSnapshot: async () => draft,
+      validate: async () => ({ eligible: true, reason: null }),
+      markValidated: async (_id: string, _actor: string, report: { valid: boolean }) => {
+        persistedValid = report.valid;
+      },
+    } as unknown as PostgresOrganizationRepository;
+    const report = await new OrganizationDraftService(fakeRepository).validateDraft(draft.changeSet.id, "admin");
+    expect(report.valid).toBe(false);
+    expect(report.issues).toContainEqual(expect.objectContaining({ code: "PRIMARY_INCUMBENCY_OVERLAP" }));
+    expect(persistedValid).toBe(false);
+  });
+
+  it("reports a pure visual-offset edit as having no routing impact", async () => {
+    const before = snapshot({}, "base");
+    const draft = snapshot({
+      nodes: [node("node-root", null, 0), node("node-team", "node-root", 2)],
+      positions: [
+        position("position-director", "node-root", null, 1),
+        position("position-head", "node-team", "position-director", 3),
+      ],
+    }, "draft");
+    draft.changeSet.status = "DRAFT";
+    draft.changeSet.baseChangeSetId = before.changeSet.id;
+    draft.changeSet.validatedAt = null;
+    draft.changeSet.publishedAt = null;
+    const fakeRepository = {
+      loadChangeSetSnapshot: async (id: string) => id === draft.changeSet.id ? draft : before,
+      validate: async () => ({ eligible: true, reason: null }),
+    } as unknown as PostgresOrganizationRepository;
+    const impact = await new OrganizationDraftService(fakeRepository).previewImpact(draft.changeSet.id);
+    expect(impact.visualOnly).toBe(true);
+    expect(impact.routingImpact).toBe(false);
+    expect(impact.directManagerChanges).toEqual([]);
+    expect(impact.unitApproverChanges).toEqual([]);
+  });
+});

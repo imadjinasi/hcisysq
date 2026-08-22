@@ -13,6 +13,7 @@ import {
 import {
   LeaveApprovalConfigurationError,
   resolveLeaveLineApprovalChain,
+  snapshotResolvedLeaveAuthorities,
 } from "../src/modules/leave/domain/approval-chain.js";
 import { getLeavePolicy } from "../src/modules/leave/domain/policy-catalog.js";
 
@@ -225,6 +226,40 @@ describe("YSQ line approval resolution", () => {
         unitApproverEmployeeId: "direktur",
       }),
     ).toThrowError(LeaveApprovalConfigurationError);
+  });
+
+  it("snapshots configured governance authority without relying on a position title", () => {
+    expect(
+      snapshotResolvedLeaveAuthorities({
+        requesterEmployeeId: "requester",
+        authorities: [
+          { employeeId: "secretary-incumbent", source: "GOVERNANCE_APPROVER" },
+        ],
+      }),
+    ).toEqual([
+      {
+        employeeId: "secretary-incumbent",
+        sources: ["GOVERNANCE_APPROVER"],
+      },
+    ]);
+  });
+
+  it("defensively removes self approvals and deduplicates structural authorities", () => {
+    expect(
+      snapshotResolvedLeaveAuthorities({
+        requesterEmployeeId: "requester",
+        authorities: [
+          { employeeId: "requester", source: "UNIT_APPROVER" },
+          { employeeId: "director", source: "DIRECT_MANAGER" },
+          { employeeId: "director", source: "UNIT_APPROVER" },
+        ],
+      }),
+    ).toEqual([
+      {
+        employeeId: "director",
+        sources: ["DIRECT_MANAGER", "UNIT_APPROVER"],
+      },
+    ]);
   });
 });
 

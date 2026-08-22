@@ -347,6 +347,12 @@ function createUnpaidPreviewPool() {
     if (sql.includes("FROM leave_calendar_exceptions")) {
       return { rows: [], rowCount: 0 };
     }
+    if (sql.includes("FROM organization_change_sets")) {
+      return { rows: [], rowCount: 0 };
+    }
+    if (sql.includes("FROM organization_rollout_settings")) {
+      return { rows: [], rowCount: 0 };
+    }
     if (sql.includes("FROM employees employee") && sql.includes("employee.id = ANY")) {
       expect(values?.[0]).toEqual([U]);
       return {

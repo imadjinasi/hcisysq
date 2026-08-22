@@ -1,9 +1,58 @@
 # Dynamic Organization Structure and Authority Resolution
 
-**Status:** ACCEPTED DESIGN DIRECTION — IMPLEMENTATION NOT STARTED  
+**Status:** IMPLEMENTED AND TESTED LOCALLY — NOT DEPLOYED — NOT PRODUCTION VALIDATED
 **Specification:** ORG-004  
 **Related:** ORG-001, ORG-002, AUTH-010, APR-001, LEAVE-003, LEAVE-004  
 **Decision date:** 2026-08-22
+
+## Implementation record
+
+ORG-004 is implemented on the `agent/dynamic-organization-foundation` branch as an additive successor to ORG-002. The implementation does not seed, infer, or activate a real YSQ hierarchy and does not modify existing employee reporting fields or submitted Leave approval snapshots.
+
+### Physical persistence model
+
+Published structure is stored as complete, immutable, effective-dated snapshots:
+
+- `organization_change_sets` owns the `DRAFT -> VALIDATED -> PUBLISHED` lifecycle and scheduled `effective_on` date;
+- `organization_nodes` stores groups/units and structural parent relationships;
+- `organization_job_profiles` keeps job type separate from authority-bearing positions;
+- `organization_positions` stores seats, structural parents, vacancy policy, and presentation-only visual offset;
+- `organization_memberships` associates many employees with a group without repeated manager assignment;
+- `organization_incumbencies` stores explicit `PRIMARY` and `ACTING` assignments;
+- `organization_authority_bindings` stores supervisory, leader, Unit Approver, governance, and oversight semantics;
+- `organization_reporting_overrides` stores reasoned employee-specific exceptions;
+- `organization_rollout_settings` controls `LEGACY`, `SHADOW`, and `STRUCTURE` by workflow and optional node scope;
+- `organization_audit_events` records privileged configuration changes without copying unnecessary employee-sensitive data.
+
+The migration is additive. No synthetic employee, inferred authority, rollout row, or organization snapshot is seeded. Absence of a rollout setting resolves to `LEGACY`.
+
+### Resolver behavior
+
+The reusable backend resolver applies this precedence:
+
+1. effective employee reporting override;
+2. applicable governance binding for an incumbent requester;
+3. effective membership/position and structural leader or supervisory authority;
+4. explicit acting incumbent before vacancy fallback;
+5. configured vacancy behavior (`CLIMB_TO_PARENT`, `REQUIRE_ACTING_OR_BLOCK`, or `BLOCK`);
+6. active employee, active account, and required capability validation;
+7. self-removal, deduplication, bounded traversal, and cycle failure.
+
+Dates use the Asia/Jakarta business date when the caller does not supply an explicit date. Visual rank is excluded from every authority-resolution input.
+
+### Rollout and Leave integration
+
+- `LEGACY`: the verified ORG-002 result remains authoritative.
+- `SHADOW`: ORG-002 remains authoritative while the structural result and mismatch reason are recorded for diagnostics.
+- `STRUCTURE`: the structural resolver is authoritative and fails closed; it does not silently return to ORG-002.
+
+Leave is the first consumer. Annual and Planned Leave preserve Direct Manager then Unit Approver semantics; Unpaid Leave preserves line/governance authority followed by actual HC approval; Special Leave retains its existing notification/administrative-validation rules. Concrete people and structural explanation metadata are snapshotted at submission.
+
+After final approval, a line/governance-approved Leave request creates an idempotent informational intent for the configured oversight authority above the snapshotted final line/governance approver. The resolver is not based on a later HC validator/approver. Oversight resolution and outbox insertion are isolated so failure cannot roll back or repeat the approval decision.
+
+### Deployment and deferred operational work
+
+This implementation has not been deployed and has not been validated with production/pre-release employee data. Before real activation, authorized YSQ owners must configure and review the real structure, map governance principals to active employee accounts/capabilities, run SHADOW comparison, approve selected workflow/node activation, and complete targeted pilot/security review. Production notification delivery adapters remain outside ORG-004.
 
 ## Purpose
 

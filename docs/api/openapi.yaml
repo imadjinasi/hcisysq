@@ -15,6 +15,7 @@ tags:
   - name: Employees
   - name: Leave
   - name: Approvals
+  - name: Organization
 
 paths:
   /health:
@@ -231,6 +232,304 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
 
+  /admin/organization/designer:
+    get:
+      tags: [Organization]
+      operationId: getOrganizationDesigner
+      parameters:
+        - name: effectiveDate
+          in: query
+          schema: { type: string, format: date }
+        - name: draftId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Effective published chart or editable draft chart
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrganizationDesignerView' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/organization/designer/employees:
+    get:
+      tags: [Organization]
+      operationId: listOrganizationDesignerEmployees
+      responses:
+        '200': { description: Employee options for membership and incumbency }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/organization/designer/drafts:
+    post:
+      tags: [Organization]
+      operationId: createOrganizationDraft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, effectiveOn]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 160 }
+                effectiveOn: { type: string, format: date }
+      responses:
+        '201':
+          description: Draft created from the latest effective published snapshot, or empty when none exists
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrganizationDraft' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/organization/designer/drafts/{draftId}/nodes:
+    post:
+      tags: [Organization]
+      operationId: createOrganizationNode
+      parameters: [{ $ref: '#/components/parameters/DraftId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrganizationNodeInput' }
+      responses:
+        '201': { description: Organizational group created in the draft }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: Draft is not editable }
+
+  /admin/organization/designer/drafts/{draftId}/nodes/{itemId}:
+    patch:
+      tags: [Organization]
+      operationId: updateOrganizationNode
+      parameters:
+        - { $ref: '#/components/parameters/DraftId' }
+        - name: itemId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrganizationNodePatch' }
+      responses:
+        '200': { description: Organizational group updated within the draft }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: Draft is not editable }
+
+  /admin/organization/designer/drafts/{draftId}/positions:
+    post:
+      tags: [Organization]
+      operationId: createOrganizationPosition
+      parameters: [{ $ref: '#/components/parameters/DraftId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrganizationPositionInput' }
+      responses:
+        '201': { description: Authority-bearing position created in the draft }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: Draft is not editable }
+
+  /admin/organization/designer/drafts/{draftId}/positions/{itemId}:
+    patch:
+      tags: [Organization]
+      operationId: updateOrganizationPosition
+      parameters:
+        - { $ref: '#/components/parameters/DraftId' }
+        - name: itemId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrganizationPositionPatch' }
+      responses:
+        '200': { description: Structural position updated within the draft }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: Draft is not editable }
+
+  /admin/organization/designer/drafts/{draftId}/memberships:
+    put:
+      tags: [Organization]
+      operationId: replaceOrganizationMemberships
+      parameters: [{ $ref: '#/components/parameters/DraftId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nodeKey, employeeIds, effectiveFrom]
+              properties:
+                nodeKey: { type: string, format: uuid }
+                employeeIds: { type: array, maxItems: 500, items: { type: string, format: uuid } }
+                effectiveFrom: { type: string, format: date }
+                effectiveTo: { type: [string, 'null'], format: date }
+      responses:
+        '204': { description: Effective memberships replaced for the selected group }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/organization/designer/drafts/{draftId}/incumbencies:
+    put:
+      tags: [Organization]
+      operationId: replaceOrganizationIncumbencies
+      parameters: [{ $ref: '#/components/parameters/DraftId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [positionKey, effectiveFrom]
+              properties:
+                positionKey: { type: string, format: uuid }
+                primaryEmployeeId: { type: [string, 'null'], format: uuid }
+                actingEmployeeId: { type: [string, 'null'], format: uuid }
+                actingFrom: { type: [string, 'null'], format: date }
+                actingTo: { type: [string, 'null'], format: date }
+                effectiveFrom: { type: string, format: date }
+      responses:
+        '204': { description: Primary, vacant, and explicit acting state replaced }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/organization/designer/drafts/{draftId}/authority-bindings:
+    post:
+      tags: [Organization]
+      operationId: createOrganizationAuthorityBinding
+      parameters: [{ $ref: '#/components/parameters/DraftId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrganizationAuthorityBindingInput' }
+      responses:
+        '201': { description: Semantic authority relationship created }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/organization/designer/drafts/{draftId}/reporting-overrides:
+    post:
+      tags: [Organization]
+      operationId: createOrganizationReportingOverride
+      parameters: [{ $ref: '#/components/parameters/DraftId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [employeeId, managerPositionKey, reason, effectiveFrom]
+              properties:
+                employeeId: { type: string, format: uuid }
+                managerPositionKey: { type: string, format: uuid }
+                reason: { type: string, minLength: 1, maxLength: 500 }
+                effectiveFrom: { type: string, format: date }
+                effectiveTo: { type: [string, 'null'], format: date }
+      responses:
+        '201': { description: Reasoned effective reporting exception created }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/organization/designer/drafts/{draftId}/validate:
+    post:
+      tags: [Organization]
+      operationId: validateOrganizationDraft
+      parameters: [{ $ref: '#/components/parameters/DraftId' }]
+      responses:
+        '200':
+          description: Structural, authority, effective-date, and incumbent validation report
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrganizationValidationReport' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/organization/designer/drafts/{draftId}/impact:
+    get:
+      tags: [Organization]
+      operationId: previewOrganizationImpact
+      parameters: [{ $ref: '#/components/parameters/DraftId' }]
+      responses:
+        '200':
+          description: Authority-routing and visual-only impact preview
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrganizationImpactPreview' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/organization/designer/drafts/{draftId}/resolution-preview:
+    post:
+      tags: [Organization]
+      operationId: previewOrganizationResolution
+      parameters: [{ $ref: '#/components/parameters/DraftId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [employeeId, workflowKey, effectiveDate]
+              properties:
+                employeeId: { type: string, format: uuid }
+                workflowKey: { type: string }
+                effectiveDate: { type: string, format: date }
+      responses:
+        '200': { description: Concrete structural authority preview }
+        '409': { description: Fail-closed structural configuration error }
+
+  /admin/organization/designer/drafts/{draftId}/publish:
+    post:
+      tags: [Organization]
+      operationId: publishOrganizationDraft
+      parameters: [{ $ref: '#/components/parameters/DraftId' }]
+      responses:
+        '200':
+          description: Validated snapshot published; a future snapshot does not activate early
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OrganizationDraft' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: Draft has not passed validation }
+
+  /admin/organization/rollout:
+    get:
+      tags: [Organization]
+      operationId: getOrganizationRollout
+      responses:
+        '200': { description: Latest rollout configuration; LEGACY when none exists }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    patch:
+      tags: [Organization]
+      operationId: updateOrganizationRollout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mode]
+              properties:
+                mode: { type: string, enum: [LEGACY, SHADOW, STRUCTURE] }
+                workflowKey: { type: string, default: LEAVE }
+                organizationalNodeKey: { type: [string, 'null'], format: uuid }
+                effectiveFrom: { type: string, format: date }
+                effectiveTo: { type: [string, 'null'], format: date }
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        '200': { description: Additive effective rollout configuration created and audited }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
 components:
   parameters:
     Cursor:
@@ -254,6 +553,11 @@ components:
       schema:
         type: string
         format: uuid
+    DraftId:
+      name: draftId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
 
   responses:
     Unauthenticated:
@@ -282,6 +586,117 @@ components:
             $ref: '#/components/schemas/ValidationProblem'
 
   schemas:
+    OrganizationDraft:
+      type: object
+      required: [id, name, effectiveOn, status, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        effectiveOn: { type: string, format: date }
+        status: { type: string, enum: [DRAFT, VALIDATED, PUBLISHED] }
+        validationReport: { oneOf: [{ $ref: '#/components/schemas/OrganizationValidationReport' }, { type: 'null' }] }
+        createdAt: { type: string, format: date-time }
+        validatedAt: { type: [string, 'null'], format: date-time }
+        publishedAt: { type: [string, 'null'], format: date-time }
+
+    OrganizationNodeInput:
+      type: object
+      required: [name, nodeType]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 160 }
+        nodeType: { type: string, minLength: 1, maxLength: 80 }
+        parentNodeKey: { type: [string, 'null'], format: uuid }
+        visualRankOffset: { type: integer, minimum: 0, maximum: 10, default: 0 }
+        integrationCode: { type: [string, 'null'] }
+
+    OrganizationNodePatch:
+      type: object
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 160 }
+        nodeType: { type: string, minLength: 1, maxLength: 80 }
+        parentNodeKey: { type: [string, 'null'], format: uuid }
+        visualRankOffset: { type: integer, minimum: 0, maximum: 10 }
+        integrationCode: { type: [string, 'null'] }
+        active: { type: boolean }
+
+    OrganizationPositionInput:
+      type: object
+      required: [nodeKey, title]
+      properties:
+        nodeKey: { type: string, format: uuid }
+        title: { type: string, minLength: 1, maxLength: 160 }
+        parentPositionKey: { type: [string, 'null'], format: uuid }
+        singleIncumbent: { type: boolean, default: true }
+        vacancyPolicy: { type: string, enum: [CLIMB_TO_PARENT, REQUIRE_ACTING_OR_BLOCK, BLOCK] }
+        visualRankOffset: { type: integer, minimum: 0, maximum: 10, default: 0 }
+
+    OrganizationPositionPatch:
+      type: object
+      minProperties: 1
+      properties:
+        nodeKey: { type: string, format: uuid }
+        title: { type: string, minLength: 1, maxLength: 160 }
+        parentPositionKey: { type: [string, 'null'], format: uuid }
+        singleIncumbent: { type: boolean }
+        vacancyPolicy: { type: string, enum: [CLIMB_TO_PARENT, REQUIRE_ACTING_OR_BLOCK, BLOCK] }
+        visualRankOffset: { type: integer, minimum: 0, maximum: 10 }
+        active: { type: boolean }
+
+    OrganizationAuthorityBindingInput:
+      type: object
+      required: [sourceType, sourceKey, authorityType, targetPositionKey, vacancyPolicy, effectiveFrom]
+      properties:
+        sourceType: { type: string, enum: [NODE, POSITION] }
+        sourceKey: { type: string, format: uuid }
+        authorityType: { type: string, enum: [SUPERVISORY_PARENT, LEADER, UNIT_APPROVER, GOVERNANCE_APPROVER, OVERSIGHT_PARENT] }
+        targetPositionKey: { type: string, format: uuid }
+        vacancyPolicy: { type: string, enum: [CLIMB_TO_PARENT, REQUIRE_ACTING_OR_BLOCK, BLOCK] }
+        effectiveFrom: { type: string, format: date }
+        effectiveTo: { type: [string, 'null'], format: date }
+
+    OrganizationValidationReport:
+      type: object
+      required: [valid, issues]
+      properties:
+        valid: { type: boolean }
+        issues:
+          type: array
+          items:
+            type: object
+            required: [code, message]
+            properties:
+              code: { type: string }
+              message: { type: string }
+              severity: { type: string, enum: [ERROR, WARNING] }
+              itemKey: { type: [string, 'null'] }
+
+    OrganizationImpactPreview:
+      type: object
+      required: [directManagerChanges, unitApproverChanges, authorityPathsAffected, vacantAuthorities, unresolvedEmployees, visualOnlyChanges, noApprovalRoutingImpact]
+      properties:
+        directManagerChanges: { type: array, items: { type: object } }
+        unitApproverChanges: { type: array, items: { type: object } }
+        authorityPathsAffected: { type: array, items: { type: object } }
+        vacantAuthorities: { type: array, items: { type: object } }
+        unresolvedEmployees: { type: array, items: { type: object } }
+        visualOnlyChanges: { type: array, items: { type: object } }
+        noApprovalRoutingImpact: { type: boolean }
+
+    OrganizationDesignerView:
+      type: object
+      required: [viewDate, mode, nodes, positions, memberships, assignments, bindings, reportingOverrides]
+      properties:
+        viewDate: { type: string, format: date }
+        mode: { type: string, enum: [HISTORICAL, CURRENT, FUTURE, DRAFT] }
+        draft: { oneOf: [{ $ref: '#/components/schemas/OrganizationDraft' }, { type: 'null' }] }
+        nodes: { type: array, items: { type: object } }
+        positions: { type: array, items: { type: object } }
+        memberships: { type: array, items: { type: object } }
+        assignments: { type: array, items: { type: object } }
+        bindings: { type: array, items: { type: object } }
+        reportingOverrides: { type: array, items: { type: object } }
+
     Session:
       type: object
       required: [actor, permissions]

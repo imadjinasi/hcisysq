@@ -1,6 +1,6 @@
 # Approval Engine
 
-**Status:** ACCEPTED — ORG-004 EXTENSION PLANNED  
+**Status:** ACCEPTED — ORG-004 EXTENSION IMPLEMENTED LOCALLY, NOT DEPLOYED
 **Specification:** APR-001  
 **Related:** ORG-002, ORG-004
 
@@ -73,7 +73,7 @@ Step 2 -> Siti
 
 The stored approval steps are `Budi -> Siti`, not a live query that keeps following organization changes.
 
-## ORG-004 planned structural resolvers
+## ORG-004 structural resolvers
 
 ORG-004 introduces the accepted direction for structure-driven authority resolution.
 
@@ -293,9 +293,9 @@ Notification is not the source of truth for approval.
 - notification delivery may be retried;
 - retry must not repeat the decision.
 
-### Planned one-level-above line/governance notification
+### One-level-above line/governance notification
 
-Accepted planning rule for leave workflows that contain line/governance approval:
+Implemented ORG-004 rule for leave workflows that contain line/governance approval:
 
 > After the **overall request reaches final `approved`**, notify one structural layer above the **final line/governance approver**.
 

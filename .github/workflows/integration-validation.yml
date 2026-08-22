@@ -175,6 +175,7 @@ jobs:
           0013_planned_unpaid_leave.sql
           0017_payslip_mvp.sql
           0018_payslip_published_immutability.sql
+          0019_dynamic_organization.sql
           EOF
 
           sed -n 's/^applied //p' /tmp/clean-migrate.log > /tmp/clean-applied.txt
@@ -525,6 +526,7 @@ jobs:
           0013_planned_unpaid_leave.sql
           0017_payslip_mvp.sql
           0018_payslip_published_immutability.sql
+          0019_dynamic_organization.sql
           EOF
 
           sed -n 's/^applied //p' /tmp/upgrade-migrate.log > /tmp/upgrade-applied.txt

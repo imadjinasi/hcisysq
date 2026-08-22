@@ -22,7 +22,6 @@ import {
 } from "./domain/annual-leave-request.js";
 import {
   LeaveApprovalConfigurationError,
-  resolveLeaveLineApprovalChain,
   type LeaveApprovalStep,
 } from "./domain/approval-chain.js";
 import { getLeavePolicy } from "./domain/policy-catalog.js";
@@ -39,6 +38,11 @@ import {
   type IsoWeekday,
   type LeaveCalendarException,
 } from "./domain/working-calendar.js";
+import {
+  enqueueFinalApprovalOversight,
+  LeaveOrganizationAuthorityError,
+  resolveLeaveAuthorities,
+} from "./organization-authority.js";
 
 const annualRequestSchema = z.object({
   startOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -305,14 +309,19 @@ async function buildAnnualPreview(
     requestedWorkingDays: calculation.workingDays,
     usedDaysByPeriod,
   });
-  const chain = resolveLeaveLineApprovalChain({
+  const authorityResolution = await resolveLeaveAuthorities(db, {
+    workflowKey: "leave.annual",
     requesterEmployeeId: employee.id,
-    directManagerEmployeeId: employee.directManagerEmployeeId,
-    unitApproverEmployeeId: employee.unitApproverEmployeeId,
+    effectiveDate: submittedOn,
+    legacy: {
+      directManagerEmployeeId: employee.directManagerEmployeeId,
+      unitApproverEmployeeId: employee.unitApproverEmployeeId,
+    },
+    policyChain: "LINE_AND_UNIT",
   });
-  const approvalChain = await hydrateApprovalChain(db, chain);
+  const approvalChain = await hydrateApprovalChain(db, authorityResolution.approvalChain);
 
-  return { calculation, validation, approvalChain };
+  return { calculation, validation, approvalChain, authorityResolution: authorityResolution.context };
 }
 
 async function addEvent(
@@ -375,6 +384,9 @@ function mapKnownError(error: unknown): EmployeeLeaveError | null {
     return new EmployeeLeaveError(409, error.code, error.message);
   }
   if (error instanceof LeaveApprovalConfigurationError) {
+    return new EmployeeLeaveError(409, error.code, error.message);
+  }
+  if (error instanceof LeaveOrganizationAuthorityError) {
     return new EmployeeLeaveError(409, error.code, error.message);
   }
   if (error instanceof WorkingCalendarError) {
@@ -524,6 +536,7 @@ export async function registerEmployeeLeaveRoutes(
         workingDates: preview.calculation.workingDates,
         nonWorkingDates: preview.calculation.nonWorkingDates,
         approvalChain: preview.approvalChain,
+        authorityResolution: preview.authorityResolution,
       });
     } catch (error) {
       return sendKnownError(reply, error);
@@ -568,10 +581,10 @@ export async function registerEmployeeLeaveRoutes(
           id, employee_id, policy_key, status, start_on, end_on, working_days,
           reason, annual_period_key, annual_entitlement_days,
           annual_period_limit_days, annual_available_before, hc_handling,
-          idempotency_key
+          idempotency_key, validation_summary
         ) VALUES (
           $1, $2, 'annual', 'in_review', $3::date, $4::date, $5,
-          $6, $7, $8, $9, $10, $11, $12
+          $6, $7, $8, $9, $10, $11, $12, $13::jsonb
         )`,
         [
           requestId,
@@ -586,6 +599,13 @@ export async function registerEmployeeLeaveRoutes(
           preview.validation.availableDaysBeforeRequest,
           annualPolicy.hcHandling,
           parsed.data.idempotencyKey,
+          JSON.stringify({
+            approvalSnapshot: preview.approvalChain.map((step) => ({
+              employeeId: step.employeeId,
+              sources: step.sources,
+            })),
+            authorityResolution: preview.authorityResolution,
+          }),
         ],
       );
 
@@ -612,6 +632,7 @@ export async function registerEmployeeLeaveRoutes(
         policyKey: "annual",
         workingDays: preview.validation.requestedWorkingDays,
         periodKey: preview.validation.periodKey,
+        authorityResolution: preview.authorityResolution,
       });
       const firstStep = insertedSteps[0];
       if (firstStep) {
@@ -744,6 +765,7 @@ export async function registerEmployeeLeaveRoutes(
         status: "waiting" | "pending" | "approved" | "rejected";
         requestStatus: LeaveRequestStatus;
         hcHandling: HcHandling;
+        policyKey: string;
       }>(
         `SELECT
           s.id,
@@ -752,7 +774,8 @@ export async function registerEmployeeLeaveRoutes(
           s.approver_employee_id AS "approverEmployeeId",
           s.status,
           r.status AS "requestStatus",
-          r.hc_handling AS "hcHandling"
+          r.hc_handling AS "hcHandling",
+          r.policy_key AS "policyKey"
         FROM leave_request_approval_steps s
         JOIN leave_requests r ON r.id = s.leave_request_id
         WHERE s.id = $1
@@ -902,6 +925,15 @@ export async function registerEmployeeLeaveRoutes(
           "employee",
           current.requesterEmployeeId,
         );
+      }
+
+      if (effectiveRequestStatus === "approved") {
+        await enqueueFinalApprovalOversight(client, {
+          requestId: current.requestId,
+          workflowKey: `leave.${current.policyKey}`,
+          effectiveDate: jakartaToday(),
+          finalApproverEmployeeId: current.approverEmployeeId,
+        });
       }
 
       await client.query("COMMIT");

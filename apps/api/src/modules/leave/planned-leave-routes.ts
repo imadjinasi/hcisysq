@@ -14,7 +14,6 @@ import {
 } from "../auth/service.js";
 import {
   LeaveApprovalConfigurationError,
-  resolveLeaveLineApprovalChain,
   type LeaveApprovalStep,
 } from "./domain/approval-chain.js";
 import {
@@ -31,6 +30,11 @@ import {
   type IsoWeekday,
   type LeaveCalendarException,
 } from "./domain/working-calendar.js";
+import {
+  enqueueFinalApprovalOversight,
+  LeaveOrganizationAuthorityError,
+  resolveLeaveAuthorities,
+} from "./organization-authority.js";
 
 const plannedKeySchema = z.enum(SUPPORTED_PLANNED_LEAVE_KEYS);
 const previewSchema = z.object({
@@ -284,33 +288,22 @@ async function resolveApprovalChain(
   db: Pool | PoolClient,
   employee: EmployeeContextRow,
   policyKey: SupportedPlannedLeaveKey,
+  effectiveDate: string,
 ) {
-  if (policyKey === "unpaid") {
-    if (!employee.unitApproverEmployeeId) {
-      throw new PlannedLeaveRouteError(
-        409,
-        "UNIT_APPROVER_MISSING",
-        "Kepala Satuan Kerja / Unit Approver belum dikonfigurasi.",
-      );
-    }
-    if (employee.unitApproverEmployeeId === employee.id) {
-      throw new PlannedLeaveRouteError(
-        409,
-        "UNIT_APPROVER_SELF",
-        "Cuti Tanpa Gaji memerlukan Unit Approver yang berbeda dari pemohon.",
-      );
-    }
-    return hydrateApprovalChain(db, [
-      { employeeId: employee.unitApproverEmployeeId, sources: ["UNIT_APPROVER"] },
-    ]);
-  }
-
-  const chain = resolveLeaveLineApprovalChain({
+  const resolution = await resolveLeaveAuthorities(db, {
+    workflowKey: `leave.${policyKey}`,
     requesterEmployeeId: employee.id,
-    directManagerEmployeeId: employee.directManagerEmployeeId,
-    unitApproverEmployeeId: employee.unitApproverEmployeeId,
+    effectiveDate,
+    legacy: {
+      directManagerEmployeeId: employee.directManagerEmployeeId,
+      unitApproverEmployeeId: employee.unitApproverEmployeeId,
+    },
+    policyChain: policyKey === "unpaid" ? "UNIT_ONLY" : "LINE_AND_UNIT",
   });
-  return hydrateApprovalChain(db, chain);
+  return {
+    approvalChain: await hydrateApprovalChain(db, resolution.approvalChain),
+    authorityResolution: resolution.context,
+  };
 }
 
 async function priorApprovedHajjCount(db: Pool | PoolClient, employeeId: string) {
@@ -340,8 +333,13 @@ async function buildPreview(
     priorApprovedHajjCount:
       input.policyKey === "hajj" ? await priorApprovedHajjCount(db, employee.id) : 0,
   });
-  const approvalChain = await resolveApprovalChain(db, employee, input.policyKey);
-  return { calculation, validation, approvalChain };
+  const { approvalChain, authorityResolution } = await resolveApprovalChain(
+    db,
+    employee,
+    input.policyKey,
+    jakartaToday(),
+  );
+  return { calculation, validation, approvalChain, authorityResolution };
 }
 
 async function hasActiveRole(
@@ -542,6 +540,9 @@ function mapKnownError(error: unknown): PlannedLeaveRouteError | null {
   if (error instanceof LeaveApprovalConfigurationError) {
     return new PlannedLeaveRouteError(409, error.code, error.message);
   }
+  if (error instanceof LeaveOrganizationAuthorityError) {
+    return new PlannedLeaveRouteError(409, error.code, error.message);
+  }
   if (error instanceof WorkingCalendarError) {
     return new PlannedLeaveRouteError(409, error.code, error.message);
   }
@@ -709,6 +710,7 @@ export async function registerPlannedLeaveRoutes(
         noticeDays: preview.validation.noticeDays,
         unpaid: preview.validation.unpaid,
         approvalChain: preview.approvalChain,
+        authorityResolution: preview.authorityResolution,
         nextAction: "Kirim pengajuan untuk memulai persetujuan",
       });
     } catch (error) {
@@ -787,6 +789,7 @@ export async function registerPlannedLeaveRoutes(
                 employeeId: step.employeeId,
                 sources: step.sources,
               })),
+              authorityResolution: preview.authorityResolution,
             }),
           ],
         );
@@ -826,6 +829,7 @@ export async function registerPlannedLeaveRoutes(
           workingDays: preview.calculation.workingDays,
           calendarDurationDays: preview.validation.calendarDurationDays,
           unpaid: preview.validation.unpaid,
+          authorityResolution: preview.authorityResolution,
         });
         const firstStep = insertedSteps[0];
         if (firstStep) {
@@ -1043,6 +1047,11 @@ export async function registerPlannedLeaveRoutes(
           "employee",
           task.requesterEmployeeId,
         );
+        await enqueueFinalApprovalOversight(client, {
+          requestId: task.requestId,
+          workflowKey: `leave.${task.policyKey}`,
+          effectiveDate: jakartaToday(),
+        });
         await client.query("COMMIT");
         return reply.send({
           requestId: task.requestId,
@@ -1154,6 +1163,13 @@ export async function registerPlannedLeaveRoutes(
           "employee",
           task.requesterEmployeeId,
         );
+        if (approved) {
+          await enqueueFinalApprovalOversight(client, {
+            requestId: task.requestId,
+            workflowKey: `leave.${task.policyKey}`,
+            effectiveDate: jakartaToday(),
+          });
+        }
         await client.query("COMMIT");
         return reply.send({
           requestId: task.requestId,

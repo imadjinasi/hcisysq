@@ -1,6 +1,6 @@
 # Annual Leave Submission and Approval Snapshot
 
-**Status:** VERIFIED MVP BASELINE — ORG-004 EXTENSION PLANNED  
+**Status:** VERIFIED MVP BASELINE — ORG-004 EXTENSION IMPLEMENTED LOCALLY, NOT DEPLOYED
 **Specification:** LEAVE-004  
 **Related:** LEAVE-001, LEAVE-002, LEAVE-003, APR-001, ORG-002, ORG-004
 
@@ -23,7 +23,7 @@ The same employee is never required to approve twice. The approver chain is reso
 
 The flow above describes the **verified MVP runtime**.
 
-ORG-004 (`docs/domain/dynamic-organization-structure.md`) is the accepted post-MVP successor for structure-driven authority resolution, effective-dated positions/incumbencies, vacancy fallback, and post-approval structural oversight notification.
+ORG-004 (`docs/domain/dynamic-organization-structure.md`) is the implemented-local post-MVP successor for structure-driven authority resolution, effective-dated positions/incumbencies, vacancy fallback, and post-approval structural oversight notification.
 
 Agents must not assume ORG-004 behavior is already live until that milestone is implemented and activated.
 
@@ -104,7 +104,7 @@ This slice writes notification intents to an outbox rather than coupling the tra
 
 Notification-provider failure must not roll back the leave transaction.
 
-## Planned ORG-004 structural oversight notification
+## ORG-004 structural oversight notification
 
 Accepted post-MVP rule:
 

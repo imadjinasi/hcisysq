@@ -230,7 +230,7 @@ After organization/pilot readiness is stable, candidate modules include:
 - Cross-principal authorization passed browser UAT.
 - Final verified application SHA is recorded in `docs/product/mvp-release-checkpoint.md`.
 
-## Organization foundation ready — PENDING
+## Organization foundation ready — IMPLEMENTED LOCALLY, OPERATIONAL VALIDATION PENDING
 
 Before structure-driven approval is activated for real pilot users:
 
@@ -244,6 +244,8 @@ Before structure-driven approval is activated for real pilot users:
 - one-level-above post-final-approval line/governance notification is verified;
 - structure-derived authority remains constrained by backend RBAC;
 - selected real organization configuration is reviewed before activation.
+
+The ORG-004 branch now implements the data model, resolver, Organization Designer, draft/validate/impact/publish lifecycle, controlled rollout, Leave consumption, and post-approval oversight intent with synthetic automated coverage. It remains **not deployed** and **not production validated**. The real YSQ structure, SHADOW comparison evidence, selected-unit activation approval, and real-principal capability review remain operational prerequisites rather than completed claims.
 
 ## Pilot ready — PENDING
 

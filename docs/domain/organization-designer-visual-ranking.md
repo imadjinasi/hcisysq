@@ -1,6 +1,6 @@
 # Organization Designer Visual Ranking
 
-**Status:** ACCEPTED DESIGN DIRECTION — IMPLEMENTATION NOT STARTED  
+**Status:** IMPLEMENTED AND TESTED LOCALLY — NOT DEPLOYED — NOT PRODUCTION VALIDATED
 **Specification:** ORG-004 visual-layout addendum  
 **Related:** ORG-002, ORG-004, APR-001  
 **Decision date:** 2026-08-22
