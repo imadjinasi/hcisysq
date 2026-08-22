@@ -62,7 +62,7 @@ export function AdminPayslipsPage() {
     <AdminShell
       active="payslips"
       title="Payslip MVP"
-      description="Import, review, commit draft, lalu publish. HCIS tidak menghitung payroll dan tidak menurunkan nilai baru dari data import."
+      description="Import, inspect preview, commit draft, lalu publish. HCIS tidak menghitung payroll dan tidak menurunkan nilai baru dari data import."
     >
       <div className="space-y-6">
         <section className="rounded-2xl border border-border bg-white p-5 shadow-[var(--shadow-soft)]">
@@ -70,7 +70,7 @@ export function AdminPayslipsPage() {
             <div>
               <h2 className="text-base font-bold text-brand-heading">Preview CSV</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Contract: <code>employee_number,period,lines_json</code>. Preview wajib direview sebelum commit/publish.
+                Contract: <code>employee_number,period,lines_json</code>. Detail preview dapat dibuka untuk review sebelum keputusan commit/publish.
               </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -87,7 +87,7 @@ export function AdminPayslipsPage() {
                   file &&
                   void run(
                     () => previewPayslipImport(file),
-                    "Preview disimpan. Buka Review sebelum commit.",
+                    "Preview disimpan. Detail Review tersedia untuk pemeriksaan sebelum commit.",
                   )
                 }
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
