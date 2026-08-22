@@ -54,6 +54,8 @@ const decisionSchema = z.object({
   note: z.string().trim().max(1000).nullable().optional(),
 });
 
+type HcHandling = "notify" | "validate" | "approve" | "none";
+
 interface EmployeeContextRow {
   id: string;
   employeeNumber: string;
@@ -224,9 +226,7 @@ async function loadWorkingCalendar(
     ),
   ]);
 
-  const workingWeekdays = decodeWorkingWeekdays(
-    settingResult.rows[0]?.workingWeekdayMask,
-  );
+  const workingWeekdays = decodeWorkingWeekdays(settingResult.rows[0]?.workingWeekdayMask);
   if (!workingWeekdays) {
     throw new EmployeeLeaveError(
       409,
@@ -295,11 +295,7 @@ async function buildAnnualPreview(
 
   const calendar = await loadWorkingCalendar(db, input.startOn, input.endOn);
   const calculation = calculateWorkingDays(input.startOn, input.endOn, calendar);
-  const usedDaysByPeriod = await loadAnnualUsage(
-    db,
-    employee.id,
-    yearOf(input.startOn),
-  );
+  const usedDaysByPeriod = await loadAnnualUsage(db, employee.id, yearOf(input.startOn));
   const validation = validateAnnualLeaveRequest({
     entitlementGroup: employee.leaveEntitlementGroup,
     employmentStartedOn: employee.startedOn,
@@ -316,11 +312,7 @@ async function buildAnnualPreview(
   });
   const approvalChain = await hydrateApprovalChain(db, chain);
 
-  return {
-    calculation,
-    validation,
-    approvalChain,
-  };
+  return { calculation, validation, approvalChain };
 }
 
 async function addEvent(
@@ -353,6 +345,30 @@ async function enqueueNotification(
   );
 }
 
+async function activateHcTaskAfterLineApproval(
+  db: PoolClient,
+  requestId: string,
+  handling: Extract<HcHandling, "validate" | "approve">,
+) {
+  const result = await db.query<{ id: string }>(
+    `UPDATE leave_request_hc_tasks
+     SET status = 'pending', updated_at = now()
+     WHERE leave_request_id = $1
+       AND task_kind = $2
+       AND status = 'waiting'
+     RETURNING id`,
+    [requestId, handling],
+  );
+  if (!result.rows[0]) {
+    throw new EmployeeLeaveError(
+      409,
+      "HC_TASK_NOT_READY",
+      "Tahap Human Capital belum tersedia atau sudah berubah.",
+    );
+  }
+  return result.rows[0].id;
+}
+
 function mapKnownError(error: unknown): EmployeeLeaveError | null {
   if (error instanceof EmployeeLeaveError) return error;
   if (error instanceof AnnualLeaveRequestPolicyError) {
@@ -373,10 +389,7 @@ function mapKnownError(error: unknown): EmployeeLeaveError | null {
 async function sendKnownError(reply: FastifyReply, error: unknown) {
   const known = mapKnownError(error);
   if (!known) throw error;
-  return reply.status(known.statusCode).send({
-    code: known.code,
-    message: known.message,
-  });
+  return reply.status(known.statusCode).send({ code: known.code, message: known.message });
 }
 
 export async function registerEmployeeLeaveRoutes(
@@ -400,18 +413,11 @@ export async function registerEmployeeLeaveRoutes(
     reply: FastifyReply,
   ): Promise<AuthPrincipal | null> {
     try {
-      return await requirePrincipalFromCookie(
-        auth,
-        request.headers.cookie,
-        "EMPLOYEE",
-      );
+      return await requirePrincipalFromCookie(auth, request.headers.cookie, "EMPLOYEE");
     } catch (error) {
       if (error instanceof AuthError) {
         reply.header("Cache-Control", "no-store");
-        await reply.status(error.statusCode).send({
-          code: error.code,
-          message: error.message,
-        });
+        await reply.status(error.statusCode).send({ code: error.code, message: error.message });
         return null;
       }
       throw error;
@@ -425,11 +431,7 @@ export async function registerEmployeeLeaveRoutes(
     try {
       const employee = await loadEmployeeContext(pool, principal.id);
       const referenceDate = jakartaToday();
-      const usedDaysByPeriod = await loadAnnualUsage(
-        pool,
-        employee.id,
-        yearOf(referenceDate),
-      );
+      const usedDaysByPeriod = await loadAnnualUsage(pool, employee.id, yearOf(referenceDate));
       const annualLeave =
         employee.startedOn && employee.leaveEntitlementGroup === "non_education"
           ? calculateAnnualLeaveYearView({
@@ -454,8 +456,7 @@ export async function registerEmployeeLeaveRoutes(
             approver.full_name AS "currentApproverName"
           FROM leave_requests r
           LEFT JOIN leave_request_approval_steps current_step
-            ON current_step.leave_request_id = r.id
-            AND current_step.status = 'pending'
+            ON current_step.leave_request_id = r.id AND current_step.status = 'pending'
           LEFT JOIN employees approver ON approver.id = current_step.approver_employee_id
           WHERE r.employee_id = $1
           ORDER BY r.submitted_at DESC
@@ -499,7 +500,6 @@ export async function registerEmployeeLeaveRoutes(
   app.post("/leave/me/annual/preview", async (request, reply) => {
     const principal = await authenticateEmployee(request, reply);
     if (!principal) return;
-
     const parsed = annualRequestSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({
@@ -510,12 +510,7 @@ export async function registerEmployeeLeaveRoutes(
 
     try {
       const employee = await loadEmployeeContext(pool, principal.id);
-      const preview = await buildAnnualPreview(
-        pool,
-        employee,
-        parsed.data,
-        jakartaToday(),
-      );
+      const preview = await buildAnnualPreview(pool, employee, parsed.data, jakartaToday());
       reply.header("Cache-Control", "no-store");
       return reply.send({
         annualEntitlementDays: preview.validation.annualEntitlementDays,
@@ -538,7 +533,6 @@ export async function registerEmployeeLeaveRoutes(
   app.post("/leave/me/annual/submit", async (request, reply) => {
     const principal = await authenticateEmployee(request, reply);
     if (!principal) return;
-
     const parsed = annualSubmitSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({
@@ -566,15 +560,9 @@ export async function registerEmployeeLeaveRoutes(
         });
       }
 
-      const preview = await buildAnnualPreview(
-        client,
-        employee,
-        parsed.data,
-        jakartaToday(),
-      );
+      const preview = await buildAnnualPreview(client, employee, parsed.data, jakartaToday());
       const requestId = randomUUID();
       const annualPolicy = getLeavePolicy("annual");
-
       await client.query(
         `INSERT INTO leave_requests (
           id, employee_id, policy_key, status, start_on, end_on, working_days,
@@ -657,7 +645,6 @@ export async function registerEmployeeLeaveRoutes(
   app.get("/leave/me/requests", async (request, reply) => {
     const principal = await authenticateEmployee(request, reply);
     if (!principal) return;
-
     try {
       const employee = await loadEmployeeContext(pool, principal.id);
       const requests = await pool.query<RequestSummaryRow>(
@@ -675,14 +662,12 @@ export async function registerEmployeeLeaveRoutes(
           approver.full_name AS "currentApproverName"
         FROM leave_requests r
         LEFT JOIN leave_request_approval_steps current_step
-          ON current_step.leave_request_id = r.id
-          AND current_step.status = 'pending'
+          ON current_step.leave_request_id = r.id AND current_step.status = 'pending'
         LEFT JOIN employees approver ON approver.id = current_step.approver_employee_id
         WHERE r.employee_id = $1
         ORDER BY r.submitted_at DESC`,
         [employee.id],
       );
-
       reply.header("Cache-Control", "no-store");
       return reply.send({
         requests: requests.rows.map((item) => ({
@@ -699,7 +684,6 @@ export async function registerEmployeeLeaveRoutes(
   app.get("/leave/approvals", async (request, reply) => {
     const principal = await authenticateEmployee(request, reply);
     if (!principal) return;
-
     try {
       const employee = await loadEmployeeContext(pool, principal.id);
       const result = await pool.query<InboxRow>(
@@ -724,7 +708,6 @@ export async function registerEmployeeLeaveRoutes(
         ORDER BY r.submitted_at ASC`,
         [employee.id],
       );
-
       reply.header("Cache-Control", "no-store");
       return reply.send({
         items: result.rows.map((item) => ({
@@ -740,7 +723,6 @@ export async function registerEmployeeLeaveRoutes(
   app.post("/leave/approvals/:stepId/decision", async (request, reply) => {
     const principal = await authenticateEmployee(request, reply);
     if (!principal) return;
-
     const params = stepParamSchema.safeParse(request.params);
     const body = decisionSchema.safeParse(request.body);
     if (!params.success || !body.success) {
@@ -761,7 +743,7 @@ export async function registerEmployeeLeaveRoutes(
         approverEmployeeId: string;
         status: "waiting" | "pending" | "approved" | "rejected";
         requestStatus: LeaveRequestStatus;
-        hcHandling: "notify" | "validate" | "approve" | "none";
+        hcHandling: HcHandling;
       }>(
         `SELECT
           s.id,
@@ -779,11 +761,7 @@ export async function registerEmployeeLeaveRoutes(
       );
       const current = stepResult.rows[0];
       if (!current) {
-        throw new EmployeeLeaveError(
-          404,
-          "APPROVAL_STEP_NOT_FOUND",
-          "Tahap approval tidak ditemukan.",
-        );
+        throw new EmployeeLeaveError(404, "APPROVAL_STEP_NOT_FOUND", "Tahap approval tidak ditemukan.");
       }
       if (current.approverEmployeeId !== actor.id) {
         throw new EmployeeLeaveError(
@@ -819,12 +797,7 @@ export async function registerEmployeeLeaveRoutes(
              acted_at = now(),
              decision_note = $4
          WHERE id = $1`,
-        [
-          current.id,
-          decision.decidedStepStatus,
-          principal.id,
-          body.data.note ?? null,
-        ],
+        [current.id, decision.decidedStepStatus, principal.id, body.data.note ?? null],
       );
 
       if (decision.nextPendingStepId) {
@@ -847,14 +820,26 @@ export async function registerEmployeeLeaveRoutes(
         }
       }
 
-      if (decision.requestStatus !== current.requestStatus) {
+      let effectiveRequestStatus: LeaveRequestStatus = decision.requestStatus;
+      let hcTaskStatus: "pending" | null = null;
+      if (decision.requestStatus === "approved" && current.hcHandling === "validate") {
+        await activateHcTaskAfterLineApproval(client, current.requestId, "validate");
+        effectiveRequestStatus = "in_review";
+        hcTaskStatus = "pending";
+      } else if (decision.requestStatus === "approved" && current.hcHandling === "approve") {
+        await activateHcTaskAfterLineApproval(client, current.requestId, "approve");
+        effectiveRequestStatus = "in_review";
+        hcTaskStatus = "pending";
+      }
+
+      if (effectiveRequestStatus !== current.requestStatus || decision.requestStatus === "approved") {
         await client.query(
           `UPDATE leave_requests
            SET status = $2,
-               final_decided_at = CASE WHEN $2 IN ('approved', 'rejected') THEN now() ELSE final_decided_at END,
+               final_decided_at = CASE WHEN $2 IN ('approved', 'rejected') THEN now() ELSE NULL END,
                updated_at = now()
            WHERE id = $1`,
-          [current.requestId, decision.requestStatus],
+          [current.requestId, effectiveRequestStatus],
         );
       }
 
@@ -864,9 +849,35 @@ export async function registerEmployeeLeaveRoutes(
           : "leave.request.rejected";
       await addEvent(client, current.requestId, principal.id, eventType, {
         stepId: current.id,
+        hcHandling: current.hcHandling,
       });
 
-      if (decision.requestStatus === "approved") {
+      if (decision.requestStatus === "approved" && hcTaskStatus === "pending") {
+        await addEvent(
+          client,
+          current.requestId,
+          principal.id,
+          current.hcHandling === "approve"
+            ? "leave.hc.approval_pending"
+            : "leave.hc.validation_pending",
+        );
+        await enqueueNotification(
+          client,
+          current.requestId,
+          current.hcHandling === "approve"
+            ? "leave.hc.approval.requested"
+            : "leave.hc.validation.requested",
+          "role",
+          "human_capital",
+        );
+        await enqueueNotification(
+          client,
+          current.requestId,
+          "leave.line_approval.completed.employee_notify",
+          "employee",
+          current.requesterEmployeeId,
+        );
+      } else if (effectiveRequestStatus === "approved") {
         await enqueueNotification(
           client,
           current.requestId,
@@ -883,7 +894,7 @@ export async function registerEmployeeLeaveRoutes(
             "human_capital",
           );
         }
-      } else if (decision.requestStatus === "rejected") {
+      } else if (effectiveRequestStatus === "rejected") {
         await enqueueNotification(
           client,
           current.requestId,
@@ -896,9 +907,11 @@ export async function registerEmployeeLeaveRoutes(
       await client.query("COMMIT");
       return reply.send({
         requestId: current.requestId,
-        requestStatus: decision.requestStatus,
+        requestStatus: effectiveRequestStatus,
         stepStatus: decision.decidedStepStatus,
         nextPendingStepId: decision.nextPendingStepId,
+        hcHandling: current.hcHandling,
+        hcTaskStatus,
       });
     } catch (error) {
       await client.query("ROLLBACK");
