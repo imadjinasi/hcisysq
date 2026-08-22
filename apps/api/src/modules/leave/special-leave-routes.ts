@@ -708,12 +708,14 @@ export async function registerSpecialLeaveRoutes(
         const requestResult = await client.query<{ status: string; policyKey: string }>(
           `SELECT status, policy_key AS "policyKey"
            FROM leave_requests
-           WHERE id = $1 AND employee_id = $2
+           WHERE id = $1
+             AND employee_id = $2
+             AND policy_key = ANY($3::text[])
            FOR UPDATE`,
-          [params.data.requestId, employee.id],
+          [params.data.requestId, employee.id, [...SUPPORTED_SPECIAL_LEAVE_KEYS]],
         );
         const leaveRequest = requestResult.rows[0];
-        if (!leaveRequest || !SUPPORTED_SPECIAL_LEAVE_KEYS.includes(leaveRequest.policyKey as SupportedSpecialLeaveKey)) {
+        if (!leaveRequest) {
           throw new EmployeeSpecialLeaveError(404, "SPECIAL_LEAVE_NOT_FOUND", "Pengajuan Cuti Khusus tidak ditemukan.");
         }
         if (leaveRequest.status !== "in_review") {
@@ -735,7 +737,7 @@ export async function registerSpecialLeaveRoutes(
           `UPDATE leave_request_hc_tasks
            SET status = CASE WHEN status = 'needs_correction' THEN 'pending' ELSE status END,
                updated_at = now()
-           WHERE leave_request_id = $1`,
+           WHERE leave_request_id = $1 AND task_kind = 'validate'`,
           [params.data.requestId],
         );
         await addEvent(client, params.data.requestId, principal.id, "leave.evidence.added", {
@@ -786,8 +788,14 @@ export async function registerSpecialLeaveRoutes(
            JOIN leave_requests request ON request.id = evidence.leave_request_id
            WHERE evidence.id = $1
              AND evidence.leave_request_id = $2
-             AND request.employee_id = $3`,
-          [params.data.evidenceId, params.data.requestId, employee.id],
+             AND request.employee_id = $3
+             AND request.policy_key = ANY($4::text[])`,
+          [
+            params.data.evidenceId,
+            params.data.requestId,
+            employee.id,
+            [...SUPPORTED_SPECIAL_LEAVE_KEYS],
+          ],
         );
         const evidence = result.rows[0];
         if (!evidence) {
@@ -845,7 +853,9 @@ export async function registerSpecialLeaveRoutes(
         WHERE task.task_kind = 'validate'
           AND task.status = 'pending'
           AND request.status = 'in_review'
+          AND request.policy_key = ANY($1::text[])
         ORDER BY request.submitted_at ASC`,
+        [[...SUPPORTED_SPECIAL_LEAVE_KEYS]],
       );
 
       reply.header("Cache-Control", "no-store");
@@ -894,10 +904,12 @@ export async function registerSpecialLeaveRoutes(
             evidence.created_at AS "createdAt"
            FROM leave_request_evidence evidence
            JOIN leave_request_hc_tasks task ON task.leave_request_id = evidence.leave_request_id
+           JOIN leave_requests request ON request.id = evidence.leave_request_id
            WHERE evidence.id = $1
              AND evidence.leave_request_id = $2
-             AND task.task_kind = 'validate'`,
-          [params.data.evidenceId, params.data.requestId],
+             AND task.task_kind = 'validate'
+             AND request.policy_key = ANY($3::text[])`,
+          [params.data.evidenceId, params.data.requestId, [...SUPPORTED_SPECIAL_LEAVE_KEYS]],
         );
         const evidence = result.rows[0];
         if (!evidence) {
@@ -949,9 +961,11 @@ export async function registerSpecialLeaveRoutes(
           request.evidence_requirement AS "evidenceRequirement"
          FROM leave_request_hc_tasks task
          JOIN leave_requests request ON request.id = task.leave_request_id
-         WHERE task.id = $1 AND task.task_kind = 'validate'
+         WHERE task.id = $1
+           AND task.task_kind = 'validate'
+           AND request.policy_key = ANY($2::text[])
          FOR UPDATE OF task, request`,
-        [params.data.taskId],
+        [params.data.taskId, [...SUPPORTED_SPECIAL_LEAVE_KEYS]],
       );
       const task = result.rows[0];
       if (!task) {
