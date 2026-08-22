@@ -1,6 +1,6 @@
 # Organization and Access Administration Foundation
 
-**Status:** ACTIVE IMPLEMENTATION BASELINE  
+**Status:** VERIFIED MVP BASELINE  
 **Specifications:** ORG-001, AUTH-010, SEC-001
 
 This milestone connects employee master to organization structure and access administration without collapsing employee records, accounts, roles, and reporting lines into one object.
@@ -31,13 +31,13 @@ Rules:
 - assigning a manager must not create a reporting-line cycle;
 - clearing a manager is allowed;
 - every change is audited;
-- reporting line is input to a later approval resolver, not an approval snapshot itself.
+- reporting line is input to the approval resolver, not an approval snapshot itself.
 
-The approval engine must still resolve and persist its chain at submission time. It must not dynamically follow the current manager on every approval read.
+The approval engine resolves and persists its chain at submission time. It must not dynamically follow the current manager on every approval read.
 
 ## Organization reference administration
 
-Unit and position records are currently normalized references produced by employee import. The admin organization page is read-only for those reference names in this milestone and shows:
+Unit and position records are normalized references produced by employee import. The admin organization page is read-only for those reference names in the verified MVP and shows:
 
 - unit employee counts;
 - position employee counts;
@@ -46,7 +46,7 @@ Unit and position records are currently normalized references produced by employ
 
 Manual organization hierarchy editing remains deferred until hierarchy requirements are explicitly specified.
 
-## Account preparation
+## Account preparation and activation boundary
 
 Employee accounts are separate from employee records.
 
@@ -60,9 +60,9 @@ status = invited
 password_hash = NULL
 ```
 
-This milestone deliberately does **not** activate credentials or send invitation email. An account without an authentication method must not be switched to `active`.
+This ORG-001 foundation step itself does not activate credentials or send invitation email. An account without an authentication method must not be switched to `active`.
 
-The later activation flow may use Google-first authentication and password fallback, but must preserve the same account row and audit history.
+The later AUTH-002 activation flow is now implemented separately and preserves the same account row/audit history. Its existence does not collapse account preparation into employee import or organization administration.
 
 ## Base access vs additional roles
 
@@ -105,6 +105,8 @@ Assignments may also record:
 - reason/mandate;
 - administrator that created the assignment.
 
+Role and scope remain separate authorization dimensions. An employee having `human_capital` with unit scope does not gain organization-wide HC authority merely because the role key matches.
+
 ## Audit
 
 The following mutations create `access_audit_events`:
@@ -127,6 +129,7 @@ Audit payloads store identifiers, state, scope, dates, and reasons needed for ac
 - An account with no authentication method cannot be activated.
 - Employee import never creates accounts automatically.
 - Direct-manager changes never rewrite historical approval snapshots.
+- Same role with a narrower scope does not imply broader organization access.
 
 ## Admin routes
 
@@ -150,15 +153,27 @@ DELETE /api/admin/access/role-assignments/:assignmentId
 /admin/employees/:employeeId
 ```
 
+## Verification
+
+MVP verification covered:
+
+- Super Admin organization/access surfaces in real browser UAT;
+- cross-principal denial for Employee/Foundation Board against `/admin`;
+- synthetic organization-scoped HC positive access;
+- synthetic and production/pre-release unit-scoped HC denial for global HC workspaces;
+- automated role/scope effective-date authorization tests;
+- approval snapshot behavior that remains independent from later reporting-line changes.
+
 ## Acceptance criteria
 
 - ORG-001-A: Super Admin can review normalized unit and position references with employee counts.
 - ORG-001-B: direct manager can be assigned or cleared without allowing self-management or cycles.
-- ORG-001-C: reporting-line coverage is visible before leave approval is implemented.
+- ORG-001-C: reporting-line coverage is visible and provides authoritative input to approval-chain resolution.
 - AUTH-010-A: active employee base access remains conceptually automatic and is not stored as a `pegawai` role.
 - AUTH-010-B: additional role assignment persists role + scope independently.
 - AUTH-010-C: unit scope requires a unit and organization/own scope rejects a unit.
 - AUTH-010-D: prepared employee account is linked one-to-one to an employee and starts as `invited`.
 - AUTH-010-E: account without an authentication method cannot become `active`.
+- AUTH-010-F: organization-wide capability must not be inferred from a matching role label when the effective assignment is only unit-scoped.
 - SEC-001-A: every privileged organization/access mutation is audited.
 - SEC-001-B: direct URL/API access without a Super Admin session is rejected.
