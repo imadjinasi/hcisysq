@@ -1,4 +1,3 @@
-# PR validation for HCIS integration branches.
 name: Pull Request Validation
 
 on:
