@@ -90,7 +90,7 @@ function dateDistanceInclusive(from: string, to: string): number {
 }
 
 export function resolveAttendanceRange(
-  input: { from?: string; to?: string },
+  input: { from?: string | undefined; to?: string | undefined },
   today = jakartaToday(),
 ): { from: string; to: string } {
   const to = input.to ?? today;
