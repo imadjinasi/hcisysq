@@ -21,16 +21,33 @@ describe("YSQ special leave policy", () => {
     expect(result.warnings.map((item) => item.code)).toContain("EVIDENCE_DEFERRED");
   });
 
-  it("flags sick leave above 14 days for administrative follow-up without capping the right", () => {
+  it("does not flag exactly 14 calendar days even when working-day count differs", () => {
     const result = validateSpecialLeaveRequest({
       policyKey: "sick",
-      submittedOn: "2026-08-01",
-      startOn: "2026-08-01",
-      endOn: "2026-08-31",
-      workingDays: 21,
+      submittedOn: "2026-08-10",
+      startOn: "2026-08-10",
+      endOn: "2026-08-23",
+      workingDays: 10,
       hasEvidence: true,
     });
-    expect(result.workingDays).toBe(21);
+    expect(result.calendarDurationDays).toBe(14);
+    expect(result.workingDays).toBe(10);
+    expect(result.warnings.map((item) => item.code)).not.toContain(
+      "LONG_SICK_ADMIN_FOLLOW_UP",
+    );
+  });
+
+  it("flags above 14 calendar days even when fewer than 14 working days are affected", () => {
+    const result = validateSpecialLeaveRequest({
+      policyKey: "sick",
+      submittedOn: "2026-08-10",
+      startOn: "2026-08-10",
+      endOn: "2026-08-24",
+      workingDays: 11,
+      hasEvidence: true,
+    });
+    expect(result.calendarDurationDays).toBe(15);
+    expect(result.workingDays).toBe(11);
     expect(result.warnings.map((item) => item.code)).toContain(
       "LONG_SICK_ADMIN_FOLLOW_UP",
     );
