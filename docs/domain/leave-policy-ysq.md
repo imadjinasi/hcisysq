@@ -1,8 +1,8 @@
 # Leave Policy YSQ
 
-**Status:** VERIFIED MVP IMPLEMENTATION BASELINE — POLICY SOURCE STILL REQUIRES LEGAL REVIEW  
+**Status:** VERIFIED MVP IMPLEMENTATION BASELINE — POLICY SOURCE STILL REQUIRES LEGAL REVIEW — ORG-004 EXTENSION PLANNED  
 **Specification:** LEAVE-003  
-**Related:** LEAVE-001, LEAVE-002, APR-001, ORG-002
+**Related:** LEAVE-001, LEAVE-002, APR-001, ORG-002, ORG-004
 
 ## Source boundary
 
@@ -11,6 +11,8 @@ This specification translates the current internal `Master Ketentuan Cuti Final 
 The source itself states that it remains an internal policy working document that should receive legal review before becoming a final company regulation/SOP. HCIS therefore keeps the policy configurable and does not hardcode legal conclusions outside the approved YSQ rules.
 
 The **implementation behavior** described here has been verified for the MVP. That verification does not convert the underlying working policy source into a legally final regulation.
+
+ORG-004 introduces a planned organization/authority-resolution extension. Its structural routing and notification rules are system workflow decisions and must not be mistaken for legal conclusions about leave entitlement.
 
 ## Human Capital handling
 
@@ -30,9 +32,9 @@ HC_APPROVER
 
 These responsibilities must not be collapsed into one generic `HC approval` step.
 
-## Line approval
+## Line approval — verified MVP
 
-For leave that needs line approval, use ORG-002:
+For leave that needs line approval, the verified MVP uses ORG-002:
 
 ```text
 DIRECT_MANAGER
@@ -41,7 +43,93 @@ DIRECT_MANAGER
   -> remove requester self-approval
 ```
 
-The resolved people are snapshotted at submission according to APR-001.
+The resolved concrete people are snapshotted at submission according to APR-001.
+
+## Planned ORG-004 authority resolution
+
+`docs/domain/dynamic-organization-structure.md` defines the accepted post-MVP direction for modular organization structure.
+
+ORG-004 will allow line/governance authority to resolve from:
+
+- employee team/node membership;
+- authority-bearing organizational positions;
+- effective primary/acting incumbency;
+- structural parent relationships;
+- explicit authority bindings;
+- configured vacancy fallback;
+- documented employee reporting override.
+
+It must not infer approval from free-text job-title strings or numeric organization levels.
+
+Concrete approvers are still snapshotted at submission. A later restructure does not rewrite an existing request.
+
+## Planned post-final-approval structural oversight notification
+
+Accepted workflow rule:
+
+> For every leave workflow that contains a line/governance approval stage, once the **overall request reaches final `approved`**, notify one structural layer above the **final line/governance approver**.
+
+This notification:
+
+- is informational only;
+- occurs after overall final approval;
+- is not an additional approval step;
+- does not block the completed request if delivery fails;
+- remains separate from Human Capital notification/validation/approval responsibilities;
+- is resolved through ORG-004 structure/authority configuration.
+
+The reference point is the final **line/governance approver**, not automatically the last actor in the whole workflow.
+
+Examples:
+
+```text
+Annual Leave
+Employee
+-> Direct Manager
+-> Unit Approver                 [final line approver]
+-> overall APPROVED
+-> one structural layer above Unit Approver NOTIFIED
+```
+
+```text
+Planned leave requiring HC validation
+Employee
+-> Direct Manager
+-> Unit Approver                 [final line approver]
+-> HC validates
+-> overall APPROVED
+-> one structural layer above Unit Approver NOTIFIED
+```
+
+```text
+Unpaid Leave
+Employee
+-> Unit Approver                 [final line approver]
+-> HC actual approval
+-> overall APPROVED
+-> one structural layer above Unit Approver NOTIFIED
+```
+
+The HC approver's own supervisor is not automatically the oversight recipient merely because HC made the final workflow decision.
+
+Existing policy-specific HC notifications remain additive where required.
+
+## Director governance rule — planned ORG-004
+
+Accepted operational rule for Director leave:
+
+```text
+Director
+-> Secretary of the Foundation APPROVES
+-> overall request APPROVED
+-> Chair of the Foundation NOTIFIED
+```
+
+Pembina/Foundation Supervisor is not notified by this rule.
+
+This must be configuration-driven through organizational positions and authority relationships, not title-specific source code.
+
+If YSQ later changes this governance arrangement, future requests should follow the newly effective configuration while existing approval snapshots remain unchanged.
 
 ## Leave behavior groups
 
@@ -51,11 +139,11 @@ Used when the employee requests planned leave and line management needs to appro
 
 Baseline examples:
 
-- Cuti Tahunan;
-- Cuti Pernikahan Karyawan;
-- Cuti Menikahkan Anak;
-- Cuti Khitan Anak;
-- Cuti Ibadah Haji Wajib.
+- Annual Leave;
+- Employee Marriage Leave;
+- Child Marriage Leave;
+- Child Circumcision Leave;
+- Mandatory Hajj Leave.
 
 Document-heavy types may additionally require HC validation.
 
@@ -65,34 +153,38 @@ Used for rights or emergency events where the workflow should not imply that a m
 
 Baseline examples:
 
-- Cuti Hamil dan Melahirkan;
-- Cuti Keguguran;
-- Istirahat karena Haid;
-- Cuti Sakit;
-- Cuti Pendampingan Istri Melahirkan;
-- Cuti Pendampingan Istri Keguguran;
-- Cuti Keluarga Meninggal Dunia.
+- Maternity Leave;
+- Miscarriage Leave;
+- Menstrual Rest;
+- Sick Leave;
+- Spouse Childbirth Accompaniment Leave;
+- Spouse Miscarriage Accompaniment Leave;
+- Family Bereavement Leave.
 
 The line is notified as needed for staffing/operations. HC validates documents or administrative conditions where the policy requires it.
 
+These notification/validation-only workflows do not automatically enter the ORG-004 one-level-above rule unless a line/governance **approval** stage is actually present.
+
 ### 3. Explicit HC approval
 
-`Cuti Tanpa Gaji` requires approval by the work-unit head and Human Capital.
+`Unpaid Leave` requires approval by the work-unit authority and Human Capital.
 
 HC is therefore an actual approver for this leave type, not merely a validator.
 
+For the planned ORG-004 structural oversight notification, the reference point remains the final **line/governance approver** (for example Unit Approver), while HC continues as the policy-required actual approver.
+
 ### 4. Organization event, not individual leave request
 
-- Cuti Akhir Semester & Akhir Tahun Pelajaran;
-- Cuti Bersama Yayasan.
+- End-of-Semester / End-of-Academic-Year Leave;
+- Foundation Collective Leave.
 
 These are established by YSQ and should appear as organization/academic calendar events rather than individual employee requests.
 
 ### 5. Attendance dispensation
 
-`Keadaan Kahar/Bencana` is handled as attendance dispensation based on objective conditions and leadership decision. It is not an automatic leave entitlement.
+`Force Majeure / Disaster` is handled as attendance dispensation based on objective conditions and leadership decision. It is not an automatic leave entitlement.
 
-## Cuti Tahunan — non-education employees
+## Annual Leave — non-education employees
 
 ### Right versus usage availability
 
@@ -108,21 +200,21 @@ The UI must never describe an employee as having only `3 days annual leave entit
 Recommended presentation:
 
 ```text
-Hak Cuti Tahunan
-12 hari / tahun
+Annual Leave Right
+12 days / year
 
-Status hak
-Aktif sejak <eligibility date>
+Eligibility status
+Active since <eligibility date>
 
-Periode saat ini
-Oktober-Desember: 3 hari
-Terpakai: 0 hari
-Tersedia sekarang: 3 hari
+Current period
+October-December: 3 days
+Used: 0 days
+Available now: 3 days
 ```
 
 ### Eligibility
 
-Cuti Tahunan applies to non-education employees after 12 continuous months of service.
+Annual Leave applies to non-education employees after 12 continuous months of service.
 
 Before the eligibility date:
 
@@ -141,7 +233,7 @@ The 12-day annual entitlement is administered through four 3-day usage periods:
 | July-September | 3 working days |
 | October-December | 3 working days |
 
-Initial implementation does **not** carry unused days from one period into the next unless YSQ later approves an explicit carry-forward rule.
+The initial implementation does **not** carry unused days from one period into the next unless YSQ later approves an explicit carry-forward rule.
 
 ### Employee becomes eligible mid-year
 
@@ -174,11 +266,11 @@ In the following full eligible year, each of the four periods has a 3-day usage 
 
 ### Notice period
 
-Cuti Tahunan is submitted at least 7 days before the leave starts.
+Annual Leave is submitted at least 7 days before the leave starts.
 
 The policy engine must validate this before submission. The exact day-count convention should remain configuration-driven if YSQ later clarifies whether the notice uses calendar days or working days.
 
-### Approval flow
+### Verified MVP approval flow
 
 ```text
 System validation
@@ -198,13 +290,15 @@ System validation includes at minimum:
 - request does not cross an unsupported period boundary without being split;
 - no prohibited overlap exists.
 
-HC does not manually validate every normal Cuti Tahunan request unless an exception workflow is introduced later.
+HC does not manually validate every normal Annual Leave request unless an exception workflow is introduced later.
+
+When ORG-004 is implemented, the concrete Direct Manager/Unit Approver may be structure-derived, but the approval chain is still snapshotted and HC notification remains separate from the planned structural oversight notification.
 
 ## Education employees
 
-Cuti Akhir Semester & Akhir Tahun Pelajaran is the implementation/fulfillment of annual leave for education employees according to the academic calendar and YSQ decision.
+End-of-Semester / End-of-Academic-Year Leave is the implementation/fulfillment of annual leave for education employees according to the academic calendar and YSQ decision.
 
-It is not an individual `Cuti Tahunan` balance request in the initial implementation.
+It is not an individual `Annual Leave` balance request in the initial implementation.
 
 HCIS must keep education/non-education classification explicit; it must not infer the classification solely from unit or job-title strings.
 
@@ -212,22 +306,22 @@ HCIS must keep education/non-education classification explicit; it must not infe
 
 | Leave type | Initial HCIS behavior | HC handling |
 | --- | --- | --- |
-| Cuti Akhir Semester & Akhir Tahun Pelajaran | Organization/academic calendar event | administrative administration |
-| Cuti Tahunan | Individual line approval | notified |
-| Cuti Bersama Yayasan | Organization event | administrative administration |
-| Cuti Hamil dan Melahirkan | Individual notice/request with medical data | validator |
-| Cuti Keguguran | Emergency notice; administration may follow | validator |
-| Istirahat karena Haid | Notice; no H-7 requirement | notified; conditional follow-up validation |
-| Cuti Sakit | Emergency notice; medical administration may follow | validator |
-| Cuti Pernikahan Karyawan | Individual line approval; supporting document | validator |
-| Cuti Menikahkan Anak | Individual line approval; supporting document | validator |
-| Cuti Khitan Anak | Individual line approval; supporting document | validator |
-| Cuti Pendampingan Istri Melahirkan | Notice for base right; extension handled separately | validator |
-| Cuti Pendampingan Istri Keguguran | Emergency notice | validator |
-| Cuti Keluarga Meninggal Dunia | Emergency notice | validator |
-| Cuti Ibadah Haji Wajib | Individual line approval; official schedule/evidence | validator |
-| Cuti Tanpa Gaji | Unit approval then HC approval | approver |
-| Keadaan Kahar/Bencana | Attendance dispensation | outside normal leave approval |
+| End-of-Semester / End-of-Academic-Year Leave | Organization/academic calendar event | administrative administration |
+| Annual Leave | Individual line approval | notified |
+| Foundation Collective Leave | Organization event | administrative administration |
+| Maternity Leave | Individual notice/request with medical data | validator |
+| Miscarriage Leave | Emergency notice; administration may follow | validator |
+| Menstrual Rest | Notice; no H-7 requirement | notified; conditional follow-up validation |
+| Sick Leave | Emergency notice; medical administration may follow | validator |
+| Employee Marriage Leave | Individual line approval; supporting document | validator |
+| Child Marriage Leave | Individual line approval; supporting document | validator |
+| Child Circumcision Leave | Individual line approval; supporting document | validator |
+| Spouse Childbirth Accompaniment Leave | Notice for base right; extension handled separately | validator |
+| Spouse Miscarriage Accompaniment Leave | Emergency notice | validator |
+| Family Bereavement Leave | Emergency notice | validator |
+| Mandatory Hajj Leave | Individual line approval; official schedule/evidence | validator |
+| Unpaid Leave | Unit approval then HC approval | approver |
+| Force Majeure / Disaster | Attendance dispensation | outside normal leave approval |
 
 Detailed duration/payroll consequences remain policy data and must not be inferred by the frontend.
 
@@ -262,6 +356,8 @@ Leave requests/slices persist the relevant submission-time facts needed by their
 
 Later organization changes must not rewrite already snapshotted approval chains.
 
+ORG-004 plans to replace direct person-based organization administration with effective-dated structure/position authority for new resolution while preserving this transaction history boundary.
+
 ## Verification
 
 Final synthetic browser UAT verified the implemented policy boundaries across:
@@ -269,20 +365,33 @@ Final synthetic browser UAT verified the implemented policy boundaries across:
 - Annual Leave: system validation -> Direct Manager -> Unit Approver -> approved -> HC notified;
 - Special Leave: HC administrative validation with encrypted evidence where applicable;
 - Planned Leave: line approval plus planned-domain HC validation where required;
-- Cuti Tanpa Gaji: Unit Approver followed by **actual HC approval**;
+- Unpaid Leave: Unit Approver followed by **actual HC approval**;
 - Attendance Resolution: unresolved administrative dates remain an attendance-classification concern, not automatic payroll or leave deduction;
 - organization-scoped HC positive access and unit-scoped HC denial for global queues.
 
 These tests verify HCIS behavior against the working policy baseline. They do not replace the pending legal review of the underlying YSQ policy document.
 
+ORG-004 structural resolution and oversight notification are **planned** and were not part of that completed MVP UAT.
+
 ## Acceptance criteria
 
-- LEAVE-003-A: Cuti Tahunan always exposes the policy right as 12 days/year while separately showing current-period availability.
+### Verified policy/MVP behavior
+
+- LEAVE-003-A: Annual Leave always exposes the policy right as 12 days/year while separately showing current-period availability.
 - LEAVE-003-B: annual usage is limited to 3 working days per Jan-Mar, Apr-Jun, Jul-Sep, and Oct-Dec period.
 - LEAVE-003-C: an employee reaching 12 months during a year only becomes usable from the period containing the eligibility date; earlier periods are not retroactively available.
 - LEAVE-003-D: unused period quota does not automatically carry forward in the initial implementation.
-- LEAVE-003-E: Cuti Tahunan uses system validation plus line approval; HC is notified, not a routine approver/validator.
+- LEAVE-003-E: Annual Leave uses system validation plus line approval; HC is notified, not a routine approver/validator.
 - LEAVE-003-F: HC validator and HC approver are distinct workflow responsibilities.
-- LEAVE-003-G: Cuti Tanpa Gaji requires actual HC approval.
+- LEAVE-003-G: Unpaid Leave requires actual HC approval.
 - LEAVE-003-H: organization-event leave and attendance dispensation are not modeled as ordinary individual leave requests.
 - LEAVE-003-I: education/non-education classification is explicit and never inferred from title text.
+
+### Planned ORG-004 extension
+
+- LEAVE-003-J: line/governance authority can be resolved from effective organization structure without title-text inference.
+- LEAVE-003-K: concrete approvers remain snapshotted at submission even when structural resolution is used.
+- LEAVE-003-L: after overall final approval, leave with a line/governance approval stage creates an informational notification intent for one layer above the final line/governance approver.
+- LEAVE-003-M: later HC validation/actual approval does not automatically redefine the structural oversight target.
+- LEAVE-003-N: Director leave resolves Secretary as approver and Chair as post-approval recipient; Pembina is not notified by this rule.
+- LEAVE-003-O: existing HC notification requirements remain separate and additive to the structural oversight notification.
