@@ -1,1 +1,0 @@
-Integration validation trigger for ORG-004 head 42a45da52de97013da868c681e294aed5d1f118a.
