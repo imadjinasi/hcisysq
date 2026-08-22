@@ -1,6 +1,6 @@
 # Annual Leave Submission and Approval Snapshot
 
-**Status:** ACTIVE IMPLEMENTATION BASELINE  
+**Status:** VERIFIED MVP BASELINE  
 **Specification:** LEAVE-004  
 **Related:** LEAVE-001, LEAVE-002, LEAVE-003, APR-001, ORG-002
 
@@ -107,7 +107,9 @@ The employee leave surface shows:
 - recent request history and current approver;
 - pending approval inbox for employees who are approvers.
 
-## Deferred from this slice
+## Slice boundary and later MVP slices
+
+When LEAVE-004 was first introduced, the following were intentionally outside this slice:
 
 - medical/document attachment storage;
 - HC Validator queue for leave types that require validation;
@@ -117,7 +119,13 @@ The employee leave surface shows:
 - notification-provider adapter;
 - collective/academic calendar event management beyond working-day exceptions.
 
-These are intentionally deferred rather than approximated with unsafe business-rule assumptions.
+By the final MVP checkpoint, encrypted evidence/HC validation, planned/unpaid leave, and Attendance Resolution are implemented by later leave slices and were verified separately. They do **not** change the LEAVE-004 annual approval rule: normal Cuti Tahunan remains Direct Manager -> Unit Approver -> approved -> HC notified.
+
+Half-day leave, post-approval cancellation, production notification delivery adapters, and fuller collective/academic calendar management remain outside the verified MVP unless specified elsewhere.
+
+## Verification
+
+The final isolated synthetic UAT completed a real browser annual-leave flow from preview and submission through snapshotted Direct Manager and Unit Approver decisions to final approved state. This verification used synthetic employees/accounts only and did not touch the VPS employee data.
 
 ## Audit and privacy
 
