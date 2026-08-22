@@ -459,7 +459,8 @@ export async function registerPayslipRoutes(
 
     const rows = await pool.query(
       `SELECT row_number AS "rowNumber", employee_number AS "employeeNumber",
-              period, lines, validation_errors AS errors
+              to_char(period, 'YYYY-MM') AS period, lines,
+              validation_errors AS errors
          FROM payslip_import_rows
         WHERE batch_id = $1
         ORDER BY row_number`,
@@ -518,7 +519,7 @@ export async function registerPayslipRoutes(
       }
 
       const importRows = await client.query<ImportRowRecord>(
-        `SELECT employee_id AS "employeeId", period, lines
+        `SELECT employee_id AS "employeeId", period::text AS period, lines
            FROM payslip_import_rows
           WHERE batch_id = $1
             AND jsonb_array_length(validation_errors) = 0

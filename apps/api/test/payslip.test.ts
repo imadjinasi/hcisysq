@@ -141,6 +141,48 @@ describe("payslip capability scope", () => {
 });
 
 describe("payslip endpoint authorization", () => {
+  it("serializes preview periods without a timezone month shift", async () => {
+    const query = vi.fn(async (sql: string) => {
+      const normalized = compactSql(sql);
+      if (normalized.includes("FROM payslip_import_batches")) {
+        return result([
+          {
+            id: batchId,
+            sourceFilename: "synthetic.csv",
+            status: "previewed",
+            rowCount: 1,
+            validCount: 1,
+            errorCount: 0,
+          },
+        ]);
+      }
+      if (normalized.includes("FROM payslip_import_rows")) {
+        expect(normalized).toContain("to_char(period, 'YYYY-MM') AS period");
+        return result([
+          {
+            rowNumber: 2,
+            employeeNumber: "SYN-001",
+            period: "2026-07",
+            lines: [{ label: "Synthetic", value: "opaque" }],
+            errors: [],
+          },
+        ]);
+      }
+      if (normalized.startsWith("INSERT INTO payslip_audit_events")) return result([]);
+      throw new Error(`Unexpected query in synthetic test: ${normalized}`);
+    });
+    const app = Fastify();
+    await registerPayslipRoutes(app, { query } as unknown as Pool, config, auth(adminPrincipal));
+    const response = await app.inject({
+      method: "GET",
+      url: `/admin/payslip-imports/${batchId}`,
+      headers: { cookie: "hcis_session=synthetic" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().rows[0]?.period).toBe("2026-07");
+    await app.close();
+  });
+
   it("rejects Foundation Board from import endpoints server-side", async () => {
     const app = Fastify();
     const pool = { query: vi.fn() } as unknown as Pool;
