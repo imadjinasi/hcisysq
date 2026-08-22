@@ -15,6 +15,7 @@ import { registerLeaveAdminRoutes } from "./modules/leave/admin-routes.js";
 import { registerAttendanceResolutionRoutes } from "./modules/leave/attendance-resolution-routes.js";
 import { registerLeaveCalendarAdminRoutes } from "./modules/leave/calendar-admin-routes.js";
 import { registerEmployeeLeaveRoutes } from "./modules/leave/employee-routes.js";
+import { registerPlannedLeaveRoutes } from "./modules/leave/planned-leave-routes.js";
 import { registerSpecialLeaveRoutes } from "./modules/leave/special-leave-routes.js";
 import { registerSystemRoutes } from "./modules/system/routes.js";
 
@@ -47,6 +48,7 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerLeaveAdminRoutes(app, pool, config);
   await registerLeaveCalendarAdminRoutes(app, pool, config);
   await registerEmployeeLeaveRoutes(app, pool, config);
+  await registerPlannedLeaveRoutes(app, pool, config);
   await registerSpecialLeaveRoutes(app, pool, config);
   await registerAttendanceResolutionRoutes(app, pool, config);
 
@@ -81,6 +83,15 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
       return reply.status(409).send({
         code: "APPROVAL_STATE_CONFLICT",
         message: "Tahap persetujuan aktif sudah berubah. Muat ulang sebelum mengambil keputusan.",
+      });
+    }
+    if (
+      databaseError.code === "23505" &&
+      databaseError.constraint === "leave_hajj_final_usage_pkey"
+    ) {
+      return reply.status(409).send({
+        code: "HAJJ_ALREADY_USED",
+        message: "Hak Cuti Ibadah Haji Wajib sudah pernah digunakan selama masa kerja.",
       });
     }
     return reply.send(error);
