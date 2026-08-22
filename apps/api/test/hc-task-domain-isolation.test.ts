@@ -1,4 +1,4 @@
-import Fastify from "fastify";
+import Fastify, { type FastifyInstance } from "fastify";
 import type { Pool } from "pg";
 import { describe, expect, it, vi } from "vitest";
 
@@ -83,7 +83,11 @@ function queryAllowsPolicy(sql: string, values: unknown[] | undefined, policyKey
   );
 }
 
-function queryAllowsTaskKind(sql: string, values: unknown[] | undefined, taskKind: "validate" | "approve") {
+function queryAllowsTaskKind(
+  sql: string,
+  values: unknown[] | undefined,
+  taskKind: "validate" | "approve",
+) {
   if (sql.includes("task.task_kind = 'validate'")) return taskKind === "validate";
   if (sql.includes("task.task_kind = 'approve'")) return taskKind === "approve";
   if (sql.includes("task.task_kind = $1")) return values?.[0] === taskKind;
@@ -238,7 +242,7 @@ function domainMutationSql(query: ReturnType<typeof vi.fn>) {
     );
 }
 
-async function withAttendanceRoutes<T>(pool: Pool, run: (app: Fastify.FastifyInstance) => Promise<T>) {
+async function withAttendanceRoutes<T>(pool: Pool, run: (app: FastifyInstance) => Promise<T>) {
   const app = Fastify({ logger: false });
   await registerAttendanceResolutionRoutes(app, pool, config);
   try {
@@ -248,7 +252,7 @@ async function withAttendanceRoutes<T>(pool: Pool, run: (app: Fastify.FastifyIns
   }
 }
 
-async function withSpecialRoutes<T>(pool: Pool, run: (app: Fastify.FastifyInstance) => Promise<T>) {
+async function withSpecialRoutes<T>(pool: Pool, run: (app: FastifyInstance) => Promise<T>) {
   const app = Fastify({ logger: false });
   await registerSpecialLeaveRoutes(app, pool, config);
   try {
@@ -258,7 +262,7 @@ async function withSpecialRoutes<T>(pool: Pool, run: (app: Fastify.FastifyInstan
   }
 }
 
-async function withPlannedRoutes<T>(pool: Pool, run: (app: Fastify.FastifyInstance) => Promise<T>) {
+async function withPlannedRoutes<T>(pool: Pool, run: (app: FastifyInstance) => Promise<T>) {
   const app = Fastify({ logger: false });
   await registerPlannedLeaveRoutes(app, pool, config);
   try {
@@ -269,23 +273,33 @@ async function withPlannedRoutes<T>(pool: Pool, run: (app: Fastify.FastifyInstan
 }
 
 describe("HC task domain isolation", () => {
-  it("does not expose planned validation tasks in the attendance administration queue", async () => {
-    const { pool, query } = createHcTaskPool({ policyKey: "employee_marriage" });
-    const response = await withAttendanceRoutes(pool, (app) =>
+  it("does not expose planned validation tasks in either legacy HC queue", async () => {
+    const attendancePool = createHcTaskPool({ policyKey: "employee_marriage" });
+    const administrationResponse = await withAttendanceRoutes(attendancePool.pool, (app) =>
       app.inject({
         method: "GET",
         url: "/leave/hc/administration-queue",
         headers: { cookie: "hcis_session=test-token" },
       }),
     );
-
-    expect(response.statusCode).toBe(200);
-    expect(response.json().items).toEqual([]);
-    const queueCall = query.mock.calls.find(([sql]) =>
+    expect(administrationResponse.statusCode).toBe(200);
+    expect(administrationResponse.json().items).toEqual([]);
+    const administrationQueueCall = attendancePool.query.mock.calls.find(([sql]) =>
       String(sql).includes("requester.leave_entitlement_group AS \"entitlementGroup\""),
     );
-    expect(String(queueCall?.[0])).toContain("leave_request.policy_key = ANY");
-    expect(queueCall?.[1]).toEqual([[...SUPPORTED_SPECIAL_LEAVE_KEYS]]);
+    expect(String(administrationQueueCall?.[0])).toContain("leave_request.policy_key = ANY");
+    expect(administrationQueueCall?.[1]).toEqual([[...SUPPORTED_SPECIAL_LEAVE_KEYS]]);
+
+    const specialPool = createHcTaskPool({ policyKey: "employee_marriage" });
+    const legacyValidationResponse = await withSpecialRoutes(specialPool.pool, (app) =>
+      app.inject({
+        method: "GET",
+        url: "/leave/hc/validation-queue",
+        headers: { cookie: "hcis_session=test-token" },
+      }),
+    );
+    expect(legacyValidationResponse.statusCode).toBe(200);
+    expect(legacyValidationResponse.json().items).toEqual([]);
   });
 
   it("rejects a planned task in administration-decision before domain mutation", async () => {
