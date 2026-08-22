@@ -89,6 +89,15 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
     }
     if (
       databaseError.code === "23505" &&
+      databaseError.constraint === "leave_hajj_one_active_request_idx"
+    ) {
+      return reply.status(409).send({
+        code: "HAJJ_REQUEST_ALREADY_ACTIVE",
+        message: "Masih ada pengajuan Cuti Ibadah Haji Wajib yang aktif untuk pegawai ini.",
+      });
+    }
+    if (
+      databaseError.code === "23505" &&
       databaseError.constraint === "leave_hajj_final_usage_pkey"
     ) {
       return reply.status(409).send({
