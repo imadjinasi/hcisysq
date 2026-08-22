@@ -1,4 +1,7 @@
-export type LeaveApprovalSource = "DIRECT_MANAGER" | "UNIT_APPROVER";
+export type LeaveApprovalSource =
+  | "DIRECT_MANAGER"
+  | "UNIT_APPROVER"
+  | "GOVERNANCE_APPROVER";
 
 export interface LeaveApprovalStep {
   employeeId: string;
@@ -11,12 +14,21 @@ export interface LeaveLineApprovalInput {
   unitApproverEmployeeId: string | null | undefined;
 }
 
+export interface ResolvedLeaveAuthorityInput {
+  requesterEmployeeId: string;
+  authorities: ReadonlyArray<{
+    employeeId: string;
+    source: LeaveApprovalSource;
+  }>;
+}
+
 export class LeaveApprovalConfigurationError extends Error {
   constructor(
     readonly code:
       | "DIRECT_MANAGER_MISSING"
       | "DIRECT_MANAGER_SELF"
       | "UNIT_APPROVER_MISSING"
+      | "UNIT_APPROVER_SELF"
       | "APPROVAL_CHAIN_EMPTY",
     message: string,
   ) {
@@ -77,5 +89,28 @@ export function resolveLeaveLineApprovalChain(
     );
   }
 
+  return steps;
+}
+
+/**
+ * Applies APR-001's final defensive normalization at the Leave boundary.
+ * The organization resolver normally removes self-approvals and duplicates,
+ * but Leave repeats those protections before persisting its immutable snapshot.
+ */
+export function snapshotResolvedLeaveAuthorities(
+  input: ResolvedLeaveAuthorityInput,
+): LeaveApprovalStep[] {
+  const steps: LeaveApprovalStep[] = [];
+  for (const authority of input.authorities) {
+    if (authority.employeeId === input.requesterEmployeeId) continue;
+    addStep(steps, authority.employeeId, authority.source);
+  }
+
+  if (steps.length === 0) {
+    throw new LeaveApprovalConfigurationError(
+      "APPROVAL_CHAIN_EMPTY",
+      "Rantai approval tidak memiliki approver yang valid.",
+    );
+  }
   return steps;
 }

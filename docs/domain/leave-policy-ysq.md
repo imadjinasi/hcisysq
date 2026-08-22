@@ -1,6 +1,6 @@
 # Leave Policy YSQ
 
-**Status:** VERIFIED MVP IMPLEMENTATION BASELINE — POLICY SOURCE STILL REQUIRES LEGAL REVIEW — ORG-004 EXTENSION PLANNED  
+**Status:** VERIFIED MVP BASELINE — ORG-004 EXTENSION IMPLEMENTED LOCALLY, NOT DEPLOYED — POLICY SOURCE STILL REQUIRES LEGAL REVIEW
 **Specification:** LEAVE-003  
 **Related:** LEAVE-001, LEAVE-002, APR-001, ORG-002, ORG-004
 
@@ -45,11 +45,11 @@ DIRECT_MANAGER
 
 The resolved concrete people are snapshotted at submission according to APR-001.
 
-## Planned ORG-004 authority resolution
+## ORG-004 authority resolution
 
 `docs/domain/dynamic-organization-structure.md` defines the accepted post-MVP direction for modular organization structure.
 
-ORG-004 will allow line/governance authority to resolve from:
+ORG-004 allows line/governance authority to resolve from when `SHADOW` or `STRUCTURE` is explicitly configured:
 
 - employee team/node membership;
 - authority-bearing organizational positions;
@@ -63,7 +63,9 @@ It must not infer approval from free-text job-title strings or numeric organizat
 
 Concrete approvers are still snapshotted at submission. A later restructure does not rewrite an existing request.
 
-## Planned post-final-approval structural oversight notification
+The resolved rollout mode is also snapshotted. `LEGACY` and `SHADOW` preserve the verified routing and produce no ORG-004 oversight notification; only a request submitted in `STRUCTURE` may produce that structural side effect. A later rollout-mode change does not alter an in-flight request.
+
+## Post-final-approval structural oversight notification
 
 Accepted workflow rule:
 
@@ -77,6 +79,7 @@ This notification:
 - does not block the completed request if delivery fails;
 - remains separate from Human Capital notification/validation/approval responsibilities;
 - is resolved through ORG-004 structure/authority configuration.
+- applies only when the request's submission snapshot selected `STRUCTURE` mode.
 
 The reference point is the final **line/governance approver**, not automatically the last actor in the whole workflow.
 
@@ -114,7 +117,7 @@ The HC approver's own supervisor is not automatically the oversight recipient me
 
 Existing policy-specific HC notifications remain additive where required.
 
-## Director governance rule — planned ORG-004
+## Director governance rule — ORG-004
 
 Accepted operational rule for Director leave:
 
@@ -371,7 +374,7 @@ Final synthetic browser UAT verified the implemented policy boundaries across:
 
 These tests verify HCIS behavior against the working policy baseline. They do not replace the pending legal review of the underlying YSQ policy document.
 
-ORG-004 structural resolution and oversight notification are **planned** and were not part of that completed MVP UAT.
+ORG-004 structural resolution and oversight notification are implemented and covered by isolated automated tests on the implementation branch. They were not part of the completed MVP UAT, are not deployed, and are not production validated.
 
 ## Acceptance criteria
 

@@ -94,6 +94,7 @@ function createDecisionPool(input: {
             status: input.stepStatus,
             requestStatus: "in_review",
             hcHandling: input.hcHandling ?? "notify",
+            policyKey: "annual",
           },
         ],
         rowCount: 1,

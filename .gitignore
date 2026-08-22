@@ -9,6 +9,7 @@
 
 # Data and exports
 *.sql
+!apps/api/migrations/*.sql
 *.sqlite
 *.sqlite3
 *.dump
