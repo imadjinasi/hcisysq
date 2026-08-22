@@ -17,6 +17,7 @@ import {
   type PlannedLeavePreview,
   type PlannedLeaveSummary,
   type SupportedPlannedLeaveKey,
+  uploadPlannedLeaveEvidence,
 } from "@/lib/plannedLeave";
 
 function initials(name: string) {
@@ -81,6 +82,7 @@ export function EmployeePlannedLeavePage() {
   const [reason, setReason] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PlannedLeavePreview | null>(null);
+  const [correctionFiles, setCorrectionFiles] = useState<Record<string, File | null>>({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -185,6 +187,30 @@ export function EmployeePlannedLeavePage() {
         cause instanceof PlannedLeaveApiError || cause instanceof Error
           ? cause.message
           : "Pengajuan tidak dapat dikirim.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const completeEvidence = async (requestId: string) => {
+    const correctionFile = correctionFiles[requestId];
+    if (!correctionFile) {
+      setError("Pilih dokumen tambahan terlebih dahulu.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await uploadPlannedLeaveEvidence(requestId, await fileToEvidence(correctionFile));
+      setCorrectionFiles((current) => ({ ...current, [requestId]: null }));
+      setSuccess("Dokumen tambahan sudah dikirim. Human Capital akan memeriksa kembali.");
+      await load();
+    } catch (cause) {
+      setError(
+        cause instanceof PlannedLeaveApiError || cause instanceof Error
+          ? cause.message
+          : "Dokumen tambahan tidak dapat dikirim.",
       );
     } finally {
       setBusy(false);
@@ -315,6 +341,32 @@ export function EmployeePlannedLeavePage() {
                   <span className="w-fit rounded-full bg-muted px-3 py-1 text-xs font-semibold">{item.status === "approved" ? "Selesai" : item.status === "rejected" ? "Ditolak" : "Diproses"}</span>
                 </div>
                 <p className="mt-2 text-xs font-semibold text-brand-primary-deep">{item.nextAction}</p>
+                {item.hcTaskStatus === "needs_correction" ? (
+                  <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3">
+                    <p className="text-xs font-semibold text-amber-950">Human Capital meminta kelengkapan dokumen.</p>
+                    <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <input
+                        type="file"
+                        accept="application/pdf,image/jpeg,image/png"
+                        onChange={(event) =>
+                          setCorrectionFiles((current) => ({
+                            ...current,
+                            [item.id]: event.target.files?.[0] ?? null,
+                          }))
+                        }
+                        className="block min-w-0 flex-1 text-xs"
+                      />
+                      <button
+                        type="button"
+                        disabled={busy || !correctionFiles[item.id]}
+                        onClick={() => void completeEvidence(item.id)}
+                        className="inline-flex h-9 items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-white disabled:opacity-50"
+                      >
+                        <FileUp className="h-4 w-4" aria-hidden="true" /> Kirim dokumen
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ))
           )}
