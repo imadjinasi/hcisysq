@@ -48,8 +48,10 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  IF TG_OP = 'UPDATE' AND OLD.status IS NOT DISTINCT FROM NEW.status THEN
-    RETURN NEW;
+  IF TG_OP = 'UPDATE' THEN
+    IF OLD.status IS NOT DISTINCT FROM NEW.status THEN
+      RETURN NEW;
+    END IF;
   END IF;
 
   INSERT INTO leave_hajj_final_usage (employee_id, leave_request_id, used_at)
