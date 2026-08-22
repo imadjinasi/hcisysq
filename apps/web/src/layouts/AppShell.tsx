@@ -141,6 +141,12 @@ export function AppShell({ children, user, activeItem = "Beranda" }: AppShellPro
                       active={activeItem === "Validasi Cuti"}
                     />
                     <NavigationLink
+                      label="Cuti Terencana"
+                      href="/app/hc/planned-leave"
+                      icon={CalendarDays}
+                      active={activeItem === "Cuti Terencana"}
+                    />
+                    <NavigationLink
                       label="Penyelesaian Kehadiran"
                       href="/app/hc/attendance-resolution"
                       icon={Clock3}
