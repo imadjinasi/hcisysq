@@ -202,13 +202,17 @@ For Director leave:
 ```text
 Director
   -> Secretary of the Foundation APPROVES
-  -> request APPROVED
+  -> overall request APPROVED
   -> Chair of the Foundation NOTIFIED
 ```
 
 Pembina/Foundation Supervisor is not notified by this rule.
 
-For all line-approved leave, after final approval the system should notify one structural layer above the final approver. This is informational only and must not create another approval step.
+For every leave workflow that contains a line/governance approval stage, once the **overall request reaches final approved**, the system should notify one structural layer above the **final line/governance approver**.
+
+This distinction matters when HC validation or HC actual approval occurs after line approval. HC does not automatically become the structural oversight reference.
+
+This notification is informational only and must not create another approval step. Existing HC notification requirements remain separate and additive.
 
 This rule is **planned, not current MVP runtime behavior**. Detailed resolution is defined by ORG-004 and must be implemented through structure/authority configuration rather than title-specific source code.
 
