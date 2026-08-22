@@ -171,7 +171,7 @@ export function EmployeeLeavePage() {
         ) : null}
       </section>
 
-      <section className="mt-5 grid gap-3 sm:grid-cols-2">
+      <section className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <a
           href="#annual-form"
           className="group rounded-3xl border border-brand-primary/25 bg-brand-primary-pale/45 p-4 shadow-[var(--shadow-soft)] transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -204,6 +204,24 @@ export function EmployeeLeavePage() {
                 Sakit, melahirkan, keguguran, haid, pendampingan istri, atau keluarga meninggal dunia.
               </p>
               <p className="mt-2 text-xs font-bold text-brand-primary-deep">Laporkan kondisi →</p>
+            </div>
+          </div>
+        </a>
+
+        <a
+          href="/app/leave/planned"
+          className="group rounded-3xl border border-border/70 bg-white p-4 shadow-[var(--shadow-soft)] transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <div className="flex items-start gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand-yellow/15 text-amber-950">
+              <CalendarDays className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <div>
+              <p className="text-sm font-bold text-brand-heading">Keperluan terencana</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                Pernikahan, menikahkan atau khitan anak, Haji wajib, dan Cuti Tanpa Gaji.
+              </p>
+              <p className="mt-2 text-xs font-bold text-brand-primary-deep">Pilih keperluan →</p>
             </div>
           </div>
         </a>
