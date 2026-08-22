@@ -18,6 +18,7 @@ import { registerEmployeeLeaveRoutes } from "./modules/leave/employee-routes.js"
 import { registerPlannedEvidenceRoutes } from "./modules/leave/planned-evidence-routes.js";
 import { registerPlannedLeaveRoutes } from "./modules/leave/planned-leave-routes.js";
 import { registerSpecialLeaveRoutes } from "./modules/leave/special-leave-routes.js";
+import { registerPayslipRoutes } from "./modules/payslips/routes.js";
 import { registerSystemRoutes } from "./modules/system/routes.js";
 
 export async function createApp(config: ApiConfig, injectedPool?: Pool) {
@@ -53,6 +54,7 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerPlannedEvidenceRoutes(app, pool, config);
   await registerSpecialLeaveRoutes(app, pool, config);
   await registerAttendanceResolutionRoutes(app, pool, config);
+  await registerPayslipRoutes(app, pool, config);
 
   app.setErrorHandler((error, _request, reply) => {
     const databaseError = error as Error & { code?: string; constraint?: string };
