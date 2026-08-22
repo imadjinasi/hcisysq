@@ -140,6 +140,19 @@ export async function submitPlannedLeave(input: {
   return readJson(response);
 }
 
+export async function uploadPlannedLeaveEvidence(
+  requestId: string,
+  evidence: PlannedLeaveEvidenceInput,
+): Promise<{ id: string; fileName: string; contentType: string; byteSize: number }> {
+  const response = await fetch(`/api/leave/planned/me/requests/${requestId}/evidence`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify(evidence),
+  });
+  return readJson(response);
+}
+
 export interface PlannedHcQueue {
   items: Array<{
     taskId: string;
