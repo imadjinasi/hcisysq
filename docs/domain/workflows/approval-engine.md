@@ -293,34 +293,59 @@ Notification is not the source of truth for approval.
 - notification delivery may be retried;
 - retry must not repeat the decision.
 
-### Planned one-level-above final-approval notification
+### Planned one-level-above line/governance notification
 
-Accepted planning rule for line-approved leave:
+Accepted planning rule for leave workflows that contain line/governance approval:
 
-> After the request reaches final `approved`, notify one structural layer above the final approver.
+> After the **overall request reaches final `approved`**, notify one structural layer above the **final line/governance approver**.
 
-This is **informational only** and does not create another approval step.
+This is informational only and does not create another approval step.
+
+This distinction matters when a workflow continues after line approval through HC validation or actual HC approval. Human Capital does not become the structural oversight reference merely because HC acts later in the workflow.
 
 Examples:
 
 ```text
+Annual leave:
 Teacher
 -> Curriculum Vice Principal approves
--> Head of SDIT approves
--> request approved
+-> Head of SDIT approves            [final line approver]
+-> overall request approved
 -> Director notified
 ```
 
 ```text
+Planned leave:
+Employee
+-> Direct Manager
+-> Unit Approver                     [final line approver]
+-> HC validates
+-> overall request approved
+-> one level above Unit Approver notified
+```
+
+```text
+Unpaid leave:
+Employee
+-> Unit Approver                     [final line approver]
+-> HC actual approval
+-> overall request approved
+-> one level above Unit Approver notified
+```
+
+```text
+Director leave:
 Director
--> Secretary of the Foundation approves
--> request approved
+-> Secretary of the Foundation approves  [final governance approver]
+-> overall request approved
 -> Chair of the Foundation notified
 ```
 
-Pembina/Foundation Supervisor is not included in the Director rule.
+Pembina/Foundation Supervisor is not included by the Director rule.
 
-The target resolution behavior is defined by ORG-004. The recipient may be resolved against the effective structure at the time final approval commits, then persisted on the notification intent. This planned notification must not be confused with the snapshotted approval authority.
+The target resolution behavior is defined by ORG-004. The recipient may be resolved against the effective structure when final approval commits, then persisted on the notification intent. Concrete approval authority remains snapshotted at submission.
+
+Existing HC-role notification requirements remain separate and additive where a leave policy already requires them.
 
 ## Examples
 
@@ -371,7 +396,8 @@ When ORG-004 is used, the audit/resolution explanation must allow operators to u
 - APR-001-J: notification delivery can retry without repeating the approval transition.
 - APR-001-K: ORG-004 structural resolution, when activated, still produces a concrete immutable snapshot at submission.
 - APR-001-L: structural vacancy fallback cannot bypass self-approval, duplicate, active-employee, capability, or fail-closed validation.
-- APR-001-M: the planned one-level-above final-approval notification remains informational and is never converted into an implicit extra approval step.
+- APR-001-M: after overall final approval, the planned structural oversight notification is resolved from the final line/governance approver rather than automatically from a later HC validator/approver.
+- APR-001-N: the oversight notification remains informational and is never converted into an implicit extra approval step.
 
 ## Deferred unless separately specified
 
