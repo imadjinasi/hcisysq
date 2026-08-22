@@ -1,7 +1,8 @@
 version: 1
-status: DISCOVERY
+status: VERIFIED
 source_system: legacy-hcis
-updated_at: 2026-08-20
+updated_at: 2026-08-22
+verification_checkpoint: docs/product/mvp-release-checkpoint.md
 
 status_values:
   - discovery
@@ -18,13 +19,15 @@ rules:
   - Every feature requires acceptance criteria before implementation.
   - Financial and authorization features require additional review.
   - MVP scope is defined in docs/product/mvp.md.
+  - MVP verification evidence is frozen in docs/product/mvp-release-checkpoint.md.
+  - A verified MVP feature does not imply full legacy parity or production cutover readiness.
 
 features:
   - id: AUTH-001
     module: identity
     name: Employee sign-in and session
     legacy_evidence: email/password and Google sign-in exist
-    target_status: specified
+    target_status: verified
     priority: foundation
     risk: high
     docs:
@@ -36,15 +39,18 @@ features:
     module: identity
     name: Password recovery and account activation
     legacy_evidence: password reset and inactive-account handling exist
-    target_status: discovery
+    target_status: implementing
     priority: foundation
     risk: high
+    mvp_note: Invited-account activation is implemented; password recovery is not part of the completed MVP proof.
+    docs:
+      - docs/domain/account-activation.md
 
   - id: EMP-001
     module: employee
     name: Employee master data
     legacy_evidence: Employee is the authenticated principal and current master data exists outside the new HCIS
-    target_status: implementing
+    target_status: verified
     priority: foundation
     risk: high
     docs:
@@ -55,10 +61,11 @@ features:
     module: employee
     name: Employee self-service profile
     legacy_evidence: account and self-service pages exist
-    target_status: specified
+    target_status: verified
     priority: mvp
     risk: medium
     docs:
+      - docs/domain/employee-dashboard.md
       - docs/product/mvp.md
 
   - id: EMP-003
@@ -73,7 +80,7 @@ features:
     module: employee
     name: Controlled employee master XLSX import
     legacy_evidence: HC maintains an existing employee master spreadsheet
-    target_status: implementing
+    target_status: verified
     priority: foundation
     risk: high
     docs:
@@ -84,17 +91,18 @@ features:
     module: organization
     name: Unit, position, and reporting hierarchy
     legacy_evidence: units, positions, and direct-manager hierarchy exist
-    target_status: implementing
+    target_status: verified
     priority: foundation
     risk: high
     docs:
-      - docs/domain/employee-import.md
+      - docs/domain/organization-access-foundation.md
+      - docs/domain/organization-mapping.md
 
   - id: AUTH-010
     module: authorization
     name: Role and permission management
     legacy_evidence: super_admin, yayasan group, pegawai, kepala_unit, and admin are observed
-    target_status: specified
+    target_status: verified
     priority: foundation
     risk: critical
     docs:
@@ -106,7 +114,7 @@ features:
     module: approval
     name: Reusable multi-step approval engine
     legacy_evidence: leave, attendance, loan, reimbursement, and overtime use approval flows
-    target_status: specified
+    target_status: verified
     priority: foundation
     risk: critical
     docs:
@@ -117,9 +125,11 @@ features:
     module: attendance
     name: Daily attendance
     legacy_evidence: GPS and photo validation are described
-    target_status: discovery
+    target_status: verified
     priority: core
     risk: high
+    docs:
+      - docs/domain/attendance-foundation.md
 
   - id: ATT-002
     module: attendance
@@ -136,25 +146,33 @@ features:
     target_status: discovery
     priority: core
     risk: high
+    mvp_note: Leave working-calendar rules exist, but attendance schedule and lateness/overtime policy remain outside ATT-001.
 
   - id: LEAVE-001
     module: leave
     name: Submit leave request
     legacy_evidence: leave request and approval notification exist
-    target_status: specified
+    target_status: verified
     priority: first-slice
     risk: high
     docs:
       - docs/domain/workflows/leave-request.md
+      - docs/domain/annual-leave-vertical-slice.md
+      - docs/domain/special-leave-hc-validation.md
+      - docs/domain/attendance-resolution.md
       - docs/product/mvp.md
 
   - id: LEAVE-002
     module: leave
     name: Leave balance and working-day calculation
     legacy_evidence: requires validation against current behavior
-    target_status: discovery
+    target_status: verified
     priority: first-slice
     risk: critical
+    docs:
+      - docs/domain/leave-policy-ysq.md
+      - docs/domain/annual-leave-vertical-slice.md
+      - docs/product/mvp.md
 
   - id: REIMB-001
     module: reimbursement
@@ -170,20 +188,22 @@ features:
     module: payroll
     name: Payslip data import and validation
     legacy_evidence: CSV payroll import exists
-    target_status: specified
+    target_status: verified
     priority: mvp
     risk: critical
     docs:
+      - docs/domain/payslip-mvp.md
       - docs/product/mvp.md
 
   - id: PAY-002
     module: payroll
     name: Employee read-only payslip access
     legacy_evidence: PDF payslip and availability notification exist
-    target_status: specified
+    target_status: verified
     priority: mvp
     risk: critical
     docs:
+      - docs/domain/payslip-mvp.md
       - docs/product/mvp.md
 
   - id: LOAN-001
@@ -233,6 +253,7 @@ features:
     target_status: discovery
     priority: foundation
     risk: high
+    mvp_note: Transactional notification intents/outbox exist where needed, but production delivery adapters remain outside the completed MVP.
 
   - id: NOTIF-002
     module: notification
@@ -265,6 +286,7 @@ features:
     target_status: specified
     priority: foundation
     risk: critical
+    mvp_note: Clean and upgrade database migrations are verified; full legacy-data cutover remains a separate production-readiness activity.
     docs:
       - docs/migration/strategy.md
 
@@ -272,8 +294,9 @@ features:
     module: security
     name: Audit, privacy, and sensitive-data controls
     legacy_evidence: activity logs and sensitive HR data exist
-    target_status: specified
+    target_status: verified
     priority: foundation
     risk: critical
     docs:
       - docs/security/security-baseline.md
+      - docs/product/mvp-release-checkpoint.md
