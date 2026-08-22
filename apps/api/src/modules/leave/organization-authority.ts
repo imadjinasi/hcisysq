@@ -191,6 +191,20 @@ async function finalLineOrGovernanceApprover(
   return result.rows[0]?.employeeId ?? null;
 }
 
+async function snapshottedRolloutMode(
+  db: PoolClient,
+  requestId: string,
+): Promise<"LEGACY" | "SHADOW" | "STRUCTURE" | null> {
+  const result = await db.query<{ mode: string | null }>(
+    `SELECT validation_summary #>> '{authorityResolution,mode}' AS mode
+     FROM leave_requests
+     WHERE id = $1`,
+    [requestId],
+  );
+  const mode = result.rows[0]?.mode;
+  return mode === "LEGACY" || mode === "SHADOW" || mode === "STRUCTURE" ? mode : null;
+}
+
 /**
  * Adds the informational ORG-004 oversight intent without making it an
  * approval step. A savepoint deliberately isolates resolver/outbox failures
@@ -212,6 +226,12 @@ export async function enqueueFinalApprovalOversight(
   try {
     await db.query("SAVEPOINT leave_oversight_notification");
     savepointCreated = true;
+    // Behavioral mode is immutable for an in-flight request. Missing mode
+    // metadata identifies pre-ORG-004/legacy submissions and is side-effect safe.
+    if (await snapshottedRolloutMode(db, input.requestId) !== "STRUCTURE") {
+      await db.query("RELEASE SAVEPOINT leave_oversight_notification");
+      return;
+    }
     const finalApproverEmployeeId =
       input.finalApproverEmployeeId ??
       (await finalLineOrGovernanceApprover(db, input.requestId));

@@ -345,6 +345,8 @@ Pembina/Foundation Supervisor is not included by the Director rule.
 
 The target resolution behavior is defined by ORG-004. The recipient may be resolved against the effective structure when final approval commits, then persisted on the notification intent. Concrete approval authority remains snapshotted at submission.
 
+The ORG-004 rollout mode used at submission is part of that immutable resolution context. A later rollout-setting change must not introduce STRUCTURE routing or structural oversight into a request submitted under `LEGACY` or `SHADOW`, nor remove STRUCTURE oversight from a request that was already submitted under `STRUCTURE`.
+
 Existing HC-role notification requirements remain separate and additive where a leave policy already requires them.
 
 ## Examples

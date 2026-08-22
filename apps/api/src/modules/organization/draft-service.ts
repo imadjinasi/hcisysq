@@ -216,13 +216,11 @@ export class OrganizationDraftService {
     for (const incumbency of snapshot.incumbencies.filter(
       (item) => isEffective(item.effectiveFrom, item.effectiveTo, snapshot.changeSet.effectiveOn),
     )) {
-      const eligibility = await this.repository.validate(incumbency.employeeId, {
-        effectiveDate: snapshot.changeSet.effectiveOn,
-      });
+      const eligibility = await this.repository.validateStructuralIncumbent(incumbency.employeeId);
       if (!eligibility.eligible) {
         issues.push(issue(
           "INACTIVE_INCUMBENT",
-          `Incumbent is not eligible: ${eligibility.reason ?? "unknown"}.`,
+          `Incumbent must reference an active employee: ${eligibility.reason ?? "unknown"}.`,
           "incumbency",
           incumbency.id,
         ));

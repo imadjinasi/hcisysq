@@ -14,7 +14,11 @@ import type {
   OrganizationNode,
   OrganizationPosition,
 } from "@/lib/organizationDesigner";
-import { buildOrganizationTree, type OrganizationTreeNode } from "@/lib/organizationTree";
+import {
+  buildOrganizationTree,
+  type OrganizationLayoutPosition,
+  type OrganizationTreeNode,
+} from "@/lib/organizationTree";
 import { cn } from "@/lib/utils";
 
 export type OrganizationSelection =
@@ -28,7 +32,7 @@ function PositionCard({
   selected,
   onSelect,
 }: {
-  position: OrganizationPosition;
+  position: OrganizationLayoutPosition;
   isLeader: boolean;
   selected: boolean;
   onSelect: () => void;
@@ -91,28 +95,87 @@ function PositionCard({
   );
 }
 
+function PositionLane({
+  position,
+  isLeader,
+  selected,
+  onSelect,
+}: {
+  position: OrganizationLayoutPosition;
+  isLeader: boolean;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const offsetHeight = position.visualRankOffset * 40;
+  const connectorHeight = (position.parentPositionKey ? 16 : 0) + offsetHeight;
+
+  return (
+    <div
+      className="relative"
+      data-position-key={position.stableKey}
+      data-parent-position-key={position.parentPositionKey ?? undefined}
+      data-structural-depth={position.structuralDepth}
+      data-visual-band={position.visualDepth}
+      data-visual-rank-offset={position.visualRankOffset}
+    >
+      {connectorHeight > 0 ? (
+        <span
+          aria-hidden="true"
+          className={cn(
+            "mx-auto block w-px",
+            position.parentPositionKey ? "bg-brand-primary/35" : "bg-transparent",
+          )}
+          style={{ height: `${connectorHeight}px` }}
+          data-connector-kind={position.parentPositionKey ? "position" : undefined}
+          data-connector-from={position.parentPositionKey ?? undefined}
+          data-connector-to={position.parentPositionKey ? position.stableKey : undefined}
+        />
+      ) : null}
+      <PositionCard
+        position={position}
+        isLeader={isLeader}
+        selected={selected}
+        onSelect={onSelect}
+      />
+    </div>
+  );
+}
+
 function TreeBranch({
   item,
   selection,
   onSelect,
-  depth,
+  parentKey,
 }: {
   item: OrganizationTreeNode;
   selection: OrganizationSelection;
   onSelect: (selection: Exclude<OrganizationSelection, null>) => void;
-  depth: number;
+  parentKey?: string;
 }) {
   const [expanded, setExpanded] = useState(true);
   const selected = selection?.kind === "node" && selection.key === item.stableKey;
   const hasDetails = item.positions.length > 0 || item.children.length > 0;
+  const nodeOffsetHeight = item.visualRankOffset * 48;
+  const connectorHeight = (parentKey ? 28 : 0) + nodeOffsetHeight;
 
   return (
-    <div
-      className={cn("relative", depth > 0 && "ml-7 border-l border-brand-primary/25 pl-6")}
-      style={item.visualRankOffset > 0 ? { paddingTop: `${item.visualRankOffset * 2.75}rem` } : undefined}
+    <li
+      className="relative flex min-w-[22rem] flex-col items-center px-3"
+      data-node-key={item.stableKey}
+      data-parent-node-key={item.parentNodeKey ?? undefined}
+      data-structural-depth={item.structuralDepth}
+      data-visual-band={item.visualDepth}
+      data-visual-rank-offset={item.visualRankOffset}
     >
-      {depth > 0 ? (
-        <span className="absolute left-0 top-[2.1rem] h-px w-6 bg-brand-primary/30" aria-hidden="true" />
+      {connectorHeight > 0 ? (
+        <span
+          aria-hidden="true"
+          className={cn("block w-px", parentKey ? "bg-brand-primary/40" : "bg-transparent")}
+          style={{ height: `${connectorHeight}px` }}
+          data-connector-kind={parentKey ? "node" : undefined}
+          data-connector-from={parentKey}
+          data-connector-to={parentKey ? item.stableKey : undefined}
+        />
       ) : null}
       <article
         role="button"
@@ -125,7 +188,7 @@ function TreeBranch({
           }
         }}
         className={cn(
-          "w-[min(100%,22rem)] rounded-2xl border bg-white p-4 shadow-[var(--shadow-soft)] transition-colors",
+          "w-[22rem] rounded-2xl border bg-white p-4 shadow-[var(--shadow-soft)] transition-colors",
           selected
             ? "border-brand-primary ring-2 ring-brand-primary/15"
             : "border-border/70 hover:border-brand-primary/40",
@@ -167,7 +230,7 @@ function TreeBranch({
         {expanded && item.positions.length > 0 ? (
           <div className="mt-3 space-y-2 border-t border-border/60 pt-3">
             {item.positions.map((position) => (
-              <PositionCard
+              <PositionLane
                 key={position.stableKey}
                 position={position}
                 isLeader={item.leaderPositionKey === position.stableKey}
@@ -180,19 +243,26 @@ function TreeBranch({
       </article>
 
       {expanded && item.children.length > 0 ? (
-        <div className="mt-4 space-y-4">
-          {item.children.map((child) => (
-            <TreeBranch
-              key={child.stableKey}
-              item={child}
-              selection={selection}
-              onSelect={onSelect}
-              depth={depth + 1}
-            />
-          ))}
+        <div className="relative mt-8 flex min-w-max flex-col items-center" data-child-level-of={item.stableKey}>
+          <span aria-hidden="true" className="h-7 w-px bg-brand-primary/40" />
+          <ol
+            className="flex min-w-max items-start justify-center gap-6 border-t border-brand-primary/40"
+            data-layout-axis="horizontal"
+            data-sibling-parent={item.stableKey}
+          >
+            {item.children.map((child) => (
+              <TreeBranch
+                key={child.stableKey}
+                item={child}
+                selection={selection}
+                onSelect={onSelect}
+                parentKey={item.stableKey}
+              />
+            ))}
+          </ol>
         </div>
       ) : null}
-    </div>
+    </li>
   );
 }
 
@@ -238,16 +308,17 @@ export function OrganizationChart({
   }
 
   return (
-    <div className="min-w-max space-y-5 p-5 sm:p-7">
+    <div className="min-w-max overflow-auto p-5 sm:p-7">
+      <ol className="flex min-w-max items-start justify-center gap-8" data-layout-axis="horizontal" data-root-level>
       {roots.map((root) => (
         <TreeBranch
           key={root.stableKey}
           item={root}
           selection={selection}
           onSelect={onSelect}
-          depth={0}
         />
       ))}
+      </ol>
     </div>
   );
 }

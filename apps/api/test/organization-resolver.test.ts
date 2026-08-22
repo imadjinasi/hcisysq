@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   jakartaBusinessDate,
@@ -6,10 +6,10 @@ import {
   OrganizationDraftService,
   OrganizationResolutionError,
   OrganizationRolloutService,
+  PostgresOrganizationRepository,
   type AuthorityEligibilityResult,
   type OrganizationRolloutMode,
   type OrganizationSnapshot,
-  type PostgresOrganizationRepository,
 } from "../src/modules/organization/index.js";
 
 const effectiveFrom = "2026-01-01";
@@ -417,6 +417,117 @@ describe("ORG-004 rollout service", () => {
 });
 
 describe("ORG-004 draft validation and impact", () => {
+  it("separates active structural employment from login eligibility", async () => {
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes("SELECT (status = 'active')")) {
+        return { rows: [{ employeeActive: true }], rowCount: 1 };
+      }
+      if (sql.includes("(e.status = 'active')")) {
+        return {
+          rows: [{ employeeActive: true, accountActive: false, capabilityValid: false }],
+          rowCount: 1,
+        };
+      }
+      throw new Error(`Unexpected eligibility SQL: ${sql}`);
+    });
+    const repository = new PostgresOrganizationRepository({ query } as never);
+
+    await expect(repository.validateStructuralIncumbent(employeeIds.head))
+      .resolves.toEqual({ eligible: true, reason: null });
+    await expect(repository.validate(employeeIds.head, {
+      effectiveDate: "2026-08-22",
+      requiredCapability: "leave.approve",
+    })).resolves.toEqual({ eligible: false, reason: "ACCOUNT_NOT_ACTIVE" });
+  });
+
+  it("allows an active employee without a login account to be published as an incumbent", async () => {
+    const draft = snapshot();
+    draft.changeSet.status = "DRAFT";
+    draft.changeSet.validatedAt = null;
+    draft.changeSet.publishedAt = null;
+    const fakeRepository = {
+      loadChangeSetSnapshot: async () => draft,
+      validateStructuralIncumbent: async () => ({ eligible: true, reason: null }),
+      markValidated: async (_id: string, _actor: string, report: { valid: boolean }) => {
+        draft.changeSet.status = report.valid ? "VALIDATED" : "DRAFT";
+        draft.changeSet.validationReport = { valid: report.valid, issues: [] };
+      },
+      publishValidated: async () => {
+        draft.changeSet.status = "PUBLISHED";
+      },
+    } as unknown as PostgresOrganizationRepository;
+    const service = new OrganizationDraftService(fakeRepository);
+
+    await expect(service.validateDraft(draft.changeSet.id, "admin"))
+      .resolves.toMatchObject({ valid: true });
+    await expect(service.publish(draft.changeSet.id, "admin")).resolves.toBeUndefined();
+    expect(draft.changeSet.status).toBe("PUBLISHED");
+  });
+
+  it("fails closed when a structural Leave approver has no eligible account", async () => {
+    const structure = snapshot();
+    structure.positions[1] = { ...structure.positions[1]!, vacancyPolicy: "BLOCK" };
+    structure.authorityBindings[0] = {
+      ...structure.authorityBindings[0]!,
+      vacancyPolicy: "BLOCK",
+    };
+    let accountReady = false;
+    const subject = new OrganizationRolloutService(
+      { getRolloutMode: async () => "STRUCTURE" },
+      new OrganizationAuthorityResolver(
+        { loadEffectiveSnapshot: async () => structure },
+        {
+          eligibilityValidator: {
+            validate: async () => accountReady
+              ? { eligible: true, reason: null }
+              : { eligible: false, reason: "ACCOUNT_NOT_ACTIVE" },
+          },
+        },
+      ),
+    );
+    const input = {
+      workflowKey: "leave.annual",
+      requesterEmployeeId: employeeIds.staff,
+      effectiveDate: "2026-08-22",
+      requiredCapability: "leave.approve",
+      legacy: { directManagerEmployeeId: employeeIds.director, unitApproverEmployeeId: employeeIds.director },
+    };
+
+    await expect(subject.resolveAuthorities(input)).rejects.toMatchObject({
+      code: "AUTHORITY_INELIGIBLE",
+      details: expect.objectContaining({ lastIneligibility: "ACCOUNT_NOT_ACTIVE" }),
+    });
+    accountReady = true;
+    await expect(subject.resolveAuthorities(input)).resolves.toMatchObject({
+      authoritativeSource: "STRUCTURE",
+      authorities: expect.arrayContaining([
+        expect.objectContaining({ employeeId: employeeIds.head }),
+      ]),
+    });
+  });
+
+  it("keeps an inactive employee invalid as an active incumbent", async () => {
+    const draft = snapshot();
+    draft.changeSet.status = "DRAFT";
+    draft.changeSet.validatedAt = null;
+    draft.changeSet.publishedAt = null;
+    const fakeRepository = {
+      loadChangeSetSnapshot: async () => draft,
+      validateStructuralIncumbent: async (employeeId: string) => employeeId === employeeIds.head
+        ? { eligible: false, reason: "EMPLOYEE_NOT_ACTIVE" }
+        : { eligible: true, reason: null },
+      markValidated: async () => undefined,
+    } as unknown as PostgresOrganizationRepository;
+
+    const report = await new OrganizationDraftService(fakeRepository)
+      .validateDraft(draft.changeSet.id, "admin");
+    expect(report.valid).toBe(false);
+    expect(report.issues).toContainEqual(expect.objectContaining({
+      code: "INACTIVE_INCUMBENT",
+      entityId: "incumbency-head",
+    }));
+  });
+
   it("rejects overlapping primary incumbencies during draft validation", async () => {
     const draft = snapshot({
       incumbencies: [
@@ -431,7 +542,7 @@ describe("ORG-004 draft validation and impact", () => {
     let persistedValid: boolean | null = null;
     const fakeRepository = {
       loadChangeSetSnapshot: async () => draft,
-      validate: async () => ({ eligible: true, reason: null }),
+      validateStructuralIncumbent: async () => ({ eligible: true, reason: null }),
       markValidated: async (_id: string, _actor: string, report: { valid: boolean }) => {
         persistedValid = report.valid;
       },
@@ -458,6 +569,7 @@ describe("ORG-004 draft validation and impact", () => {
     const fakeRepository = {
       loadChangeSetSnapshot: async (id: string) => id === draft.changeSet.id ? draft : before,
       validate: async () => ({ eligible: true, reason: null }),
+      validateStructuralIncumbent: async () => ({ eligible: true, reason: null }),
     } as unknown as PostgresOrganizationRepository;
     const impact = await new OrganizationDraftService(fakeRepository).previewImpact(draft.changeSet.id);
     expect(impact.visualOnly).toBe(true);

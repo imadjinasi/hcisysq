@@ -13,6 +13,8 @@ A structural child does not always belong on the immediately next visual row of 
 
 HCIS must support this without creating fake intermediate positions and without changing approval resolution.
 
+The implemented renderer uses a deterministic top-down hierarchy: children are placed below their structural parent, siblings share a horizontal peer row, and explicit connector metadata/lines retain the real parent across skipped bands. Node and position visual offsets add actual vertical layout distance and visual-band depth; they are not presentation badges alone. Member populations remain summarized on group cards rather than expanded into one chart box per employee.
+
 ## Core invariant
 
 > **Structural relationship and visual rank are different concepts.**

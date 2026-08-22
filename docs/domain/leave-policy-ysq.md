@@ -63,6 +63,8 @@ It must not infer approval from free-text job-title strings or numeric organizat
 
 Concrete approvers are still snapshotted at submission. A later restructure does not rewrite an existing request.
 
+The resolved rollout mode is also snapshotted. `LEGACY` and `SHADOW` preserve the verified routing and produce no ORG-004 oversight notification; only a request submitted in `STRUCTURE` may produce that structural side effect. A later rollout-mode change does not alter an in-flight request.
+
 ## Post-final-approval structural oversight notification
 
 Accepted workflow rule:
@@ -77,6 +79,7 @@ This notification:
 - does not block the completed request if delivery fails;
 - remains separate from Human Capital notification/validation/approval responsibilities;
 - is resolved through ORG-004 structure/authority configuration.
+- applies only when the request's submission snapshot selected `STRUCTURE` mode.
 
 The reference point is the final **line/governance approver**, not automatically the last actor in the whole workflow.
 

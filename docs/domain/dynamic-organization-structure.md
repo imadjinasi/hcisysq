@@ -22,7 +22,7 @@ Published structure is stored as complete, immutable, effective-dated snapshots:
 - `organization_authority_bindings` stores supervisory, leader, Unit Approver, governance, and oversight semantics;
 - `organization_reporting_overrides` stores reasoned employee-specific exceptions;
 - `organization_rollout_settings` controls `LEGACY`, `SHADOW`, and `STRUCTURE` by workflow and optional node scope;
-- `organization_audit_events` records privileged configuration changes without copying unnecessary employee-sensitive data.
+- `organization_audit_events` records privileged configuration changes without copying unnecessary employee-sensitive data. Every privileged mutation and its audit event share one database transaction and roll back together.
 
 The migration is additive. No synthetic employee, inferred authority, rollout row, or organization snapshot is seeded. Absence of a rollout setting resolves to `LEGACY`.
 
@@ -40,15 +40,17 @@ The reusable backend resolver applies this precedence:
 
 Dates use the Asia/Jakarta business date when the caller does not supply an explicit date. Visual rank is excluded from every authority-resolution input.
 
+Structural incumbency validity is intentionally narrower than workflow eligibility. A position may be occupied by an active employee who has no active HCIS account yet, so account preparation does not block structure publication. When that position is selected as a workflow authority, the resolver separately requires the active employee account and any requested capability and fails closed with an actionable eligibility error until those prerequisites exist. ORG-004 never creates or activates an account automatically.
+
 ### Rollout and Leave integration
 
-- `LEGACY`: the verified ORG-002 result remains authoritative.
-- `SHADOW`: ORG-002 remains authoritative while the structural result and mismatch reason are recorded for diagnostics.
-- `STRUCTURE`: the structural resolver is authoritative and fails closed; it does not silently return to ORG-002.
+- `LEGACY`: the verified ORG-002 result remains authoritative and ORG-004 produces no routing or oversight side effect.
+- `SHADOW`: ORG-002 remains authoritative while the structural result and mismatch reason are recorded for diagnostics; ORG-004 does not enqueue structural oversight.
+- `STRUCTURE`: the structural resolver and post-final-approval oversight behavior are authoritative and fail closed; they do not silently return to ORG-002.
 
 Leave is the first consumer. Annual and Planned Leave preserve Direct Manager then Unit Approver semantics; Unpaid Leave preserves line/governance authority followed by actual HC approval; Special Leave retains its existing notification/administrative-validation rules. Concrete people and structural explanation metadata are snapshotted at submission.
 
-After final approval, a line/governance-approved Leave request creates an idempotent informational intent for the configured oversight authority above the snapshotted final line/governance approver. The resolver is not based on a later HC validator/approver. Oversight resolution and outbox insertion are isolated so failure cannot roll back or repeat the approval decision.
+For a request submitted in `STRUCTURE`, final approval creates an idempotent informational intent for the configured oversight authority above the snapshotted final line/governance approver. The submission-time rollout mode is stored with the request and remains authoritative if rollout configuration changes while the request is in flight. `LEGACY`, `SHADOW`, and older requests without mode metadata never enqueue this structural side effect. The resolver is not based on a later HC validator/approver. Oversight resolution and outbox insertion are isolated so failure cannot roll back or repeat the approval decision.
 
 ### Deployment and deferred operational work
 

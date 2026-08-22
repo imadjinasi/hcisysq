@@ -100,4 +100,49 @@ describe("Organization Designer administration boundary", () => {
       ).toBe(false);
     },
   );
+
+  it("rolls back a privileged mutation when its audit event fails", async () => {
+    let rolloutPersisted = false;
+    const transactionQuery = vi.fn(async (sql: string) => {
+      if (sql === "BEGIN" || sql === "COMMIT") return { rows: [], rowCount: 0 };
+      if (sql === "ROLLBACK") {
+        rolloutPersisted = false;
+        return { rows: [], rowCount: 0 };
+      }
+      if (sql.includes("INSERT INTO organization_rollout_settings")) {
+        rolloutPersisted = true;
+        return { rows: [], rowCount: 1 };
+      }
+      if (sql.includes("INSERT INTO organization_audit_events")) {
+        throw new Error("forced audit failure");
+      }
+      throw new Error(`Unexpected transaction SQL: ${sql}`);
+    });
+    const release = vi.fn();
+    const { pool: authPool } = createPool("SUPER_ADMIN");
+    const pool = {
+      query: authPool.query.bind(authPool),
+      connect: vi.fn(async () => ({ query: transactionQuery, release })),
+    } as unknown as Pool;
+    const app = Fastify({ logger: false });
+    await registerOrganizationAdminRoutes(app, pool, config);
+
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/admin/organization/rollout",
+      headers: { cookie: "hcis_session=synthetic" },
+      payload: { mode: "STRUCTURE", workflowKey: "leave.annual" },
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(500);
+    expect(rolloutPersisted).toBe(false);
+    expect(transactionQuery.mock.calls.map(([sql]) => sql)).toEqual([
+      "BEGIN",
+      expect.stringContaining("INSERT INTO organization_rollout_settings"),
+      expect.stringContaining("INSERT INTO organization_audit_events"),
+      "ROLLBACK",
+    ]);
+    expect(release).toHaveBeenCalledOnce();
+  });
 });

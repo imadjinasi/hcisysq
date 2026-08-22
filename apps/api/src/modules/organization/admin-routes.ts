@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
@@ -12,7 +12,7 @@ import type {
 } from "./domain.js";
 import { OrganizationDraftService } from "./draft-service.js";
 import { OrganizationAuthorityResolver } from "./resolver.js";
-import { PostgresOrganizationRepository } from "./repository.js";
+import { PostgresOrganizationRepository, type OrganizationQueryable } from "./repository.js";
 import { assertIsoDate, jakartaBusinessDate } from "./jakarta-date.js";
 
 const uuid = z.string().uuid();
@@ -97,8 +97,8 @@ function invalid(reply: FastifyReply, code: string, message: string) {
   return reply.status(400).send({ code, message });
 }
 
-async function audit(
-  pool: Pool,
+async function insertAuditEvent(
+  db: OrganizationQueryable,
   principal: AuthPrincipal,
   action: string,
   entityType: string,
@@ -106,12 +106,51 @@ async function audit(
   changeSetId: string | null,
   payload: Record<string, unknown> = {},
 ) {
-  await pool.query(
+  await db.query(
     `INSERT INTO organization_audit_events
       (id, actor_account_id, action, entity_type, entity_id, change_set_id, payload)
      VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)`,
     [randomUUID(), principal.id, action, entityType, entityId, changeSetId, JSON.stringify(payload)],
   );
+}
+
+interface OrganizationMutationContext {
+  client: PoolClient;
+  repository: PostgresOrganizationRepository;
+  draftService: OrganizationDraftService;
+  audit(
+    action: string,
+    entityType: string,
+    entityId: string | null,
+    changeSetId: string | null,
+    payload?: Record<string, unknown>,
+  ): Promise<void>;
+}
+
+async function atomicOrganizationMutation<T>(
+  pool: Pool,
+  principal: AuthPrincipal,
+  operation: (context: OrganizationMutationContext) => Promise<T>,
+): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const repository = new PostgresOrganizationRepository(client);
+    const result = await operation({
+      client,
+      repository,
+      draftService: new OrganizationDraftService(repository),
+      audit: (action, entityType, entityId, changeSetId, payload = {}) =>
+        insertAuditEvent(client, principal, action, entityType, entityId, changeSetId, payload),
+    });
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function registerOrganizationAdminRoutes(
@@ -141,8 +180,12 @@ export async function registerOrganizationAdminRoutes(
     }
   }
 
-  async function editableSnapshot(draftId: string, reply: FastifyReply) {
-    const snapshot = await repository.loadChangeSetSnapshot(draftId);
+  async function editableSnapshot(
+    draftId: string,
+    reply: FastifyReply,
+    activeRepository: PostgresOrganizationRepository = repository,
+  ) {
+    const snapshot = await activeRepository.loadChangeSetSnapshot(draftId);
     if (!snapshot) {
       await reply.status(404).send({ code: "ORGANIZATION_DRAFT_NOT_FOUND", message: "Draft not found." });
       return null;
@@ -260,12 +303,15 @@ export async function registerOrganizationAdminRoutes(
     const parsed = draftInput.safeParse(request.body);
     if (!parsed.success) return invalid(reply, "INVALID_ORGANIZATION_DRAFT", "Draft name and effective date are required.");
     try { assertIsoDate(parsed.data.effectiveOn); } catch { return invalid(reply, "INVALID_EFFECTIVE_DATE", "Invalid effective date."); }
-    const snapshot = await repository.createDraft({ ...parsed.data, actorAccountId: principal.id });
-    await audit(pool, principal, "organization.draft.created", "organization_change_set", snapshot.changeSet.id, snapshot.changeSet.id, {
-      effectiveOn: snapshot.changeSet.effectiveOn,
-      baseChangeSetId: snapshot.changeSet.baseChangeSetId,
+    const changeSet = await atomicOrganizationMutation(pool, principal, async (transaction) => {
+      const snapshot = await transaction.repository.createDraft({ ...parsed.data, actorAccountId: principal.id });
+      await transaction.audit("organization.draft.created", "organization_change_set", snapshot.changeSet.id, snapshot.changeSet.id, {
+        effectiveOn: snapshot.changeSet.effectiveOn,
+        baseChangeSetId: snapshot.changeSet.baseChangeSetId,
+      });
+      return snapshot.changeSet;
     });
-    return reply.status(201).send(snapshot.changeSet);
+    return reply.status(201).send(changeSet);
   });
 
   app.get("/admin/organization/designer/drafts/:draftId", async (request, reply) => {
@@ -280,11 +326,15 @@ export async function registerOrganizationAdminRoutes(
     const principal = await authenticate(request, reply); if (!principal) return;
     const params = draftParams.safeParse(request.params); const body = nodeInput.safeParse(request.body);
     if (!params.success || !body.success) return invalid(reply, "INVALID_ORGANIZATION_NODE", "Invalid organization group.");
-    const snapshot = await editableSnapshot(params.data.draftId, reply); if (!snapshot) return;
-    const item = { id: randomUUID(), stableKey: randomUUID(), ...body.data, integrationCode: body.data.integrationCode ?? null,
-      active: true, effectiveFrom: snapshot.changeSet.effectiveOn, effectiveTo: null };
-    snapshot.nodes.push(item); await repository.replaceDraftSnapshot(snapshot);
-    await audit(pool, principal, "organization.node.created", "organization_node", item.id, snapshot.changeSet.id, { stableKey: item.stableKey });
+    const item = await atomicOrganizationMutation(pool, principal, async (transaction) => {
+      const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return null;
+      const created = { id: randomUUID(), stableKey: randomUUID(), ...body.data, integrationCode: body.data.integrationCode ?? null,
+        active: true, effectiveFrom: snapshot.changeSet.effectiveOn, effectiveTo: null };
+      snapshot.nodes.push(created); await transaction.repository.replaceDraftSnapshot(snapshot);
+      await transaction.audit("organization.node.created", "organization_node", created.id, snapshot.changeSet.id, { stableKey: created.stableKey });
+      return created;
+    });
+    if (!item) return;
     return reply.status(201).send({ ...item, memberCount: 0, leaderPositionKey: null });
   });
 
@@ -292,11 +342,16 @@ export async function registerOrganizationAdminRoutes(
     const principal = await authenticate(request, reply); if (!principal) return;
     const params = itemParams.safeParse(request.params); const body = nodePatch.safeParse(request.body);
     if (!params.success || !body.success) return invalid(reply, "INVALID_ORGANIZATION_NODE", "Invalid organization group update.");
-    const snapshot = await editableSnapshot(params.data.draftId, reply); if (!snapshot) return;
-    const item = snapshot.nodes.find((entry) => entry.id === params.data.itemId);
-    if (!item) return reply.status(404).send({ code: "ORGANIZATION_NODE_NOT_FOUND" });
-    Object.assign(item, body.data); await repository.replaceDraftSnapshot(snapshot);
-    await audit(pool, principal, "organization.node.updated", "organization_node", item.id, snapshot.changeSet.id, { fields: Object.keys(body.data) });
+    const result = await atomicOrganizationMutation(pool, principal, async (transaction) => {
+      const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return null;
+      const item = snapshot.nodes.find((entry) => entry.id === params.data.itemId);
+      if (!item) { await reply.status(404).send({ code: "ORGANIZATION_NODE_NOT_FOUND" }); return null; }
+      Object.assign(item, body.data); await transaction.repository.replaceDraftSnapshot(snapshot);
+      await transaction.audit("organization.node.updated", "organization_node", item.id, snapshot.changeSet.id, { fields: Object.keys(body.data) });
+      return { item, snapshot };
+    });
+    if (!result) return;
+    const { item, snapshot } = result;
     return reply.send({ ...item, memberCount: snapshot.memberships.filter((member) => member.nodeKey === item.stableKey).length,
       leaderPositionKey: snapshot.authorityBindings.find((binding) => binding.subjectKind === "NODE" && binding.subjectKey === item.stableKey && binding.bindingType === "LEADER")?.targetPositionKey ?? null });
   });
@@ -305,11 +360,15 @@ export async function registerOrganizationAdminRoutes(
     const principal = await authenticate(request, reply); if (!principal) return;
     const params = draftParams.safeParse(request.params); const body = positionInput.safeParse(request.body);
     if (!params.success || !body.success) return invalid(reply, "INVALID_ORGANIZATION_POSITION", "Invalid organization position.");
-    const snapshot = await editableSnapshot(params.data.draftId, reply); if (!snapshot) return;
-    const item = { id: randomUUID(), stableKey: randomUUID(), ...body.data, active: true,
-      effectiveFrom: snapshot.changeSet.effectiveOn, effectiveTo: null };
-    snapshot.positions.push(item); await repository.replaceDraftSnapshot(snapshot);
-    await audit(pool, principal, "organization.position.created", "organization_position", item.id, snapshot.changeSet.id, { stableKey: item.stableKey });
+    const item = await atomicOrganizationMutation(pool, principal, async (transaction) => {
+      const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return null;
+      const created = { id: randomUUID(), stableKey: randomUUID(), ...body.data, active: true,
+        effectiveFrom: snapshot.changeSet.effectiveOn, effectiveTo: null };
+      snapshot.positions.push(created); await transaction.repository.replaceDraftSnapshot(snapshot);
+      await transaction.audit("organization.position.created", "organization_position", created.id, snapshot.changeSet.id, { stableKey: created.stableKey });
+      return created;
+    });
+    if (!item) return;
     return reply.status(201).send({ ...item, primaryIncumbent: null, actingIncumbent: null });
   });
 
@@ -317,11 +376,15 @@ export async function registerOrganizationAdminRoutes(
     const principal = await authenticate(request, reply); if (!principal) return;
     const params = itemParams.safeParse(request.params); const body = positionPatch.safeParse(request.body);
     if (!params.success || !body.success) return invalid(reply, "INVALID_ORGANIZATION_POSITION", "Invalid position update.");
-    const snapshot = await editableSnapshot(params.data.draftId, reply); if (!snapshot) return;
-    const item = snapshot.positions.find((entry) => entry.id === params.data.itemId);
-    if (!item) return reply.status(404).send({ code: "ORGANIZATION_POSITION_NOT_FOUND" });
-    Object.assign(item, body.data); await repository.replaceDraftSnapshot(snapshot);
-    await audit(pool, principal, "organization.position.updated", "organization_position", item.id, snapshot.changeSet.id, { fields: Object.keys(body.data) });
+    const item = await atomicOrganizationMutation(pool, principal, async (transaction) => {
+      const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return null;
+      const updated = snapshot.positions.find((entry) => entry.id === params.data.itemId);
+      if (!updated) { await reply.status(404).send({ code: "ORGANIZATION_POSITION_NOT_FOUND" }); return null; }
+      Object.assign(updated, body.data); await transaction.repository.replaceDraftSnapshot(snapshot);
+      await transaction.audit("organization.position.updated", "organization_position", updated.id, snapshot.changeSet.id, { fields: Object.keys(body.data) });
+      return updated;
+    });
+    if (!item) return;
     return reply.send({ ...item, primaryIncumbent: null, actingIncumbent: null });
   });
 
@@ -330,14 +393,18 @@ export async function registerOrganizationAdminRoutes(
     const params = draftParams.safeParse(request.params); const body = membershipInput.safeParse(request.body);
     if (!params.success || !body.success || (body.data.effectiveTo && body.data.effectiveTo < body.data.effectiveFrom))
       return invalid(reply, "INVALID_ORGANIZATION_MEMBERSHIP", "Invalid membership assignment.");
-    const snapshot = await editableSnapshot(params.data.draftId, reply); if (!snapshot) return;
-    snapshot.memberships = snapshot.memberships.filter((item) => item.nodeKey !== body.data.nodeKey);
-    snapshot.memberships.push(...body.data.employeeIds.map((employeeId) => ({ id: randomUUID(), employeeId,
-      nodeKey: body.data.nodeKey, jobProfileKey: null, isPrimary: true,
-      effectiveFrom: body.data.effectiveFrom, effectiveTo: body.data.effectiveTo ?? null })));
-    await repository.replaceDraftSnapshot(snapshot);
-    await audit(pool, principal, "organization.memberships.replaced", "organization_node", null, snapshot.changeSet.id,
-      { nodeKey: body.data.nodeKey, memberCount: body.data.employeeIds.length });
+    const mutated = await atomicOrganizationMutation(pool, principal, async (transaction) => {
+      const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return false;
+      snapshot.memberships = snapshot.memberships.filter((item) => item.nodeKey !== body.data.nodeKey);
+      snapshot.memberships.push(...body.data.employeeIds.map((employeeId) => ({ id: randomUUID(), employeeId,
+        nodeKey: body.data.nodeKey, jobProfileKey: null, isPrimary: true,
+        effectiveFrom: body.data.effectiveFrom, effectiveTo: body.data.effectiveTo ?? null })));
+      await transaction.repository.replaceDraftSnapshot(snapshot);
+      await transaction.audit("organization.memberships.replaced", "organization_node", null, snapshot.changeSet.id,
+        { nodeKey: body.data.nodeKey, memberCount: body.data.employeeIds.length });
+      return true;
+    });
+    if (!mutated) return;
     return reply.status(204).send();
   });
 
@@ -347,17 +414,21 @@ export async function registerOrganizationAdminRoutes(
     if (!params.success || !body.success || (body.data.actingEmployeeId && (!body.data.actingFrom || !body.data.actingTo))
       || (body.data.actingFrom && body.data.actingTo && body.data.actingTo < body.data.actingFrom))
       return invalid(reply, "INVALID_ORGANIZATION_INCUMBENCY", "Invalid primary or acting assignment.");
-    const snapshot = await editableSnapshot(params.data.draftId, reply); if (!snapshot) return;
-    snapshot.incumbencies = snapshot.incumbencies.filter((item) => item.positionKey !== body.data.positionKey);
-    if (body.data.primaryEmployeeId) snapshot.incumbencies.push({ id: randomUUID(), positionKey: body.data.positionKey,
-      employeeId: body.data.primaryEmployeeId, kind: "PRIMARY", effectiveFrom: body.data.effectiveFrom,
-      effectiveTo: null, reason: null });
-    if (body.data.actingEmployeeId) snapshot.incumbencies.push({ id: randomUUID(), positionKey: body.data.positionKey,
-      employeeId: body.data.actingEmployeeId, kind: "ACTING", effectiveFrom: body.data.actingFrom!,
-      effectiveTo: body.data.actingTo!, reason: "Explicit acting mandate" });
-    await repository.replaceDraftSnapshot(snapshot);
-    await audit(pool, principal, "organization.incumbencies.replaced", "organization_position", null, snapshot.changeSet.id,
-      { positionKey: body.data.positionKey, vacant: !body.data.primaryEmployeeId, hasActing: Boolean(body.data.actingEmployeeId) });
+    const mutated = await atomicOrganizationMutation(pool, principal, async (transaction) => {
+      const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return false;
+      snapshot.incumbencies = snapshot.incumbencies.filter((item) => item.positionKey !== body.data.positionKey);
+      if (body.data.primaryEmployeeId) snapshot.incumbencies.push({ id: randomUUID(), positionKey: body.data.positionKey,
+        employeeId: body.data.primaryEmployeeId, kind: "PRIMARY", effectiveFrom: body.data.effectiveFrom,
+        effectiveTo: null, reason: null });
+      if (body.data.actingEmployeeId) snapshot.incumbencies.push({ id: randomUUID(), positionKey: body.data.positionKey,
+        employeeId: body.data.actingEmployeeId, kind: "ACTING", effectiveFrom: body.data.actingFrom!,
+        effectiveTo: body.data.actingTo!, reason: "Explicit acting mandate" });
+      await transaction.repository.replaceDraftSnapshot(snapshot);
+      await transaction.audit("organization.incumbencies.replaced", "organization_position", null, snapshot.changeSet.id,
+        { positionKey: body.data.positionKey, vacant: !body.data.primaryEmployeeId, hasActing: Boolean(body.data.actingEmployeeId) });
+      return true;
+    });
+    if (!mutated) return;
     return reply.status(204).send();
   });
 
@@ -365,13 +436,17 @@ export async function registerOrganizationAdminRoutes(
     const principal = await authenticate(request, reply); if (!principal) return;
     const params = draftParams.safeParse(request.params); const body = bindingInput.safeParse(request.body);
     if (!params.success || !body.success) return invalid(reply, "INVALID_AUTHORITY_BINDING", "Invalid authority relationship.");
-    const snapshot = await editableSnapshot(params.data.draftId, reply); if (!snapshot) return;
-    const item = { id: randomUUID(), subjectKind: body.data.sourceType, subjectKey: body.data.sourceKey,
-      bindingType: body.data.authorityType as AuthorityBindingType, targetPositionKey: body.data.targetPositionKey,
-      vacancyPolicy: body.data.vacancyPolicy, effectiveFrom: body.data.effectiveFrom, effectiveTo: body.data.effectiveTo ?? null };
-    snapshot.authorityBindings.push(item); await repository.replaceDraftSnapshot(snapshot);
-    await audit(pool, principal, "organization.authority_binding.created", "organization_authority_binding", item.id,
-      snapshot.changeSet.id, { subjectKind: item.subjectKind, subjectKey: item.subjectKey, bindingType: item.bindingType, targetPositionKey: item.targetPositionKey });
+    const item = await atomicOrganizationMutation(pool, principal, async (transaction) => {
+      const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return null;
+      const created = { id: randomUUID(), subjectKind: body.data.sourceType, subjectKey: body.data.sourceKey,
+        bindingType: body.data.authorityType as AuthorityBindingType, targetPositionKey: body.data.targetPositionKey,
+        vacancyPolicy: body.data.vacancyPolicy, effectiveFrom: body.data.effectiveFrom, effectiveTo: body.data.effectiveTo ?? null };
+      snapshot.authorityBindings.push(created); await transaction.repository.replaceDraftSnapshot(snapshot);
+      await transaction.audit("organization.authority_binding.created", "organization_authority_binding", created.id,
+        snapshot.changeSet.id, { subjectKind: created.subjectKind, subjectKey: created.subjectKey, bindingType: created.bindingType, targetPositionKey: created.targetPositionKey });
+      return created;
+    });
+    if (!item) return;
     return reply.status(201).send({ id: item.id, sourceType: item.subjectKind, sourceKey: item.subjectKey,
       authorityType: item.bindingType, targetPositionKey: item.targetPositionKey, vacancyPolicy: item.vacancyPolicy,
       effectiveFrom: item.effectiveFrom, effectiveTo: item.effectiveTo });
@@ -381,23 +456,34 @@ export async function registerOrganizationAdminRoutes(
     const principal = await authenticate(request, reply); if (!principal) return;
     const params = draftParams.safeParse(request.params); const body = overrideInput.safeParse(request.body);
     if (!params.success || !body.success) return invalid(reply, "INVALID_REPORTING_OVERRIDE", "Invalid reporting override.");
-    const snapshot = await editableSnapshot(params.data.draftId, reply); if (!snapshot) return;
-    const item = { id: randomUUID(), ...body.data, managerEmployeeId: null, effectiveTo: body.data.effectiveTo ?? null };
-    snapshot.reportingOverrides.push(item); await repository.replaceDraftSnapshot(snapshot);
-    await audit(pool, principal, "organization.reporting_override.created", "organization_reporting_override", item.id,
-      snapshot.changeSet.id, { employeeId: item.employeeId, managerPositionKey: item.managerPositionKey, reason: item.reason,
-        effectiveFrom: item.effectiveFrom, effectiveTo: item.effectiveTo });
+    const item = await atomicOrganizationMutation(pool, principal, async (transaction) => {
+      const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return null;
+      const created = { id: randomUUID(), ...body.data, managerEmployeeId: null, effectiveTo: body.data.effectiveTo ?? null };
+      snapshot.reportingOverrides.push(created); await transaction.repository.replaceDraftSnapshot(snapshot);
+      await transaction.audit("organization.reporting_override.created", "organization_reporting_override", created.id,
+        snapshot.changeSet.id, { employeeId: created.employeeId, managerPositionKey: created.managerPositionKey, reason: created.reason,
+          effectiveFrom: created.effectiveFrom, effectiveTo: created.effectiveTo });
+      return created;
+    });
+    if (!item) return;
     return reply.status(201).send(item);
   });
 
   app.post("/admin/organization/designer/drafts/:draftId/validate", async (request, reply) => {
     const principal = await authenticate(request, reply); if (!principal) return;
     const params = draftParams.safeParse(request.params); if (!params.success) return invalid(reply, "INVALID_DRAFT_ID", "Invalid draft identifier.");
-    const snapshot = await repository.loadChangeSetSnapshot(params.data.draftId);
-    if (!snapshot || snapshot.changeSet.status === "PUBLISHED") return reply.status(404).send({ code: "ORGANIZATION_DRAFT_NOT_FOUND" });
-    const report = await draftService.validateDraft(snapshot.changeSet.id, principal.id);
-    await audit(pool, principal, "organization.draft.validated", "organization_change_set", snapshot.changeSet.id,
-      snapshot.changeSet.id, { valid: report.valid, issueCodes: report.issues.map((issue) => issue.code) });
+    const report = await atomicOrganizationMutation(pool, principal, async (transaction) => {
+      const snapshot = await transaction.repository.loadChangeSetSnapshot(params.data.draftId);
+      if (!snapshot || snapshot.changeSet.status === "PUBLISHED") {
+        await reply.status(404).send({ code: "ORGANIZATION_DRAFT_NOT_FOUND" });
+        return null;
+      }
+      const result = await transaction.draftService.validateDraft(snapshot.changeSet.id, principal.id);
+      await transaction.audit("organization.draft.validated", "organization_change_set", snapshot.changeSet.id,
+        snapshot.changeSet.id, { valid: result.valid, issueCodes: result.issues.map((issue) => issue.code) });
+      return result;
+    });
+    if (!report) return;
     return reply.send({ valid: report.valid, issues: report.issues.map((issue) => ({ ...issue, severity: "ERROR", itemKey: issue.entityId ?? null })) });
   });
 
@@ -445,13 +531,20 @@ export async function registerOrganizationAdminRoutes(
   app.post("/admin/organization/designer/drafts/:draftId/publish", async (request, reply) => {
     const principal = await authenticate(request, reply); if (!principal) return;
     const params = draftParams.safeParse(request.params); if (!params.success) return invalid(reply, "INVALID_DRAFT_ID", "Invalid draft identifier.");
-    const snapshot = await repository.loadChangeSetSnapshot(params.data.draftId);
-    if (!snapshot) return reply.status(404).send({ code: "ORGANIZATION_DRAFT_NOT_FOUND" });
-    if (snapshot.changeSet.status !== "VALIDATED") return reply.status(409).send({ code: "ORGANIZATION_DRAFT_NOT_VALIDATED", message: "Validate the draft before publishing." });
-    await draftService.publish(snapshot.changeSet.id, principal.id);
-    await audit(pool, principal, "organization.draft.published", "organization_change_set", snapshot.changeSet.id,
-      snapshot.changeSet.id, { effectiveOn: snapshot.changeSet.effectiveOn });
-    return reply.send((await repository.loadChangeSetSnapshot(snapshot.changeSet.id))!.changeSet);
+    const changeSet = await atomicOrganizationMutation(pool, principal, async (transaction) => {
+      const snapshot = await transaction.repository.loadChangeSetSnapshot(params.data.draftId);
+      if (!snapshot) { await reply.status(404).send({ code: "ORGANIZATION_DRAFT_NOT_FOUND" }); return null; }
+      if (snapshot.changeSet.status !== "VALIDATED") {
+        await reply.status(409).send({ code: "ORGANIZATION_DRAFT_NOT_VALIDATED", message: "Validate the draft before publishing." });
+        return null;
+      }
+      await transaction.draftService.publish(snapshot.changeSet.id, principal.id);
+      await transaction.audit("organization.draft.published", "organization_change_set", snapshot.changeSet.id,
+        snapshot.changeSet.id, { effectiveOn: snapshot.changeSet.effectiveOn });
+      return (await transaction.repository.loadChangeSetSnapshot(snapshot.changeSet.id))!.changeSet;
+    });
+    if (!changeSet) return;
+    return reply.send(changeSet);
   });
 
   app.get("/admin/organization/rollout", async (request, reply) => {
@@ -471,15 +564,17 @@ export async function registerOrganizationAdminRoutes(
     const item = { id: randomUUID(), ...body.data, organizationalNodeKey: body.data.organizationalNodeKey ?? null,
       effectiveFrom: body.data.effectiveFrom ?? jakartaBusinessDate(), effectiveTo: body.data.effectiveTo ?? null,
       reason: body.data.reason ?? "Organization Designer rollout update" };
-    await pool.query(
-      `INSERT INTO organization_rollout_settings
-        (id, workflow_key, node_key, mode, effective_from, effective_to, reason, changed_by_account_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [item.id, item.workflowKey, item.organizationalNodeKey, item.mode, item.effectiveFrom, item.effectiveTo, item.reason, principal.id],
-    );
-    await audit(pool, principal, "organization.rollout.changed", "organization_rollout_setting", item.id, null,
-      { workflowKey: item.workflowKey, organizationalNodeKey: item.organizationalNodeKey, mode: item.mode,
-        effectiveFrom: item.effectiveFrom, effectiveTo: item.effectiveTo, reason: item.reason });
+    await atomicOrganizationMutation(pool, principal, async (transaction) => {
+      await transaction.client.query(
+        `INSERT INTO organization_rollout_settings
+          (id, workflow_key, node_key, mode, effective_from, effective_to, reason, changed_by_account_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [item.id, item.workflowKey, item.organizationalNodeKey, item.mode, item.effectiveFrom, item.effectiveTo, item.reason, principal.id],
+      );
+      await transaction.audit("organization.rollout.changed", "organization_rollout_setting", item.id, null,
+        { workflowKey: item.workflowKey, organizationalNodeKey: item.organizationalNodeKey, mode: item.mode,
+          effectiveFrom: item.effectiveFrom, effectiveTo: item.effectiveTo, reason: item.reason });
+    });
     return reply.send({ ...item, updatedAt: new Date().toISOString() });
   });
 }

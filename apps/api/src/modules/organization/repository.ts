@@ -411,6 +411,22 @@ export class PostgresOrganizationRepository {
     return { eligible: true, reason: null };
   }
 
+  /**
+   * Structural incumbency only requires a real, active employee. Login and
+   * workflow capability checks belong to authority resolution, not chart publication.
+   */
+  async validateStructuralIncumbent(employeeId: string): Promise<AuthorityEligibilityResult> {
+    const result = await this.db.query<{ employeeActive: boolean }>(
+      `SELECT (status = 'active') AS "employeeActive"
+       FROM employees
+       WHERE id = $1`,
+      [employeeId],
+    );
+    return result.rows[0]?.employeeActive
+      ? { eligible: true, reason: null }
+      : { eligible: false, reason: "EMPLOYEE_NOT_ACTIVE" };
+  }
+
   private async loadSnapshotRows(changeSet: OrganizationChangeSet): Promise<OrganizationSnapshot> {
     const id = changeSet.id;
     const [nodes, jobProfiles, positions, memberships, incumbencies, bindings, overrides] =

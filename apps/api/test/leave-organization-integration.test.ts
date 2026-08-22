@@ -127,9 +127,41 @@ describe("ORG-004 Leave rollout consumer", () => {
     ]);
   });
 
+  it.each(["LEGACY", "SHADOW"] as const)(
+    "does not create structural oversight for a %s submission snapshot",
+    async (mode) => {
+      const query = vi.fn(async (sql: string) => {
+        if (sql.includes("FROM leave_requests")) {
+          return { rows: [{ mode }], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 1 };
+      });
+      const resolveOversightAbove = vi.fn();
+
+      await enqueueFinalApprovalOversight(
+        { query } as unknown as PoolClient,
+        {
+          requestId: "leave-request",
+          workflowKey: "leave.annual",
+          effectiveDate: "2026-08-22",
+          finalApproverEmployeeId: "legacy-approver",
+        },
+        { resolver: { resolveOversightAbove } },
+      );
+
+      expect(resolveOversightAbove).not.toHaveBeenCalled();
+      expect(query.mock.calls.some(([sql]) =>
+        String(sql).includes("INSERT INTO leave_notification_outbox"),
+      )).toBe(false);
+    },
+  );
+
   it("bases planned/unpaid final oversight on the snapshotted line approver, not HC", async () => {
     const query = vi.fn(async (sql: string, values?: unknown[]) => {
       void values;
+      if (sql.includes("FROM leave_requests")) {
+        return { rows: [{ mode: "STRUCTURE" }], rowCount: 1 };
+      }
       if (sql.includes("FROM leave_request_approval_steps")) {
         return { rows: [{ employeeId: "final-line-approver" }], rowCount: 1 };
       }
@@ -160,8 +192,42 @@ describe("ORG-004 Leave rollout consumer", () => {
     expect(String(outboxInsert?.[0])).toContain("WHERE NOT EXISTS");
   });
 
+  it("keeps STRUCTURE oversight authoritative when rollout changes after submission", async () => {
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes("FROM leave_requests")) {
+        return { rows: [{ mode: "STRUCTURE" }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+    const resolveOversightAbove = vi.fn(async () => ({
+      ...authority("chair-incumbent", "GOVERNANCE_APPROVER"),
+      source: "OVERSIGHT_PARENT" as const,
+    }));
+
+    await enqueueFinalApprovalOversight(
+      { query } as unknown as PoolClient,
+      {
+        requestId: "in-flight-structure-request",
+        workflowKey: "leave.annual",
+        effectiveDate: "2026-08-22",
+        finalApproverEmployeeId: "secretary-incumbent",
+      },
+      { resolver: { resolveOversightAbove } },
+    );
+
+    expect(resolveOversightAbove).toHaveBeenCalledTimes(1);
+    expect(query.mock.calls.some(([sql]) =>
+      String(sql).includes("organization_rollout_settings"),
+    )).toBe(false);
+    expect(query.mock.calls.some(([sql]) =>
+      String(sql).includes("INSERT INTO leave_notification_outbox"),
+    )).toBe(true);
+  });
+
   it("isolates oversight resolution failure from the final approval transaction", async () => {
-    const query = vi.fn(async () => ({ rows: [], rowCount: 1 }));
+    const query = vi.fn(async (sql: string) => sql.includes("FROM leave_requests")
+      ? { rows: [{ mode: "STRUCTURE" }], rowCount: 1 }
+      : { rows: [], rowCount: 1 });
     const resolveOversightAbove = vi.fn(async () => {
       throw new Error("notification resolver unavailable");
     });
