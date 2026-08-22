@@ -1,6 +1,6 @@
 # Leave Policy YSQ
 
-**Status:** ACTIVE IMPLEMENTATION BASELINE  
+**Status:** VERIFIED MVP IMPLEMENTATION BASELINE — POLICY SOURCE STILL REQUIRES LEGAL REVIEW  
 **Specification:** LEAVE-003  
 **Related:** LEAVE-001, LEAVE-002, APR-001, ORG-002
 
@@ -9,6 +9,8 @@
 This specification translates the current internal `Master Ketentuan Cuti Final Sabilul Quran` working baseline into HCIS behavior.
 
 The source itself states that it remains an internal policy working document that should receive legal review before becoming a final company regulation/SOP. HCIS therefore keeps the policy configurable and does not hardcode legal conclusions outside the approved YSQ rules.
+
+The **implementation behavior** described here has been verified for the MVP. That verification does not convert the underlying working policy source into a legally final regulation.
 
 ## Human Capital handling
 
@@ -229,9 +231,9 @@ HCIS must keep education/non-education classification explicit; it must not infe
 
 Detailed duration/payroll consequences remain policy data and must not be inferred by the frontend.
 
-## Data model direction
+## Data model direction implemented by MVP slices
 
-Initial implementation keeps the policy small and explicit:
+The MVP keeps the policy small and explicit:
 
 ```text
 Employee
@@ -250,13 +252,28 @@ Leave Policy Catalog
   balance/period rule
 ```
 
-Leave requests will later snapshot:
+Leave requests/slices persist the relevant submission-time facts needed by their workflow, including:
 
-- policy key/version used at submission;
+- policy key/version or policy metadata used at submission;
 - calculated entitlement/usage facts;
-- concrete approval steps;
-- validation requirements;
-- audit events.
+- concrete approval steps where line approval applies;
+- validation requirements and HC task kind;
+- audit/events and notification intents.
+
+Later organization changes must not rewrite already snapshotted approval chains.
+
+## Verification
+
+Final synthetic browser UAT verified the implemented policy boundaries across:
+
+- Annual Leave: system validation -> Direct Manager -> Unit Approver -> approved -> HC notified;
+- Special Leave: HC administrative validation with encrypted evidence where applicable;
+- Planned Leave: line approval plus planned-domain HC validation where required;
+- Cuti Tanpa Gaji: Unit Approver followed by **actual HC approval**;
+- Attendance Resolution: unresolved administrative dates remain an attendance-classification concern, not automatic payroll or leave deduction;
+- organization-scoped HC positive access and unit-scoped HC denial for global queues.
+
+These tests verify HCIS behavior against the working policy baseline. They do not replace the pending legal review of the underlying YSQ policy document.
 
 ## Acceptance criteria
 
