@@ -25,6 +25,7 @@ export interface SpecialLeaveRequestValidation {
   policyKey: SupportedSpecialLeaveKey;
   policyName: string;
   workingDays: number;
+  calendarDurationDays: number;
   minimumNoticeDays: number | null;
   noticeDays: number;
   lineHandling: "notify";
@@ -112,12 +113,14 @@ export function validateSpecialLeaveRequest(
     );
   }
 
-  if (calendarDaysBetween(input.startOn, input.endOn) < 0) {
+  const rangeDays = calendarDaysBetween(input.startOn, input.endOn);
+  if (rangeDays < 0) {
     throw new SpecialLeavePolicyError(
       "END_BEFORE_START",
       "Tanggal selesai tidak boleh sebelum tanggal mulai.",
     );
   }
+  const calendarDurationDays = rangeDays + 1;
 
   const policy = getLeavePolicy(input.policyKey);
   if (
@@ -183,11 +186,11 @@ export function validateSpecialLeaveRequest(
         "Pengajuan dapat dicatat sekarang karena kondisi darurat, tetapi dokumen pendukung harus dilengkapi sebelum validasi HC selesai.",
     });
   }
-  if (input.policyKey === "sick" && input.workingDays > 14) {
+  if (input.policyKey === "sick" && calendarDurationDays > 14) {
     warnings.push({
       code: "LONG_SICK_ADMIN_FOLLOW_UP",
       message:
-        "Durasi sakit di atas 14 hari bukan batas hak, tetapi Human Capital dapat meminta kontrol administrasi dari rumah sakit atau dokter spesialis sesuai dokumen medis.",
+        "Durasi sakit di atas 14 hari kalender bukan batas hak, tetapi Human Capital dapat meminta kontrol administrasi dari rumah sakit atau dokter spesialis sesuai dokumen medis.",
     });
   }
 
@@ -195,6 +198,7 @@ export function validateSpecialLeaveRequest(
     policyKey: input.policyKey,
     policyName: policy.name,
     workingDays: input.workingDays,
+    calendarDurationDays,
     minimumNoticeDays: policy.minimumNoticeDays,
     noticeDays,
     lineHandling: "notify",
