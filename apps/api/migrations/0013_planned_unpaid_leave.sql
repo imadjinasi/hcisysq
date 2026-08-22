@@ -1,5 +1,5 @@
 -- Planned leave and unpaid leave completion.
--- Keep HC validation distinct from actual HC approval and make Hajj final use concurrency-safe.
+-- Keep HC validation distinct from actual HC approval and make Hajj use concurrency-safe.
 
 INSERT INTO permissions (permission_key, description) VALUES
   ('leave.hc.approve', 'Melakukan persetujuan Human Capital yang merupakan actual approval sesuai kebijakan')
@@ -11,6 +11,25 @@ ON CONFLICT (permission_key) DO UPDATE SET description = EXCLUDED.description;
 INSERT INTO role_permissions (role_id, permission_key) VALUES
   ('10000000-0000-4000-8000-000000000005', 'leave.hc.approve')
 ON CONFLICT DO NOTHING;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT employee_id
+    FROM leave_requests
+    WHERE policy_key = 'hajj' AND status IN ('in_review', 'approved')
+    GROUP BY employee_id
+    HAVING count(*) > 1
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = '23514',
+      MESSAGE = 'multiple active Hajj requests exist for one employee';
+  END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS leave_hajj_one_active_request_idx
+  ON leave_requests (employee_id)
+  WHERE policy_key = 'hajj' AND status IN ('in_review', 'approved');
 
 CREATE TABLE IF NOT EXISTS leave_hajj_final_usage (
   employee_id uuid PRIMARY KEY REFERENCES employees(id) ON DELETE RESTRICT,
