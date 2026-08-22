@@ -24,6 +24,7 @@ import { EmployeeAttendancePage } from "@/pages/EmployeeAttendancePage";
 import { EmployeeAttendanceResolutionPage } from "@/pages/EmployeeAttendanceResolutionPage";
 import { EmployeeDashboardPage } from "@/pages/EmployeeDashboardPage";
 import { EmployeeLeavePage } from "@/pages/EmployeeLeavePage";
+import { EmployeePlannedLeavePage } from "@/pages/EmployeePlannedLeavePage";
 import { EmployeeSpecialLeavePage } from "@/pages/EmployeeSpecialLeavePage";
 import { FoundationBoardPage } from "@/pages/FoundationBoardPage";
 import { HcAttendanceResolutionPage } from "@/pages/HcAttendanceResolutionPage";
@@ -40,11 +41,7 @@ const rootRoute = createRootRoute({
 async function requirePrincipal(expected: PrincipalType) {
   const session = await getCurrentSession();
   if (!session) throw redirect({ to: "/" });
-
-  if (session.principal.principalType !== expected) {
-    throw notFound();
-  }
-
+  if (session.principal.principalType !== expected) throw notFound();
   return session;
 }
 
@@ -90,6 +87,13 @@ const employeeSpecialLeaveRoute = createRoute({
   path: "/app/leave/special",
   beforeLoad: () => requirePrincipal("EMPLOYEE"),
   component: EmployeeSpecialLeavePage,
+});
+
+const employeePlannedLeaveRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/app/leave/planned",
+  beforeLoad: () => requirePrincipal("EMPLOYEE"),
+  component: EmployeePlannedLeavePage,
 });
 
 const employeeAttendanceResolutionRoute = createRoute({
@@ -204,6 +208,7 @@ const routeTree = rootRoute.addChildren([
   employeeAttendanceRoute,
   employeeLeaveRoute,
   employeeSpecialLeaveRoute,
+  employeePlannedLeaveRoute,
   employeeAttendanceResolutionRoute,
   employeeApprovalsRoute,
   hcLeaveValidationRoute,
