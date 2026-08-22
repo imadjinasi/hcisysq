@@ -122,7 +122,7 @@ export function parsePayslipCsv(buffer: Buffer): ParsedRow[] {
         errors.push("lines_json hanya menerima maksimal 100 item {label,value} string");
       } else {
         lines = parsed.map((item) => {
-          const record = item as Record<string, string>;
+          const record = item as ImportedLine;
           return { label: record.label.trim(), value: record.value };
         });
       }
