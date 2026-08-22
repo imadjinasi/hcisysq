@@ -17,7 +17,7 @@ import type {
   OrganizationSnapshot,
   OrganizationValidationReport,
 } from "./domain.js";
-import { assertIsoDate } from "./jakarta-date.js";
+import { assertIsoDate, jakartaBusinessDate } from "./jakarta-date.js";
 
 export interface OrganizationQueryable {
   query<R extends QueryResultRow = QueryResultRow>(
@@ -83,7 +83,7 @@ interface OverrideRow extends Omit<OrganizationReportingOverride, "effectiveFrom
 }
 
 function dateText(value: string | Date): string {
-  return typeof value === "string" ? value.slice(0, 10) : value.toISOString().slice(0, 10);
+  return typeof value === "string" ? value.slice(0, 10) : jakartaBusinessDate(value);
 }
 
 function nullableDateText(value: string | Date | null): string | null {

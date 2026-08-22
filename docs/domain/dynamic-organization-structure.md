@@ -52,6 +52,16 @@ Leave is the first consumer. Annual and Planned Leave preserve Direct Manager th
 
 For a request submitted in `STRUCTURE`, final approval creates an idempotent informational intent for the configured oversight authority above the snapshotted final line/governance approver. The submission-time rollout mode is stored with the request and remains authoritative if rollout configuration changes while the request is in flight. `LEGACY`, `SHADOW`, and older requests without mode metadata never enqueue this structural side effect. The resolver is not based on a later HC validator/approver. Oversight resolution and outbox insertion are isolated so failure cannot roll back or repeat the approval decision.
 
+### Local browser-UAT regression invariants
+
+Focused synthetic ORG-004 browser UAT established these additional implementation invariants:
+
+- PostgreSQL `DATE` values are returned as Asia/Jakarta calendar dates and must not move to the previous UTC day when a snapshot is loaded and rewritten;
+- **Tambah di bawah** keeps the selected node available and preselected as the structural parent, while edit mode alone excludes the edited node from its own parent choices;
+- impact comparison is based on stable structural/authority content rather than per-snapshot physical row IDs, so a visual-rank-only future draft is reported as **no approval-routing impact**.
+
+Automated regression coverage accompanies each invariant. The browser UAT used only a disposable loopback PostgreSQL cluster and synthetic personas; it did not validate or alter production/pre-release data.
+
 ### Deployment and deferred operational work
 
 This implementation has not been deployed and has not been validated with production/pre-release employee data. Before real activation, authorized YSQ owners must configure and review the real structure, map governance principals to active employee accounts/capabilities, run SHADOW comparison, approve selected workflow/node activation, and complete targeted pilot/security review. Production notification delivery adapters remain outside ORG-004.

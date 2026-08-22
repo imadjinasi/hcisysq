@@ -290,21 +290,23 @@ function findOverlaps<T extends { id: string; effectiveFrom: string; effectiveTo
 }
 
 function routingFingerprint(snapshot: OrganizationSnapshot): string {
-  const order = <T extends { id: string }>(items: T[]) => [...items].sort((a, b) => a.id.localeCompare(b.id));
+  const order = <T,>(items: T[], fields: (item: T) => unknown[]) => items
+    .map(fields)
+    .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
   return JSON.stringify({
-    nodes: order(snapshot.nodes).map((item) => [item.stableKey, item.parentNodeKey,
+    nodes: order(snapshot.nodes, (item) => [item.stableKey, item.parentNodeKey,
       item.active, item.effectiveFrom, item.effectiveTo]),
-    positions: order(snapshot.positions).map((item) => [item.stableKey, item.nodeKey,
+    positions: order(snapshot.positions, (item) => [item.stableKey, item.nodeKey,
       item.parentPositionKey, item.singleIncumbent, item.vacancyPolicy, item.active,
       item.effectiveFrom, item.effectiveTo]),
-    memberships: order(snapshot.memberships).map((item) => [item.employeeId, item.nodeKey,
+    memberships: order(snapshot.memberships, (item) => [item.employeeId, item.nodeKey,
       item.jobProfileKey, item.isPrimary, item.effectiveFrom, item.effectiveTo]),
-    incumbencies: order(snapshot.incumbencies).map((item) => [item.positionKey, item.employeeId,
+    incumbencies: order(snapshot.incumbencies, (item) => [item.positionKey, item.employeeId,
       item.kind, item.effectiveFrom, item.effectiveTo]),
-    authorityBindings: order(snapshot.authorityBindings).map((item) => [item.subjectKind,
+    authorityBindings: order(snapshot.authorityBindings, (item) => [item.subjectKind,
       item.subjectKey, item.bindingType, item.targetPositionKey, item.vacancyPolicy,
       item.effectiveFrom, item.effectiveTo]),
-    reportingOverrides: order(snapshot.reportingOverrides).map((item) => [item.employeeId,
+    reportingOverrides: order(snapshot.reportingOverrides, (item) => [item.employeeId,
       item.managerPositionKey, item.managerEmployeeId, item.effectiveFrom, item.effectiveTo]),
   });
 }

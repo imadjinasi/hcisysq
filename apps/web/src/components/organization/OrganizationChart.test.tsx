@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { OrganizationChart } from "@/components/organization/OrganizationChart";
 import type { OrganizationNode, OrganizationPosition } from "@/lib/organizationDesigner";
-import { buildOrganizationTree } from "@/lib/organizationTree";
+import { buildOrganizationTree, selectableOrganizationParents } from "@/lib/organizationTree";
 
 const baseNode: OrganizationNode = {
   id: "node-root-id",
@@ -68,6 +68,15 @@ function renderChart(nodes: OrganizationNode[], positions: OrganizationPosition[
 }
 
 describe("Organization Designer chart", () => {
+  it("keeps the selected node available as the default parent when adding a child", () => {
+    const child = childNode("sdit", "SDIT");
+
+    expect(selectableOrganizationParents([baseNode, child], "child", baseNode.stableKey))
+      .toContainEqual(baseNode);
+    expect(selectableOrganizationParents([baseNode, child], "edit", baseNode.stableKey))
+      .not.toContainEqual(baseNode);
+  });
+
   it("shows the required guided empty state", () => {
     const html = renderToStaticMarkup(
       <OrganizationChart

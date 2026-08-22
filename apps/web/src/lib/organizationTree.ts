@@ -12,6 +12,16 @@ export interface OrganizationTreeNode extends OrganizationNode {
   visualDepth: number;
 }
 
+export function selectableOrganizationParents(
+  nodes: OrganizationNode[],
+  mode: "root" | "child" | "sibling" | "edit",
+  selectedNodeKey?: string,
+): OrganizationNode[] {
+  return mode === "edit"
+    ? nodes.filter((node) => node.stableKey !== selectedNodeKey)
+    : nodes;
+}
+
 function positionDepths(positions: OrganizationPosition[]): Map<string, number> {
   const byKey = new Map(positions.map((position) => [position.stableKey, position]));
   const depths = new Map<string, number>();
