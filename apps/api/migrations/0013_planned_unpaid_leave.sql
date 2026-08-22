@@ -44,12 +44,17 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 BEGIN
-  IF NEW.policy_key = 'hajj'
-    AND NEW.status = 'approved'
-    AND (TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM NEW.status) THEN
-    INSERT INTO leave_hajj_final_usage (employee_id, leave_request_id, used_at)
-    VALUES (NEW.employee_id, NEW.id, coalesce(NEW.final_decided_at, now()));
+  IF NEW.policy_key <> 'hajj' OR NEW.status <> 'approved' THEN
+    RETURN NEW;
   END IF;
+
+  IF TG_OP = 'UPDATE' AND OLD.status IS NOT DISTINCT FROM NEW.status THEN
+    RETURN NEW;
+  END IF;
+
+  INSERT INTO leave_hajj_final_usage (employee_id, leave_request_id, used_at)
+  VALUES (NEW.employee_id, NEW.id, coalesce(NEW.final_decided_at, now()));
+
   RETURN NEW;
 END;
 $$;
