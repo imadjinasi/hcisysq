@@ -1,43 +1,52 @@
 # Approval Engine
 
-**Status:** ACCEPTED  
-**Specification:** APR-001
+**Status:** ACCEPTED — ORG-004 EXTENSION PLANNED  
+**Specification:** APR-001  
+**Related:** ORG-002, ORG-004
 
-## Tujuan
+## Purpose
 
-Menyediakan pola approval yang sederhana dan konsisten untuk leave, attendance clarification, reimbursement, loan, overtime, dokumen, dan request lain tanpa menggandakan logika chain di setiap modul.
+Provide a simple, consistent approval pattern for leave, attendance clarification, reimbursement, loan, overtime, documents, and other requests without duplicating chain logic in every module.
 
-Prinsip utama:
+Core principle:
 
-> **Resolve chain sekali saat submit, simpan sebagai snapshot, lalu jalankan step demi step.**
+> **Resolve the chain once at submission, store it as a snapshot, then execute it step by step.**
 
-Hierarchy atau role yang berubah setelah request dikirim tidak boleh diam-diam mengubah approval yang sedang berjalan.
+Hierarchy, role, or organization changes after submission must not silently rewrite an in-flight approval chain.
 
-## Scope release awal
+## Current implementation boundary
 
-Release awal sengaja sederhana:
+APR-001 describes the verified approval engine behavior used by the completed MVP. The accepted post-MVP organization successor is ORG-004 (`docs/domain/dynamic-organization-structure.md`).
 
-- approval sequential;
-- satu approver efektif per step;
-- tidak ada parallel approval/quorum;
-- tidak ada delegation generik;
-- tidak ada auto-approval atau expiry generik;
-- reassignment hanya melalui prosedur resmi.
+ORG-004 changes how semantic authority may be resolved from organization data; it does **not** change APR-001's immutable snapshot rule.
 
-Fitur yang lebih kompleks hanya boleh ditambahkan bila ada kebutuhan domain nyata dan spesifikasi baru.
+Agents must not assume ORG-004 structural resolution is already implemented until that milestone is explicitly activated.
+
+## Initial release scope
+
+The verified engine intentionally remains simple:
+
+- sequential approval;
+- one effective approver per step;
+- no parallel approval/quorum;
+- no generic auto-approval or expiry;
+- reassignment only through an authorized procedure;
+- notification is separate from the approval decision.
+
+More complex behavior may be added only for a documented domain requirement.
 
 ## Actors
 
 - Requester.
 - Current approver.
-- Domain administrator dengan permission `approvals.reassign` atau permission khusus modul.
-- System untuk menjalankan transisi, audit, dan notifikasi.
+- Domain administrator with `approvals.reassign` or a module-specific permission.
+- System for state transition, audit, and notifications.
 
-## Resolver approver
+## Resolver principle
 
-Workflow template tidak menyimpan nama orang sebagai default. Ia menyimpan cara menemukan approver.
+A workflow template should not normally store a person's name. It stores a semantic way to find the required authority.
 
-Resolver awal yang didukung:
+Verified/current resolver vocabulary includes patterns such as:
 
 ```text
 DIRECT_MANAGER
@@ -46,70 +55,145 @@ ORG_ROLE(role_key)
 SPECIFIC_PERSON(user_id)
 ```
 
-Contoh template cuti:
+Domain slices may also provide their own explicit resolver for concepts already implemented, such as the current Unit Approver.
+
+At submission, semantic resolvers become concrete people and those people are persisted in the request snapshot.
+
+Example:
 
 ```text
+Template:
 Step 1 -> DIRECT_MANAGER
-Step 2 -> ORG_ROLE(HC)
-```
+Step 2 -> UNIT_APPROVER
 
-Ketika Ahmad submit, resolver dapat menghasilkan:
-
-```text
+Resolved for Ahmad:
 Step 1 -> Budi
 Step 2 -> Siti
 ```
 
-Hasil tersebut disimpan sebagai snapshot untuk request Ahmad.
+The stored approval steps are `Budi -> Siti`, not a live query that keeps following organization changes.
+
+## ORG-004 planned structural resolvers
+
+ORG-004 introduces the accepted direction for structure-driven authority resolution.
+
+The implementation may expose semantic resolvers such as:
+
+```text
+STRUCTURAL_DIRECT_MANAGER
+UNIT_APPROVER
+GOVERNANCE_APPROVER
+```
+
+The exact internal names are implementation details; the required behavior is not.
+
+Structural resolution may use:
+
+- employee organizational membership;
+- leader/parent positions;
+- effective position incumbency;
+- acting authority;
+- documented employee override;
+- authority binding;
+- vacancy policy;
+- effective date.
+
+It must never infer authority from free-text job-title strings or a hardcoded numeric organization level.
+
+### Vacancy behavior
+
+ORG-004 may allow a structural resolver to climb past one or more vacant supervisory seats when the configured vacancy policy allows it.
+
+Example:
+
+```text
+Director
+-> Head of Social Division [VACANT]
+-> Social Staff
+```
+
+For a Social Staff requester, `STRUCTURAL_DIRECT_MANAGER` may resolve to the Director.
+
+Higher-risk authorities may require an acting assignment or fail closed instead of climbing.
+
+### Acting authority
+
+An effective acting assignment must be honored when its mandate applies. Acting authority is explicit and effective-dated; it must not be inferred from an employee's temporary absence.
 
 ## Submit lifecycle
 
-Saat request di-submit:
+When a request is submitted:
 
-1. validasi request domain;
-2. ambil organization context yang relevan;
-3. pilih workflow template yang berlaku;
-4. resolve seluruh step menjadi approver konkret;
-5. validasi chain;
-6. simpan ordered approval steps sebagai snapshot;
-7. tandai step pertama sebagai current/pending;
-8. commit request + chain + audit event secara atomik;
-9. kirim notification setelah commit.
+1. validate the domain request;
+2. load the organization context relevant to the effective resolver;
+3. select the applicable workflow template/variant;
+4. resolve every required approval step to a concrete approver;
+5. apply documented fallback, vacancy, and override rules;
+6. reject self-approval and deduplicate repeated concrete approvers;
+7. validate the complete chain;
+8. persist ordered approval steps as a snapshot;
+9. mark the first step pending and later steps waiting;
+10. commit request + chain + audit atomically;
+11. enqueue notifications after commit.
 
-Jika resolver wajib tidak menemukan approver yang valid, request **tidak boleh masuk ke chain setengah jadi**. Submit gagal dengan configuration error yang actionable untuk administrator.
+If a mandatory resolver cannot find a valid approver, the request must **not** enter a partially resolved chain. Submission fails with an actionable configuration error.
 
 ## Chain validation
 
 ### No self-approval
 
-Requester tidak boleh menjadi approver request miliknya sendiri.
+A requester must not approve their own request.
 
-Jika resolver menghasilkan requester, workflow harus menggunakan fallback yang memang terdokumentasi. Bila tidak ada fallback, submission gagal sebagai configuration error.
+If a resolver returns the requester, the workflow may use only a documented fallback. If no valid fallback exists, submission fails as a configuration error.
 
 ### Duplicate approver
 
-Orang yang sama tidak perlu menyetujui request dua kali pada chain sequential yang sama.
+The same person should not approve the same sequential request twice merely because multiple semantic steps resolved to them.
 
-Jika orang yang sama ter-resolve pada beberapa step berturut/berikutnya, duplicate step di-deduplicate kecuali sebuah domain secara eksplisit mensyaratkan keputusan berbeda.
+Example under a vacancy fallback:
+
+```text
+DIRECT_MANAGER -> Director
+UNIT_APPROVER  -> Director
+```
+
+Stored chain:
+
+```text
+Director
+```
+
+not:
+
+```text
+Director -> Director
+```
+
+A domain may require two different decisions from the same actor only if that exception is explicitly specified.
 
 ### Active approver
 
-Approver baru harus active dan memiliki capability yang dibutuhkan pada saat chain dibuat.
+A newly resolved approver must be active and possess the capability required by the workflow when the chain is created.
 
 ## Snapshot rule
 
-Setelah chain tersimpan:
+After the chain is stored, changes to any of the following do not rewrite it:
 
-- perubahan atasan;
-- perubahan unit;
-- perubahan jabatan;
-- perubahan role;
+- manager;
+- unit;
+- position;
+- position incumbent;
+- acting assignment;
+- organization parent relationship;
+- authority binding;
+- role/scope;
+- future restructure.
 
-**tidak** mengubah chain request yang sudah submitted.
+An existing request changes only through normal decisions, cancellation where the domain permits it, or authorized reassignment.
 
-Request hanya berubah melalui aksi approval/rejection/cancel atau reassignment resmi.
+ORG-004 must preserve this rule during and after migration.
 
-## State request generik
+## Generic request state
 
 ```text
 draft
@@ -124,9 +208,9 @@ approved/rejected/cancelled
   -> terminal
 ```
 
-Modul dapat menambah state domain bila didokumentasikan.
+A module may add documented domain-specific states.
 
-## State approval step
+## Approval-step state
 
 ```text
 waiting
@@ -136,87 +220,121 @@ pending -> reassigned
 waiting -> pending
 ```
 
-`waiting` berarti step sudah menjadi bagian snapshot tetapi belum menjadi step aktif.
+`waiting` means the step already belongs to the snapshot but is not active yet.
 
 ## Decision behavior
 
-Hanya current approver yang valid dapat memutuskan current step.
+Only the valid current approver may decide the current step.
 
 ### Approve
 
 - current step -> `approved`;
-- step berikutnya -> `pending`;
-- jika tidak ada step berikutnya, request -> `approved`.
+- next step -> `pending`;
+- if no next step exists, request -> `approved`.
 
 ### Reject
 
 - current step -> `rejected`;
 - request -> `rejected`;
-- step berikutnya tidak dijalankan.
+- later steps do not run.
 
 ### Cancel
 
-Requester hanya dapat cancel pada state yang memang diizinkan domain. Cancel tidak boleh menghapus history step.
+Requester cancellation is allowed only in states explicitly permitted by the domain. Cancellation never deletes step history.
 
 ## Reassignment
 
-Jika approver pada snapshot tidak lagi dapat menjalankan tugasnya, administrator berwenang dapat melakukan reassignment.
+If an approver already stored in the snapshot can no longer act, an authorized administrator may reassign the specific step.
 
-Reassignment wajib menyimpan:
+Reassignment must store:
 
-- step yang diubah;
-- approver lama;
-- approver baru;
-- actor yang melakukan perubahan;
-- alasan;
+- changed step;
+- previous approver;
+- new approver;
+- acting administrator;
+- reason;
 - timestamp;
 - audit correlation ID.
 
-Reassignment tidak menghitung ulang seluruh chain.
+Reassignment does not recompute the entire chain from the latest organization structure.
 
 ## Required data
 
-Minimal simpan:
+Store at minimum:
 
-- request type dan request ID;
+- request type and request ID;
 - requester ID;
-- organization context snapshot yang dibutuhkan;
+- relevant organization context snapshot/explanation;
 - workflow/template version;
 - ordered steps;
-- resolver type dan resolver parameter;
+- resolver type and parameter;
 - resolved approver principal;
-- state setiap step;
+- enough resolution metadata to explain why that person was selected;
+- state per step;
 - decision timestamp;
-- decision note/reason bila diperlukan;
+- decision note/reason where required;
 - version/concurrency token;
 - audit correlation ID.
 
+When ORG-004 becomes authoritative, resolution metadata should be sufficient to trace the structural path used at submission without making the chain dynamic.
+
 ## Concurrency
 
-Dua aksi tidak boleh memenangkan transition yang sama.
+Two actions must not win the same transition.
 
-Decision harus memakai transaction dan locking/version check sehingga double-click, retry client, atau request paralel hanya menghasilkan satu transition final.
+Decision handling uses transaction and locking/version checks so double-clicks, retries, or parallel requests produce only one final transition.
 
 ## Notifications
 
-Notification bukan sumber kebenaran approval.
+Notification is not the source of truth for approval.
 
-- keputusan committed lebih dulu;
-- notifikasi dikirim sesudah commit;
-- kegagalan notification dapat di-retry;
-- retry notification tidak boleh mengulang decision.
+- decision commits first;
+- notification intent is persisted/enqueued after the relevant committed state transition;
+- notification delivery may be retried;
+- retry must not repeat the decision.
 
-## Contoh
+### Planned one-level-above final-approval notification
 
-### Cuti
+Accepted planning rule for line-approved leave:
+
+> After the request reaches final `approved`, notify one structural layer above the final approver.
+
+This is **informational only** and does not create another approval step.
+
+Examples:
+
+```text
+Teacher
+-> Curriculum Vice Principal approves
+-> Head of SDIT approves
+-> request approved
+-> Director notified
+```
+
+```text
+Director
+-> Secretary of the Foundation approves
+-> request approved
+-> Chair of the Foundation notified
+```
+
+Pembina/Foundation Supervisor is not included in the Director rule.
+
+The target resolution behavior is defined by ORG-004. The recipient may be resolved against the effective structure at the time final approval commits, then persisted on the notification intent. This planned notification must not be confused with the snapshotted approval authority.
+
+## Examples
+
+### Annual leave — verified MVP authority pattern
 
 ```text
 Employee
   -> DIRECT_MANAGER
-  -> ORG_ROLE(HC)
+  -> UNIT_APPROVER
 ```
 
-### Reimbursement sederhana
+The concrete employees are resolved at submission and snapshotted.
+
+### Reimbursement example
 
 ```text
 Employee
@@ -224,40 +342,45 @@ Employee
   -> ORG_ROLE(FINANCE)
 ```
 
-Jika nanti nominal tertentu membutuhkan approval Management, aturan tersebut menjadi workflow variant yang dipilih saat submit, lalu tetap disnapshot.
+If a later policy requires a Management step above a threshold, that becomes a documented workflow variant selected at submission and then snapshotted.
 
 ## Audit minimum
 
-Audit event dibuat untuk:
+Audit events are created for:
 
 - chain created;
 - step approved;
 - step rejected;
 - request cancelled;
 - step reassigned;
-- configuration failure yang relevan untuk operasi.
+- relevant configuration failure.
+
+When ORG-004 is used, the audit/resolution explanation must allow operators to understand which effective structural relationship produced each concrete approver.
 
 ## Acceptance criteria
 
-- APR-001-A: chain lengkap di-resolve dan disimpan ketika request berhasil submit.
-- APR-001-B: perubahan hierarchy setelah submit tidak mengubah chain existing.
-- APR-001-C: requester tidak dapat self-approve.
-- APR-001-D: duplicate approver tidak menghasilkan approval berulang tanpa alasan domain eksplisit.
-- APR-001-E: resolver wajib yang gagal membuat submit gagal secara jelas, bukan menciptakan request macet.
-- APR-001-F: actor tanpa current task mendapat forbidden.
-- APR-001-G: double-submit decision hanya menghasilkan satu transition final.
-- APR-001-H: reassignment membutuhkan permission, actor, approver lama/baru, dan alasan.
-- APR-001-I: setiap decision dan reassignment menghasilkan audit event.
-- APR-001-J: notification dapat di-retry tanpa mengulang transition.
+- APR-001-A: the complete chain is resolved and stored when submission succeeds.
+- APR-001-B: hierarchy/organization changes after submission do not modify an existing chain.
+- APR-001-C: requester cannot self-approve.
+- APR-001-D: duplicate concrete approvers do not create repeated sequential approvals without an explicit domain reason.
+- APR-001-E: a mandatory resolver failure causes clear submission failure rather than a stuck request.
+- APR-001-F: an actor without the current task receives forbidden.
+- APR-001-G: duplicate decision submission produces only one final transition.
+- APR-001-H: reassignment requires permission, old/new approver, actor, and reason.
+- APR-001-I: decisions and reassignment produce audit events.
+- APR-001-J: notification delivery can retry without repeating the approval transition.
+- APR-001-K: ORG-004 structural resolution, when activated, still produces a concrete immutable snapshot at submission.
+- APR-001-L: structural vacancy fallback cannot bypass self-approval, duplicate, active-employee, capability, or fail-closed validation.
+- APR-001-M: the planned one-level-above final-approval notification remains informational and is never converted into an implicit extra approval step.
 
-## Deferred
-
-Tidak termasuk release awal kecuali ada spesifikasi terpisah:
+## Deferred unless separately specified
 
 - parallel approval;
 - quorum/N-of-M;
-- delegation umum;
+- generic delegation engine;
 - generic escalation timer;
 - generic expiry;
 - generic auto-approval;
-- visual workflow builder.
+- generic visual workflow builder.
+
+The ORG-004 Organization Designer is an organization/authority configuration tool, not a generic workflow/BPMN builder.
