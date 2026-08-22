@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { basename } from "node:path";
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../config/env.js";
@@ -18,6 +18,8 @@ export type PayslipPermission = "payslips.import" | "payslips.publish";
 const idSchema = z.object({ id: z.string().uuid() });
 const batchIdSchema = z.object({ batchId: z.string().uuid() });
 const periodPattern = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+type QueryTarget = Pool | PoolClient;
 
 interface ImportedLine {
   label: string;
@@ -141,7 +143,7 @@ export function parsePayslipCsv(buffer: Buffer): ParsedRow[] {
 }
 
 async function writeAudit(
-  pool: Pool,
+  database: QueryTarget,
   actorAccountId: string,
   action: string,
   options: {
@@ -151,7 +153,7 @@ async function writeAudit(
     payload?: object;
   } = {},
 ) {
-  await pool.query(
+  await database.query(
     `INSERT INTO payslip_audit_events
       (id, actor_account_id, action, batch_id, payslip_id, employee_id, payload)
      VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
@@ -181,6 +183,7 @@ export async function hasPayslipCapability(
        JOIN role_permissions permission ON permission.role_id = assignment.role_id
       WHERE assignment.account_id = $1
         AND permission.permission_key = $2
+        AND assignment.scope_type = 'organization'
         AND (assignment.starts_on IS NULL OR assignment.starts_on <= current_date)
         AND (assignment.ends_on IS NULL OR assignment.ends_on >= current_date)
       LIMIT 1`,
@@ -256,19 +259,22 @@ export async function registerPayslipRoutes(
     }
 
     const employee = await pool.query<{ employeeId: string }>(
-      `SELECT employee_id AS "employeeId"
-         FROM accounts
-        WHERE id = $1
-          AND principal_type = 'EMPLOYEE'
-          AND status = 'active'
+      `SELECT account.employee_id AS "employeeId"
+         FROM accounts account
+         JOIN employees employee ON employee.id = account.employee_id
+        WHERE account.id = $1
+          AND account.principal_type = 'EMPLOYEE'
+          AND account.status = 'active'
+          AND employee.status = 'active'
         LIMIT 1`,
       [principal.id],
     );
     const employeeId = employee.rows[0]?.employeeId;
     if (!employeeId) {
+      reply.header("Cache-Control", "no-store");
       await reply.status(403).send({
         code: "EMPLOYEE_LINK_REQUIRED",
-        message: "Account employee tidak memiliki employee aktif yang dapat digunakan.",
+        message: "Account employee tidak terhubung ke employee aktif.",
       });
       return null;
     }
@@ -363,10 +369,11 @@ export async function registerPayslipRoutes(
       const batchId = randomUUID();
       const validCount = rows.filter((row) => row.errors.length === 0).length;
       const errorCount = rows.length - validCount;
+      const client = await pool.connect();
 
-      await pool.query("BEGIN");
       try {
-        await pool.query(
+        await client.query("BEGIN");
+        await client.query(
           `INSERT INTO payslip_import_batches
             (id, source_filename, checksum_sha256, status, row_count,
              valid_count, error_count, created_by_account_id)
@@ -382,7 +389,7 @@ export async function registerPayslipRoutes(
           ],
         );
         for (const row of rows) {
-          await pool.query(
+          await client.query(
             `INSERT INTO payslip_import_rows
               (id, batch_id, row_number, employee_id, employee_number,
                period, lines, validation_errors)
@@ -399,14 +406,16 @@ export async function registerPayslipRoutes(
             ],
           );
         }
-        await writeAudit(pool, principal.id, "payslip.import.previewed", {
+        await writeAudit(client, principal.id, "payslip.import.previewed", {
           batchId,
           payload: { rowCount: rows.length, validCount, errorCount },
         });
-        await pool.query("COMMIT");
+        await client.query("COMMIT");
       } catch (error) {
-        await pool.query("ROLLBACK");
+        await client.query("ROLLBACK");
         throw error;
+      } finally {
+        client.release();
       }
 
       reply.header("Cache-Control", "private, no-store");
@@ -456,7 +465,7 @@ export async function registerPayslipRoutes(
         ORDER BY row_number`,
       [parsed.data.batchId],
     );
-    await writeAudit(pool, principal.id, "payslip.import.reviewed", {
+    await writeAudit(pool, principal.id, "payslip.import.review_opened", {
       batchId: parsed.data.batchId,
       payload: { rowCount: rows.rowCount ?? rows.rows.length },
     });
@@ -475,9 +484,10 @@ export async function registerPayslipRoutes(
       });
     }
 
-    await pool.query("BEGIN");
+    const client = await pool.connect();
     try {
-      const batch = await pool.query<{ status: string; errorCount: number }>(
+      await client.query("BEGIN");
+      const batch = await client.query<{ status: string; errorCount: number }>(
         `SELECT status, error_count AS "errorCount"
            FROM payslip_import_batches
           WHERE id = $1
@@ -486,28 +496,28 @@ export async function registerPayslipRoutes(
       );
       const current = batch.rows[0];
       if (!current) {
-        await pool.query("ROLLBACK");
+        await client.query("ROLLBACK");
         return reply.status(404).send({
           code: "BATCH_NOT_FOUND",
           message: "Batch payslip tidak ditemukan.",
         });
       }
       if (current.status !== "previewed") {
-        await pool.query("ROLLBACK");
+        await client.query("ROLLBACK");
         return reply.status(409).send({
           code: "INVALID_BATCH_STATE",
           message: "Hanya batch previewed yang dapat di-commit.",
         });
       }
       if (current.errorCount > 0) {
-        await pool.query("ROLLBACK");
+        await client.query("ROLLBACK");
         return reply.status(409).send({
           code: "BATCH_HAS_ERRORS",
           message: "Perbaiki seluruh validation error sebelum commit.",
         });
       }
 
-      const importRows = await pool.query<ImportRowRecord>(
+      const importRows = await client.query<ImportRowRecord>(
         `SELECT employee_id AS "employeeId", period, lines
            FROM payslip_import_rows
           WHERE batch_id = $1
@@ -515,7 +525,7 @@ export async function registerPayslipRoutes(
           ORDER BY row_number`,
         [parsed.data.batchId],
       );
-      const conflict = await pool.query(
+      const conflict = await client.query(
         `SELECT 1
            FROM payslips payslip
            JOIN payslip_import_rows imported
@@ -526,7 +536,7 @@ export async function registerPayslipRoutes(
         [parsed.data.batchId],
       );
       if (conflict.rowCount) {
-        await pool.query("ROLLBACK");
+        await client.query("ROLLBACK");
         return reply.status(409).send({
           code: "PAYSLIP_ALREADY_EXISTS",
           message: "Payslip untuk employee dan period tersebut sudah ada.",
@@ -534,7 +544,7 @@ export async function registerPayslipRoutes(
       }
 
       for (const row of importRows.rows) {
-        await pool.query(
+        await client.query(
           `INSERT INTO payslips (id, employee_id, period, lines, source_batch_id)
            VALUES ($1, $2, $3, $4::jsonb, $5)`,
           [
@@ -546,20 +556,22 @@ export async function registerPayslipRoutes(
           ],
         );
       }
-      await pool.query(
+      await client.query(
         `UPDATE payslip_import_batches
             SET status = 'committed', committed_by_account_id = $2, committed_at = now()
           WHERE id = $1`,
         [parsed.data.batchId, principal.id],
       );
-      await writeAudit(pool, principal.id, "payslip.import.committed", {
+      await writeAudit(client, principal.id, "payslip.import.committed", {
         batchId: parsed.data.batchId,
         payload: { payslipCount: importRows.rows.length },
       });
-      await pool.query("COMMIT");
+      await client.query("COMMIT");
     } catch (error) {
-      await pool.query("ROLLBACK");
+      await client.query("ROLLBACK");
       throw error;
+    } finally {
+      client.release();
     }
 
     reply.header("Cache-Control", "no-store");
@@ -577,28 +589,29 @@ export async function registerPayslipRoutes(
       });
     }
 
-    await pool.query("BEGIN");
+    const client = await pool.connect();
     try {
-      const batch = await pool.query<{ status: string }>(
+      await client.query("BEGIN");
+      const batch = await client.query<{ status: string }>(
         `SELECT status FROM payslip_import_batches WHERE id = $1 FOR UPDATE`,
         [parsed.data.batchId],
       );
       if (!batch.rows[0]) {
-        await pool.query("ROLLBACK");
+        await client.query("ROLLBACK");
         return reply.status(404).send({
           code: "BATCH_NOT_FOUND",
           message: "Batch payslip tidak ditemukan.",
         });
       }
       if (batch.rows[0].status !== "committed") {
-        await pool.query("ROLLBACK");
+        await client.query("ROLLBACK");
         return reply.status(409).send({
           code: "INVALID_BATCH_STATE",
           message: "Hanya batch committed yang dapat dipublish.",
         });
       }
 
-      const published = await pool.query(
+      const published = await client.query(
         `UPDATE payslips
             SET published_at = now(), published_by_account_id = $2
           WHERE source_batch_id = $1
@@ -606,20 +619,22 @@ export async function registerPayslipRoutes(
         RETURNING id`,
         [parsed.data.batchId, principal.id],
       );
-      await pool.query(
+      await client.query(
         `UPDATE payslip_import_batches
             SET status = 'published', published_by_account_id = $2, published_at = now()
           WHERE id = $1`,
         [parsed.data.batchId, principal.id],
       );
-      await writeAudit(pool, principal.id, "payslip.batch.published", {
+      await writeAudit(client, principal.id, "payslip.batch.published", {
         batchId: parsed.data.batchId,
         payload: { payslipCount: published.rowCount ?? published.rows.length },
       });
-      await pool.query("COMMIT");
+      await client.query("COMMIT");
     } catch (error) {
-      await pool.query("ROLLBACK");
+      await client.query("ROLLBACK");
       throw error;
+    } finally {
+      client.release();
     }
 
     reply.header("Cache-Control", "no-store");
