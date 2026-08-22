@@ -98,9 +98,10 @@ export async function registerPlannedEvidenceRoutes(
   if (!config.AUTH_ENCRYPTION_KEY) {
     throw new Error("AUTH_ENCRYPTION_KEY is required for planned evidence routes");
   }
+  const encryptionKey = config.AUTH_ENCRYPTION_KEY;
   const auth = new AuthService(
     pool,
-    config.AUTH_ENCRYPTION_KEY,
+    encryptionKey,
     config.AUTH_SESSION_TTL_HOURS,
     config.NODE_ENV === "production",
   );
@@ -171,7 +172,7 @@ export async function registerPlannedEvidenceRoutes(
           leaveRequest.requestId,
           principal.id,
           body.data,
-          config.AUTH_ENCRYPTION_KEY,
+          encryptionKey,
         );
         await client.query(
           `UPDATE leave_request_hc_tasks
