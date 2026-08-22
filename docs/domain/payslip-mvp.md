@@ -1,6 +1,6 @@
 # Payslip MVP
 
-**Status:** ACTIVE IMPLEMENTATION BASELINE  
+**Status:** VERIFIED MVP BASELINE  
 **Specification:** PAYSLIP-001  
 **Related:** AUTH-010, ORG-003, SEC-001
 
@@ -23,6 +23,8 @@ employee_number,period,lines_json
 `label` dan `value` diperlakukan sebagai data tampilan opaque yang berasal dari sumber import. Sistem tidak memberi arti payroll pada label, tidak mengubah `value` menjadi angka, dan tidak menjumlahkan atau menurunkan komponen apa pun.
 
 Contract ini sengaja tidak menetapkan komponen gaji Indonesia, currency, gross/net, pajak, BPJS, overtime, deduction, attendance deduction, atau formula lain. Penambahan semantik payroll membutuhkan specification terpisah.
+
+`period` adalah nilai kalender `YYYY-MM`, bukan timestamp. API harus mengembalikannya sebagai canonical date/month string dan tidak boleh membiarkan konversi timezone menggeser bulan tampilan.
 
 ## Workflow
 
@@ -75,6 +77,23 @@ Backend selalu me-resolve `employee_id` self-service dari account session. Clien
 
 Board tetap aggregate-first dan read-only. PAYSLIP-001 tidak menambahkan payroll total, salary trend, personal payslip drill-down, atau payslip mutation ke `/board`. Keberadaan dataset payslip tidak cukup untuk menyimpulkan metrik payroll.
 
+## Verification
+
+Final isolated synthetic browser UAT verified:
+
+- synthetic CSV upload;
+- preview and review detail;
+- commit to draft;
+- draft hidden from employee self-service;
+- publish;
+- owner self-read after publish;
+- cross-employee denial;
+- Foundation Board denial;
+- published immutability;
+- opaque line values without payroll calculation.
+
+The UAT found one period-serialization defect where imported `2026-07` rendered as `2026-06` after a PostgreSQL `DATE` crossed JavaScript timezone conversion. The final MVP patch returns canonical period/date strings and includes a regression test. Visible Edge retest confirmed `2026-07` remains `2026-07`.
+
 ## Acceptance criteria
 
 - PAYSLIP-001-A: invalid employee reference gagal validation dan tidak dapat di-commit.
@@ -90,3 +109,4 @@ Board tetap aggregate-first dan read-only. PAYSLIP-001 tidak menambahkan payroll
 - PAYSLIP-001-K: account employee aktif yang terhubung ke employee inactive/resigned tidak dapat membaca payslip self-service.
 - PAYSLIP-001-L: preview/commit/publish transition tidak memakai `pool.query("BEGIN")`; seluruh transaction body berjalan pada satu connected client.
 - PAYSLIP-001-M: shell payslip employee menggunakan identitas employee aktif yang terhubung, bukan raw email fallback ketika profil employee tersedia.
+- PAYSLIP-001-N: `period` dipertahankan sebagai canonical `YYYY-MM`/date text dan tidak boleh bergeser bulan akibat timezone serialization.
