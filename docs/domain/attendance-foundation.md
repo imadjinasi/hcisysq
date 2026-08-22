@@ -1,5 +1,8 @@
 # ATT-001 — Kehadiran Harian
 
+**Status:** VERIFIED MVP BASELINE  
+**Verification:** final isolated synthetic mutation UAT passed on 2026-08-22
+
 ## Tujuan
 
 Menyediakan fondasi kehadiran yang dapat dipakai sekarang tanpa menunggu integrasi mesin fingerprint, tetapi tetap aman untuk dikembangkan menjadi integrasi otomatis di milestone berikutnya.
@@ -152,6 +155,21 @@ Super Admin dapat:
 Input waktu menggunakan label waktu Jakarta dan dikonversi secara eksplisit sebagai `+07:00` sebelum dikirim ke backend, sehingga tidak bergantung pada timezone browser Admin.
 
 Saat pegawai pilihan berubah, form tidak boleh mempertahankan jam/catatan dari pegawai sebelumnya. Response request lama juga tidak boleh menimpa state pegawai yang baru dipilih. Rekaman integrasi ditampilkan read-only tanpa aksi koreksi/hapus manual.
+
+## Verification
+
+Final isolated synthetic browser UAT verified the full manual mutation lifecycle:
+
+1. employee attendance starts empty;
+2. Super Admin creates one manual record;
+3. employee self-view shows factual check-in/check-out without internal note/source reference;
+4. Super Admin updates the record;
+5. employee sees the updated factual record;
+6. Super Admin deletes the manual record;
+7. employee returns to an honest empty state;
+8. audit events and Asia/Jakarta handling remain intact.
+
+The test environment used synthetic employees/accounts only and did not touch VPS employee data.
 
 ## Batas eksplisit ATT-001
 
