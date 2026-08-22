@@ -1,6 +1,6 @@
 # Special Leave and Human Capital Validation
 
-**Status:** ACTIVE IMPLEMENTATION BASELINE  
+**Status:** VERIFIED MVP BASELINE  
 **Specification:** LEAVE-005  
 **Related:** LEAVE-003, LEAVE-004, APR-001, AUTH-010
 
@@ -16,7 +16,7 @@ HCIS distinguishes three behaviors:
 
 - **HC notified**: receives information only.
 - **HC validator**: verifies policy conditions, period, and supporting evidence. The validator does not decide whether an employee is "allowed" to be sick, miscarry, menstruate, or experience another protected/emergency condition.
-- **HC approver**: makes an approval decision only where YSQ policy explicitly grants that authority, such as Cuti Tanpa Gaji. This is outside LEAVE-005 and is the next slice.
+- **HC approver**: makes an approval decision only where YSQ policy explicitly grants that authority, such as Cuti Tanpa Gaji. This is outside LEAVE-005 and is implemented by a separate later slice.
 
 A validator may either:
 
@@ -101,6 +101,7 @@ Long medical periods are represented by start/end dates; `working_days` remains 
 - HC queue/decision/evidence endpoints require an active `human_capital` role assignment with `organization` scope and effective dates covering the current date.
 - The migration grants `leave.validate` and `leave.evidence.read` permissions to the Human Capital system role.
 - Frontend route guards only enforce principal type; the API is authoritative for HC role authorization.
+- A unit-scoped `human_capital` assignment does not grant organization-wide queue access.
 
 ## Data model
 
@@ -125,6 +126,23 @@ At minimum:
 
 Notification outbox targets use employee identifiers or the `human_capital` role key; they do not embed sensitive evidence.
 
+## Verification
+
+Final isolated synthetic browser UAT verified:
+
+- special-leave submission with synthetic evidence;
+- encrypted evidence handling and authorized access;
+- organization-scoped HC queue access;
+- HC administrative validation to final state;
+- unit-scoped HC denial for organization-wide queues;
+- separation of special-leave validation from planned/unpaid HC task domains.
+
+The production/pre-release browser pass also verified that unauthorized `403` responses terminate with a clear UI state rather than an infinite loading spinner.
+
+## Slice boundary at final MVP
+
+Cuti Tanpa Gaji remains outside LEAVE-005 semantics. The final MVP implements unpaid leave separately with Unit Approver followed by **actual HC approval**. That later implementation must not be interpreted as changing LEAVE-005 validator semantics.
+
 ## Acceptance criteria
 
 - LEAVE-005-A: special leave uses policy-specific HC behavior rather than a universal approval chain.
@@ -136,4 +154,4 @@ Notification outbox targets use employee identifiers or the `human_capital` role
 - LEAVE-005-G: evidence is encrypted at rest and download authorization is enforced server-side.
 - LEAVE-005-H: missing manager notification does not block notification-only workflows, but is auditable.
 - LEAVE-005-I: special leave UI is reachable on desktop and mobile employee navigation.
-- LEAVE-005-J: Cuti Tanpa Gaji remains outside this slice until the explicit HC approver flow is implemented.
+- LEAVE-005-J: Cuti Tanpa Gaji is outside this slice and must use its separate explicit HC approver flow rather than being routed through HC validation.
