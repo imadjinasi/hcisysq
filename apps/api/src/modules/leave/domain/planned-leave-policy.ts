@@ -1,3 +1,8 @@
+import {
+  CalendarDurationError,
+  calendarDaysBetween,
+  inclusiveCalendarDurationDays,
+} from "./calendar-duration.js";
 import { getLeavePolicy, type LeavePolicyKey } from "./policy-catalog.js";
 
 export const SUPPORTED_PLANNED_LEAVE_KEYS = [
@@ -24,6 +29,7 @@ export interface PlannedLeaveRequestValidation {
   policyKey: SupportedPlannedLeaveKey;
   policyName: string;
   workingDays: number;
+  calendarDurationDays: number;
   noticeDays: number;
   minimumNoticeDays: number;
   evidenceRequirement: "none" | "required";
@@ -49,21 +55,6 @@ export class PlannedLeavePolicyError extends Error {
   }
 }
 
-function dateValue(value: string): number {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    throw new PlannedLeavePolicyError("INVALID_DATE", `Tanggal tidak valid: ${value}`);
-  }
-  const timestamp = Date.parse(`${value}T00:00:00.000Z`);
-  if (!Number.isFinite(timestamp) || new Date(timestamp).toISOString().slice(0, 10) !== value) {
-    throw new PlannedLeavePolicyError("INVALID_DATE", `Tanggal tidak valid: ${value}`);
-  }
-  return timestamp;
-}
-
-function daysBetween(from: string, to: string): number {
-  return Math.floor((dateValue(to) - dateValue(from)) / 86_400_000);
-}
-
 function durationLimit(policyKey: SupportedPlannedLeaveKey): number | null {
   switch (policyKey) {
     case "employee_marriage":
@@ -76,9 +67,19 @@ function durationLimit(policyKey: SupportedPlannedLeaveKey): number | null {
   }
 }
 
-function minimumNoticeDays(policyKey: SupportedPlannedLeaveKey, workingDays: number): number {
-  if (policyKey === "unpaid") return workingDays > 3 ? 30 : 7;
+function minimumNoticeDays(
+  policyKey: SupportedPlannedLeaveKey,
+  calendarDurationDays: number,
+): number {
+  if (policyKey === "unpaid") return calendarDurationDays > 3 ? 30 : 7;
   return 7;
+}
+
+function mapCalendarError(error: unknown): never {
+  if (error instanceof CalendarDurationError) {
+    throw new PlannedLeavePolicyError(error.code, error.message);
+  }
+  throw error;
 }
 
 export function validatePlannedLeaveRequest(
@@ -90,11 +91,14 @@ export function validatePlannedLeaveRequest(
       "Rentang cuti harus memiliki sedikitnya satu hari kerja.",
     );
   }
-  if (daysBetween(input.startOn, input.endOn) < 0) {
-    throw new PlannedLeavePolicyError(
-      "END_BEFORE_START",
-      "Tanggal selesai tidak boleh sebelum tanggal mulai.",
-    );
+
+  let calendarDurationDays: number;
+  let noticeDays: number;
+  try {
+    calendarDurationDays = inclusiveCalendarDurationDays(input.startOn, input.endOn);
+    noticeDays = calendarDaysBetween(input.submittedOn, input.startOn);
+  } catch (error) {
+    mapCalendarError(error);
   }
 
   const policy = getLeavePolicy(input.policyKey as LeavePolicyKey);
@@ -109,8 +113,7 @@ export function validatePlannedLeaveRequest(
     );
   }
 
-  const noticeDays = daysBetween(input.submittedOn, input.startOn);
-  const requiredNoticeDays = minimumNoticeDays(input.policyKey, input.workingDays);
+  const requiredNoticeDays = minimumNoticeDays(input.policyKey, calendarDurationDays);
   if (noticeDays < requiredNoticeDays) {
     throw new PlannedLeavePolicyError(
       "MINIMUM_NOTICE_NOT_MET",
@@ -144,6 +147,7 @@ export function validatePlannedLeaveRequest(
     policyKey: input.policyKey,
     policyName: policy.name,
     workingDays: input.workingDays,
+    calendarDurationDays,
     noticeDays,
     minimumNoticeDays: requiredNoticeDays,
     evidenceRequirement: policy.evidenceRequirement as "none" | "required",
