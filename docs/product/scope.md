@@ -3,30 +3,30 @@
 **Status:** ACCEPTED — MVP COMPLETE, POST-MVP PLANNING ACTIVE  
 **Updated:** 2026-08-22
 
-## Prinsip sequencing
+## Sequencing principle
 
-HCIS dibangun melalui vertical slice, bukan membuat seluruh halaman lebih dahulu. Setiap slice harus mencakup UI, API, domain rule, permission, audit, test, dan operasional minimum yang relevan.
+HCIS is built through vertical slices rather than by creating every screen first. Each slice must include the relevant UI, API, domain rules, permissions, audit, tests, and minimum operational behavior.
 
-MVP rinci mengikuti `docs/product/mvp.md`. Evidence final MVP dibekukan di `docs/product/mvp-release-checkpoint.md`.
+Detailed MVP scope is defined in `docs/product/mvp.md`. Final MVP evidence is frozen in `docs/product/mvp-release-checkpoint.md`.
 
-## Foundation
+## Verified MVP foundation
 
-Foundation MVP yang sudah terverifikasi mencakup:
+The verified MVP foundation includes:
 
-- API/runtime configuration dan health check;
-- PostgreSQL local/CI/runtime verification dan migration runner;
+- API/runtime configuration and health checks;
+- PostgreSQL local/CI/runtime verification and migration runner;
 - employee master + controlled CSV/XLSX import;
-- struktur organisasi, unit, posisi, reporting line, dan Unit Approver foundation;
-- identity, session, dan account activation foundation;
-- role, permission, scope, dan policy;
+- organization unit/position reference data, current reporting line, and Unit Approver foundation;
+- identity, session, and account activation foundation;
+- role, permission, scope, and policy foundation;
 - audit trail;
-- notification outbox/intents yang dibutuhkan workflow MVP;
+- notification outbox/intents required by MVP workflows;
 - encrypted leave evidence storage adapter;
 - logging/deployment/backup runbook foundation.
 
-Production delivery adapters, full legacy cutover, dan production security sign-off tetap gate terpisah.
+Production delivery adapters, full legacy cutover, and production security sign-off remain separate gates.
 
-## Foundation slice 0: employee master — VERIFIED
+## Employee master — VERIFIED
 
 ```text
 Start API + PostgreSQL
@@ -38,28 +38,28 @@ Start API + PostgreSQL
   -> review import history
 ```
 
-Import employee tetap menjadi upstream source untuk employee/organization reference dan tidak otomatis membuat account.
+Employee import remains the upstream source for employee/organization reference data and does not automatically create accounts.
 
-## Vertical slice leave — VERIFIED
+## Leave vertical slices — VERIFIED
 
-MVP sekarang mencakup lebih dari annual leave minimum:
+The MVP now includes more than the original annual-leave minimum:
 
 ```text
 Login
   -> employee leave preview/submit
   -> working-day/policy validation
-  -> approval chain di-resolve dan di-snapshot
-  -> line approval bila policy membutuhkan
-  -> HC notification / validation / actual approval sesuai policy
-  -> attendance resolution bila administrasi menyisakan unresolved dates
+  -> approval chain resolved and snapshotted
+  -> line approval where policy requires it
+  -> HC notification / validation / actual approval according to policy
+  -> attendance resolution when administration leaves unresolved dates
   -> audit + notification intents
 ```
 
-Synthetic browser UAT telah memverifikasi annual, special, planned, unpaid, dan attendance-resolution boundaries.
+Synthetic browser UAT verified annual, special, planned, unpaid, and attendance-resolution boundaries.
 
 ## Attendance factual foundation — VERIFIED
 
-ATT-001 tersedia sebagai raw/factual attendance foundation:
+ATT-001 provides a raw/factual attendance foundation:
 
 - employee self-read;
 - Super Admin manual create/update/delete;
@@ -67,18 +67,18 @@ ATT-001 tersedia sebagai raw/factual attendance foundation:
 - explicit source/provenance;
 - Asia/Jakarta business-time handling.
 
-Yang **belum** termasuk dan tetap post-MVP:
+Still post-MVP:
 
 - work schedules/shift;
 - lateness tolerance;
-- absence inference dari missing punch;
+- absence inference from missing punch;
 - overtime/work-hour calculation;
 - GPS/photo/fingerprint production flow;
 - payroll consequence.
 
 ## Payslip read-only — VERIFIED
 
-MVP menyertakan payslip **read-only** dari controlled import. HCIS belum menghitung payroll.
+The MVP includes read-only payslip data from controlled import. HCIS does not calculate payroll.
 
 ```text
 Authorized importer
@@ -87,79 +87,181 @@ Authorized importer
   -> preview/review
   -> commit draft
   -> publish
-  -> employee melihat published payslip miliknya
+  -> employee reads own published payslip
 ```
 
-Import/publish, owner-only read, Board denial, published immutability, audit, dan canonical period serialization sudah diverifikasi dengan synthetic data.
+Import/publish, owner-only read, Board denial, published immutability, audit, and canonical period serialization were verified with synthetic data.
 
-Reimbursement tidak termasuk MVP.
+Reimbursement is not part of the completed MVP.
 
 ## Foundation Board — VERIFIED
 
-`/board` adalah governance dashboard aggregate-first dan read-only. Browser UAT memverifikasi Board tidak dapat berpindah ke employee/admin principal area dan tidak mendapat personal payslip access.
+`/board` is an aggregate-first, read-only governance dashboard. Browser UAT verified that Foundation Board cannot cross into employee/admin principal areas and does not receive personal payslip access.
 
-## Modul target setelah MVP
+# Immediate post-MVP design priority: ORG-004 Dynamic Organization Foundation
 
-- Attendance schedule/shift, location, GPS/photo/fingerprint, dan evidence policy di luar ATT-001.
-- Reimbursement.
-- Payroll calculation, reconciliation, statutory semantics, dan payslip penuh di luar opaque imported lines.
-- Employee loan dan cicilan.
-- Performance review.
-- Training dan learning record.
-- Surat kepegawaian dan peringatan.
-- Organization/academic calendar management yang lebih lengkap.
-- Announcement, reminder, production email, dan WhatsApp notification adapters.
-- Employee data change request.
-- Recruitment/careers bila lolos discovery dan prioritas produk.
-- Reporting tambahan sesuai role dan kebutuhan governance.
-- Full legacy-data migration/cutover.
+Before broad employee-account activation or deeper feature expansion, HCIS should evolve the current explicit organization mapping into a modular, effective-dated structure model.
 
-## Di luar scope awal
+Design baseline:
 
-- Native mobile app terpisah.
-- Real-time chat internal.
-- General ledger dan accounting lengkap.
-- Vendor-specific biometric device management tanpa adapter boundary.
-- Data warehouse terpisah.
-- Multi-tenant komersial.
+`docs/domain/dynamic-organization-structure.md`
 
-## Release gates
+The reason is operational rather than cosmetic: YSQ organization structure may change frequently, and normal restructuring must not require source-code changes or repetitive per-employee approver maintenance.
 
-### Foundation ready — PASS
+The accepted target includes:
 
-- API dan PostgreSQL dapat dijalankan dari clean/local verification environment.
-- Clean migration dan realistic upgrade path lulus.
-- Employee import memiliki automated verification dengan synthetic fixtures.
-- Identity, permission, scope, audit, dan environment configuration memiliki tests.
-- Lint, typecheck, tests, dan build lulus pada verified MVP checkpoint.
+- visual Organization Designer;
+- organizational nodes/teams;
+- authority-bearing positions/seats;
+- employee membership;
+- effective primary and acting incumbencies;
+- supervisory and governance relationships;
+- explicit authority bindings;
+- vacancy policies;
+- structural direct-manager resolution;
+- employee-level reporting override for real exceptions;
+- effective dating and historical/future views;
+- draft/validate/preview/publish restructure flow;
+- approval-chain preview;
+- immutable transaction snapshots after semantic authority resolution.
 
-### MVP ready — PASS
+Key accepted policy decisions:
 
-- Leave vertical slices lulus synthetic end-to-end browser UAT.
-- Approval snapshot dan role/scope boundaries terverifikasi.
-- Attendance factual mutation + audit lulus synthetic UAT.
-- Payslip import/publish/read-only access lulus synthetic UAT.
-- Foundation Board read-only boundary lulus browser UAT.
-- Cross-principal authorization lulus browser UAT.
-- Final verified application SHA tercatat di `docs/product/mvp-release-checkpoint.md`.
+```text
+Line-approved leave:
+after final approval -> notify one structural layer above final approver
+```
 
-### Pilot ready — PENDING
+The notification is informational only and is emitted after final approval.
 
-MVP complete tidak otomatis berarti Pilot Ready. Sebelum pilot:
+Director leave governance:
 
-- tentukan staging/pilot data policy (synthetic atau sanitized copy);
-- lakukan backup **dan restore drill**, bukan hanya membuat backup;
-- pastikan observability minimum dan incident/rollback path tersedia;
-- tetapkan pilot users/personas dan scope operasi;
-- validasi organization setup yang dipakai pilot (manager, Unit Approver, role/scope, calendar);
-- review security/operational assumptions untuk data nyata yang dipakai pilot.
+```text
+Director
+-> Secretary of the Foundation APPROVES
+-> request APPROVED
+-> Chair of the Foundation NOTIFIED
+```
 
-### Production ready — PENDING
+Pembina/Foundation Supervisor is not notified by this rule.
 
-- legacy-data migration/cutover rehearsal berhasil dan dapat direkonsiliasi;
-- security review selesai;
-- production operational runbook dan ownership tersedia;
-- legacy freeze/cutover plan disetujui;
-- rollback/data-recovery procedure diuji;
-- sistem lama tetap read-only selama periode verifikasi yang disetujui;
-- production go-live disetujui oleh owner operasional yang berwenang.
+Supervisory vacancy example:
+
+```text
+Director
+-> Head of Social Division [VACANT]
+-> Social Staff
+```
+
+Target direct-manager resolution:
+
+```text
+Social Staff -> Director
+```
+
+The vacant seat remains in the organization structure; the resolver climbs according to configured vacancy policy.
+
+ORG-004 is a **planned successor** to the verified MVP current-state organization model. It is not current runtime behavior yet. Migration must preserve all existing approval snapshots.
+
+## Why ORG-004 comes before broad real-user approval testing
+
+The completed MVP already proves the technical approval engine with synthetic data. The next important operational proof is that imported real employee identities can participate in a real organization-driven approval chain.
+
+Activating many employee accounts while normal reporting still depends on repetitive employee-by-employee manager setup would validate a model that is already planned to evolve.
+
+Recommended sequence:
+
+```text
+MVP COMPLETE
+  -> finalize ORG-004 organization model
+  -> implement structure read/visualization
+  -> configure/validate real YSQ structure
+  -> shadow-compare structural resolver with current explicit resolver
+  -> controlled activation for selected units/personas
+  -> real employee approval-chain verification
+  -> deeper feature-by-feature product refinement
+```
+
+## Other post-MVP target modules
+
+After organization/pilot readiness is stable, candidate modules include:
+
+- Attendance schedule/shift, location, GPS/photo/fingerprint, and evidence policy beyond ATT-001;
+- Reimbursement;
+- Payroll calculation, reconciliation, statutory semantics, and full payslip behavior beyond opaque imported lines;
+- Employee loan and installments;
+- Performance review;
+- Training and learning records;
+- Employment certificates and warning letters;
+- richer organization/academic calendar management;
+- announcement, reminder, production email, and WhatsApp notification adapters;
+- employee data change request;
+- recruitment/careers if discovery validates product priority;
+- additional role-aware/governance reporting;
+- full legacy-data migration/cutover.
+
+## Outside initial scope
+
+- separate native mobile application;
+- general internal real-time chat;
+- full general ledger/accounting;
+- vendor-specific biometric device management without an adapter boundary;
+- separate data warehouse;
+- commercial multi-tenancy.
+
+# Release gates
+
+## Foundation ready — PASS
+
+- API and PostgreSQL run in clean/local verification environments.
+- Clean migration and realistic upgrade path passed.
+- Employee import has automated synthetic verification.
+- Identity, permission, scope, audit, and environment configuration have tests.
+- Lint, typecheck, tests, and build passed at the verified MVP checkpoint.
+
+## MVP ready — PASS
+
+- Leave vertical slices passed synthetic end-to-end browser UAT.
+- Approval snapshot and role/scope boundaries were verified.
+- Attendance factual mutation + audit passed synthetic UAT.
+- Payslip import/publish/read-only access passed synthetic UAT.
+- Foundation Board read-only boundary passed browser UAT.
+- Cross-principal authorization passed browser UAT.
+- Final verified application SHA is recorded in `docs/product/mvp-release-checkpoint.md`.
+
+## Organization foundation ready — PENDING
+
+Before structure-driven approval is activated for real pilot users:
+
+- ORG-004 data model is implemented without rewriting existing snapshots;
+- current YSQ structure is represented as nodes/positions/memberships/incumbencies;
+- acting and vacancy behavior have automated tests;
+- organization cycles and invalid effective-date overlaps are rejected;
+- Organization Designer can preview structure and resolved approval chains;
+- shadow resolution can compare ORG-004 results with current explicit mapping;
+- Director governance rule resolves Secretary as approver and Chair as post-approval notification recipient;
+- one-level-above post-final-approval notification is verified;
+- structure-derived authority remains constrained by backend RBAC;
+- selected real organization configuration is reviewed before activation.
+
+## Pilot ready — PENDING
+
+MVP complete does not automatically mean Pilot Ready. Before pilot:
+
+- define staging/pilot data policy (synthetic or sanitized/approved real configuration);
+- perform a backup **and restore drill**, not only backup creation;
+- ensure minimum observability and incident/rollback paths exist;
+- define pilot users/personas and operational scope;
+- validate the organization setup used by the pilot (manager, authority, role/scope, calendar);
+- review security/operational assumptions for any real data used by the pilot;
+- decide whether password recovery and production notification delivery are required for the selected pilot population or whether documented administrative/manual fallback is acceptable.
+
+## Production ready — PENDING
+
+- legacy-data migration/cutover rehearsal succeeds and reconciles;
+- security review is complete;
+- production operational runbook and ownership exist;
+- legacy freeze/cutover plan is approved;
+- rollback/data-recovery procedure is tested;
+- old system remains read-only during the agreed verification period;
+- production go-live is approved by the authorized operational owner.
