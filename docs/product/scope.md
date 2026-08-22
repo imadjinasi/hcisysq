@@ -128,11 +128,12 @@ The accepted target includes:
 Key accepted policy decisions:
 
 ```text
-Line-approved leave:
-after final approval -> notify one structural layer above final approver
+Leave with line/governance approval:
+after the overall request reaches final approved
+-> notify one structural layer above the final line/governance approver
 ```
 
-The notification is informational only and is emitted after final approval.
+The notification is informational only. HC validation or later HC actual approval does not automatically redefine the structural oversight target.
 
 Director leave governance:
 
@@ -240,7 +241,7 @@ Before structure-driven approval is activated for real pilot users:
 - Organization Designer can preview structure and resolved approval chains;
 - shadow resolution can compare ORG-004 results with current explicit mapping;
 - Director governance rule resolves Secretary as approver and Chair as post-approval notification recipient;
-- one-level-above post-final-approval notification is verified;
+- one-level-above post-final-approval line/governance notification is verified;
 - structure-derived authority remains constrained by backend RBAC;
 - selected real organization configuration is reviewed before activation.
 
