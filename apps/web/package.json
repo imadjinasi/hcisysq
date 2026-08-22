@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src vite.config.ts eslint.config.js"
+    "lint": "eslint src vite.config.ts eslint.config.js",
+    "test": "vitest run"
   },
   "dependencies": {
     "@tanstack/react-router": "1.170.18",
@@ -33,6 +34,7 @@
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.56.1",
     "vite": "^8.2.0",
+    "vitest": "^3.2.4",
     "vite-tsconfig-paths": "^6.0.2"
   }
 }

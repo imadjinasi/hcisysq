@@ -100,13 +100,14 @@ export function EmployeeDashboardPage() {
   const needsCompletion =
     data?.special.requests.filter((item) => item.hcTaskStatus === "needs_correction").length ?? 0;
   const pendingApprovals = data?.annual.pendingApprovalCount ?? 0;
-  const hasHcRole = data?.special.hasHumanCapitalRole ?? false;
+  const hasOrganizationHcAccess = data?.special.hasHumanCapitalRole ?? false;
   const activeRequests = [
     ...(data?.annual.requests ?? []).filter((item) => item.status === "in_review"),
     ...(data?.special.requests ?? []).filter((item) => item.status === "in_review"),
   ].length;
 
-  const additionalRole = hasHcRole ? "Human Capital" : pendingApprovals > 0 ? "Approver" : undefined;
+  const additionalRole = pendingApprovals > 0 ? "Approver" : undefined;
+  const accessLabel = hasOrganizationHcAccess ? "Human Capital" : additionalRole;
   const user = {
     name: employee?.fullName ?? "Pegawai",
     initials: initials(employee?.fullName ?? "P"),
@@ -141,7 +142,11 @@ export function EmployeeDashboardPage() {
   }, [data]);
 
   return (
-    <AppShell user={user} activeItem="Beranda">
+    <AppShell
+      user={user}
+      activeItem="Beranda"
+      capabilities={{ humanCapitalOrganization: hasOrganizationHcAccess }}
+    >
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-semibold capitalize tracking-wide text-muted-foreground">{getDateLabel()}</p>
@@ -152,9 +157,9 @@ export function EmployeeDashboardPage() {
             Ringkasan data Anda dan hal yang perlu ditindaklanjuti hari ini.
           </p>
         </div>
-        {additionalRole ? (
+        {accessLabel ? (
           <div className="inline-flex w-fit items-center gap-2 rounded-2xl border border-brand-yellow/35 bg-brand-yellow/12 px-3.5 py-2 text-xs font-semibold text-amber-950 shadow-[var(--shadow-soft)]">
-            <ShieldCheck className="h-4 w-4" aria-hidden="true" /> Akses tambahan · {additionalRole}
+            <ShieldCheck className="h-4 w-4" aria-hidden="true" /> Akses tambahan · {accessLabel}
           </div>
         ) : null}
       </section>
@@ -273,7 +278,7 @@ export function EmployeeDashboardPage() {
               <p className="mt-4 text-sm font-bold text-brand-heading">Persetujuan</p>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">{pendingApprovals > 0 ? `${pendingApprovals} pengajuan menunggu Anda.` : "Tidak ada approval yang menunggu."}</p>
             </a>
-            {hasHcRole ? (
+            {hasOrganizationHcAccess ? (
               <a href="/app/hc/leave" className="rounded-3xl border border-border/75 bg-white p-5 shadow-[var(--shadow-soft)]">
                 <ShieldCheck className="h-5 w-5 text-brand-primary-deep" aria-hidden="true" />
                 <p className="mt-4 text-sm font-bold text-brand-heading">Ruang kerja HC</p>

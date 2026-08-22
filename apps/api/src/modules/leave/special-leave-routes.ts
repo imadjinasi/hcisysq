@@ -195,7 +195,7 @@ async function loadEmployeeContext(
   return employee;
 }
 
-async function hasActiveHumanCapitalRole(db: Pool | PoolClient, accountId: string) {
+export async function hasActiveHumanCapitalRole(db: Pool | PoolClient, accountId: string) {
   const result = await db.query<{ allowed: boolean }>(
     `SELECT EXISTS (
       SELECT 1

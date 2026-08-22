@@ -14,6 +14,7 @@
     "typecheck:api": "npm --workspace @hcis/api run typecheck",
     "lint:web": "npm --workspace @hcis/web run lint",
     "lint:api": "npm --workspace @hcis/api run lint",
+    "test:web": "npm --workspace @hcis/web run test",
     "test:api": "npm --workspace @hcis/api run test",
     "migrate:api": "npm --workspace @hcis/api run migrate",
     "employees:import": "npm --workspace @hcis/api run employees:import --",
@@ -22,6 +23,6 @@
     "build": "npm run build:web && npm run build:api",
     "typecheck": "npm run typecheck:web && npm run typecheck:api",
     "lint": "npm run lint:web && npm run lint:api",
-    "test": "npm run test:api"
+    "test": "npm run test:web && npm run test:api"
   }
 }

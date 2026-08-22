@@ -27,6 +27,9 @@ interface AppShellProps {
   children: ReactNode;
   user: AppShellUser;
   activeItem?: string;
+  capabilities?: {
+    humanCapitalOrganization?: boolean;
+  };
 }
 
 const employeeNavigation = [
@@ -88,7 +91,15 @@ function NavigationLink({
   );
 }
 
-export function AppShell({ children, user, activeItem = "Beranda" }: AppShellProps) {
+export function AppShell({
+  children,
+  user,
+  activeItem = "Beranda",
+  capabilities,
+}: AppShellProps) {
+  const hasOrganizationHcAccess = capabilities?.humanCapitalOrganization === true;
+  const managementLabel = hasOrganizationHcAccess ? "Human Capital" : user.additionalRole;
+
   return (
     <div className="min-h-screen bg-surface text-foreground">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-72 border-r border-border/80 bg-sidebar/95 px-5 py-6 lg:flex lg:flex-col">
@@ -116,11 +127,11 @@ export function AppShell({ children, user, activeItem = "Beranda" }: AppShellPro
             />
           ))}
 
-          {user.additionalRole ? (
+          {managementLabel ? (
             <div className="pt-6">
               <div className="mb-2 flex items-center justify-between px-3">
                 <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">Manajemen</p>
-                <span className="rounded-full bg-brand-yellow/18 px-2 py-1 text-[9px] font-bold text-amber-900">{user.additionalRole}</span>
+                <span className="rounded-full bg-brand-yellow/18 px-2 py-1 text-[9px] font-bold text-amber-900">{managementLabel}</span>
               </div>
               <div className="space-y-1.5">
                 {managementNavigation.map((item) => (
@@ -132,7 +143,7 @@ export function AppShell({ children, user, activeItem = "Beranda" }: AppShellPro
                     active={item.label === activeItem}
                   />
                 ))}
-                {user.additionalRole === "Human Capital" ? (
+                {hasOrganizationHcAccess ? (
                   <>
                     <NavigationLink
                       label="Validasi Cuti"

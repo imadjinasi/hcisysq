@@ -145,7 +145,6 @@ export function EmployeeSpecialLeavePage() {
       initials: initials(employee?.fullName ?? "P"),
       position: employee?.positionName ?? "Pegawai",
       unit: employee?.unitName ?? "Yayasan Sabilul Qur'an",
-      ...(summary?.hasHumanCapitalRole ? { additionalRole: "Human Capital" } : {}),
     };
   }, [summary]);
 
@@ -256,7 +255,11 @@ export function EmployeeSpecialLeavePage() {
   };
 
   return (
-    <AppShell user={user} activeItem="Cuti & Izin">
+    <AppShell
+      user={user}
+      activeItem="Cuti & Izin"
+      capabilities={{ humanCapitalOrganization: summary?.hasHumanCapitalRole === true }}
+    >
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Cuti & izin</p>

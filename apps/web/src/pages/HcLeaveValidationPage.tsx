@@ -12,9 +12,9 @@ import { AppShell } from "@/layouts/AppShell";
 import {
   AttendanceResolutionApiError,
   decideLeaveAdministration,
-  getHcAdministrationQueue,
   type HcAdministrationQueue,
 } from "@/lib/attendanceResolution";
+import { resolveHcAdministrationQueue, type HcQueueState } from "@/lib/hcQueueState";
 import { hcEvidenceDownloadHref } from "@/lib/specialLeave";
 
 function initials(name: string) {
@@ -44,30 +44,26 @@ function shortDate(value: string) {
 }
 
 export function HcLeaveValidationPage() {
-  const [queue, setQueue] = useState<HcAdministrationQueue | null>(null);
+  const [queueState, setQueueState] = useState<HcQueueState<HcAdministrationQueue>>({ status: "loading" });
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const [selectedDates, setSelectedDates] = useState<Record<string, string[]>>({});
   const [busyTask, setBusyTask] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
   const load = async () => {
-    try {
-      setQueue(await getHcAdministrationQueue());
-      setError(null);
-    } catch (cause) {
-      setError(
-        cause instanceof AttendanceResolutionApiError
-          ? cause.message
-          : "Antrean validasi Human Capital tidak dapat dimuat.",
-      );
-    }
+    setQueueState({ status: "loading" });
+    setActionError(null);
+    setQueueState(await resolveHcAdministrationQueue());
   };
 
   useEffect(() => {
     void load();
   }, []);
+
+  const queue = queueState.status === "ready" ? queueState.queue : null;
+  const error = actionError ?? (queueState.status === "error" ? queueState.message : null);
 
   const user = useMemo(
     () => ({
@@ -75,7 +71,6 @@ export function HcLeaveValidationPage() {
       initials: initials(queue?.actor.fullName ?? "HC"),
       position: queue?.actor.positionName ?? "Human Capital",
       unit: queue?.actor.unitName ?? "Yayasan Sabilul Qur'an",
-      additionalRole: "Human Capital",
     }),
     [queue],
   );
@@ -89,7 +84,7 @@ export function HcLeaveValidationPage() {
     },
   ) => {
     setBusyTask(taskId);
-    setError(null);
+    setActionError(null);
     setSuccess(null);
     try {
       const result = await decideLeaveAdministration(taskId, input);
@@ -106,7 +101,7 @@ export function HcLeaveValidationPage() {
       }
       await load();
     } catch (cause) {
-      setError(
+      setActionError(
         cause instanceof AttendanceResolutionApiError
           ? cause.message
           : "Hasil validasi tidak dapat disimpan.",
@@ -125,7 +120,7 @@ export function HcLeaveValidationPage() {
   const requestCorrection = (taskId: string) => {
     const note = notes[taskId]?.trim() || null;
     if (!note) {
-      setError("Tuliskan dengan jelas apa yang perlu dilengkapi oleh pegawai.");
+      setActionError("Tuliskan dengan jelas apa yang perlu dilengkapi oleh pegawai.");
       return;
     }
     void runDecision(taskId, { action: "request_correction", note });
@@ -136,7 +131,7 @@ export function HcLeaveValidationPage() {
     setSelectedDates((current) =>
       current[taskId] ? current : { ...current, [taskId]: [...workingDates] },
     );
-    setError(null);
+    setActionError(null);
   };
 
   const toggleDate = (taskId: string, date: string) => {
@@ -159,7 +154,7 @@ export function HcLeaveValidationPage() {
       return;
     }
     if (!note) {
-      setError("Tambahkan catatan agar alasan tanggal yang belum terpenuhi jelas.");
+      setActionError("Tambahkan catatan agar alasan tanggal yang belum terpenuhi jelas.");
       return;
     }
     void runDecision(taskId, {
@@ -170,7 +165,11 @@ export function HcLeaveValidationPage() {
   };
 
   return (
-    <AppShell user={user} activeItem="Validasi Cuti">
+    <AppShell
+      user={user}
+      activeItem="Validasi Cuti"
+      capabilities={{ humanCapitalOrganization: queueState.status === "ready" }}
+    >
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Human Capital</p>
@@ -179,12 +178,14 @@ export function HcLeaveValidationPage() {
             Untuk kasus normal cukup pilih “Administrasi sesuai”. Detail tanggal hanya dibuka bila dokumen mencakup sebagian periode atau administrasinya tidak terpenuhi.
           </p>
         </div>
-        <a
-          href="/app/hc/attendance-resolution"
-          className="inline-flex h-10 items-center rounded-xl border border-border bg-white px-4 text-sm font-semibold"
-        >
-          Penyelesaian Ketidakhadiran
-        </a>
+        {queueState.status === "ready" ? (
+          <a
+            href="/app/hc/attendance-resolution"
+            className="inline-flex h-10 items-center rounded-xl border border-border bg-white px-4 text-sm font-semibold"
+          >
+            Penyelesaian Ketidakhadiran
+          </a>
+        ) : null}
       </section>
 
       {error ? (
@@ -213,18 +214,29 @@ export function HcLeaveValidationPage() {
         </div>
 
         <div className="divide-y divide-border/70">
-          {!queue ? (
+          {queueState.status === "loading" ? (
             <div className="flex items-center gap-2 px-5 py-8 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Memuat antrean...
             </div>
-          ) : queue.items.length === 0 ? (
+          ) : queueState.status === "error" ? (
+            <div className="px-5 py-8 text-sm text-muted-foreground">
+              <p>Antrean tidak dapat ditampilkan untuk akses ini.</p>
+              <button
+                type="button"
+                onClick={() => void load()}
+                className="mt-3 inline-flex min-h-10 items-center rounded-xl border border-border bg-white px-4 text-xs font-bold text-brand-heading"
+              >
+                Coba lagi
+              </button>
+            </div>
+          ) : queueState.queue.items.length === 0 ? (
             <div className="px-5 py-10 text-center">
               <CheckCircle2 className="mx-auto h-8 w-8 text-brand-primary-deep" aria-hidden="true" />
               <p className="mt-3 text-sm font-bold text-brand-heading">Semua sudah diperiksa</p>
               <p className="mt-1 text-xs text-muted-foreground">Tidak ada validasi cuti yang menunggu.</p>
             </div>
           ) : (
-            queue.items.map((item, index) => {
+            queueState.queue.items.map((item, index) => {
               const selected = selectedDates[item.taskId] ?? item.workingDates;
               const partialOpen = expandedTask === item.taskId;
               return (

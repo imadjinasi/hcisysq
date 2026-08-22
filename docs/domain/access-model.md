@@ -190,6 +190,7 @@ approvals.reassign
 ## Security invariants
 
 - Authorization dimiliki backend; frontend hanya menyembunyikan/menampilkan UI berdasarkan capability yang diberikan backend.
+- Navigasi administrasi Human Capital lintas organisasi hanya ditampilkan dari capability efektif yang sudah memperhitungkan role, `organization` scope, dan periode assignment; assignment role yang sama dengan `unit` scope tidak cukup.
 - Mengetik URL secara manual tidak boleh melewati authorization.
 - Tidak ada akses lintas unit hanya karena seseorang memiliki role yang sama di unit lain.
 - Foundation Board bersifat read only kecuali dokumen target secara eksplisit diubah.
@@ -205,3 +206,4 @@ approvals.reassign
 - AUTH-010-E: satu login page melayani seluruh jenis akun dan tidak menampilkan selector role.
 - AUTH-010-F: route backend tetap menolak principal yang tidak memiliki permission walaupun UI/URL dapat diakses secara langsung.
 - AUTH-010-G: assignment sementara menyimpan periode berlaku dan alasan bila digunakan.
+- AUTH-010-H: UI tidak menampilkan capability atau navigasi administrasi organization-wide hanya dari `role_key`; scope dan periode assignment efektif harus ikut dipertimbangkan.

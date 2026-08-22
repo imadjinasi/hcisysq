@@ -2,7 +2,11 @@ import { FileText, Loader2, LockKeyhole } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { AppShell } from "@/layouts/AppShell";
-import { getCurrentSession } from "@/lib/auth";
+import {
+  getEmployeeLeaveSummary,
+  type EmployeeLeaveSummary,
+} from "@/lib/employeeLeave";
+import { employeeShellUser } from "@/lib/employeeIdentity";
 import {
   getMyPayslip,
   getMyPayslips,
@@ -21,30 +25,37 @@ function formatPeriod(value: string) {
 export function EmployeePayslipsPage() {
   const [items, setItems] = useState<PayslipSummary[] | null>(null);
   const [selected, setSelected] = useState<PayslipDetail | null>(null);
-  const [email, setEmail] = useState("Employee");
+  const [employee, setEmployee] = useState<EmployeeLeaveSummary["employee"] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
 
   useEffect(() => {
     let mounted = true;
-    void Promise.all([getMyPayslips(), getCurrentSession()])
-      .then(([result, session]) => {
+    void getMyPayslips()
+      .then((result) => {
         if (!mounted) return;
         setItems(result.items);
-        setEmail(session?.principal.email ?? "Employee");
       })
       .catch((cause: unknown) => {
-        if (mounted) setError(cause instanceof Error ? cause.message : "Payslip tidak dapat dimuat.");
+        if (!mounted) return;
+        setItems([]);
+        setError(cause instanceof Error ? cause.message : "Payslip tidak dapat dimuat.");
       });
+
+    void getEmployeeLeaveSummary()
+      .then((summary) => {
+        if (mounted) setEmployee(summary.employee);
+      })
+      .catch(() => {
+        // Payslip content remains usable with the generic employee shell fallback.
+      });
+
     return () => {
       mounted = false;
     };
   }, []);
 
-  const user = useMemo(
-    () => ({ name: email, initials: email.slice(0, 2).toUpperCase(), position: "Employee", unit: "YSQ" }),
-    [email],
-  );
+  const user = useMemo(() => employeeShellUser(employee), [employee]);
 
   const openPayslip = async (id: string) => {
     setLoadingDetail(true);

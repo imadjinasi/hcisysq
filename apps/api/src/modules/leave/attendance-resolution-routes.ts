@@ -175,7 +175,7 @@ async function loadActor(
   return actor;
 }
 
-async function hasHumanCapitalRole(db: Pool | PoolClient, accountId: string) {
+export async function hasHumanCapitalRole(db: Pool | PoolClient, accountId: string) {
   const result = await db.query<{ allowed: boolean }>(
     `SELECT EXISTS (
       SELECT 1

@@ -89,3 +89,4 @@ Board tetap aggregate-first dan read-only. PAYSLIP-001 tidak menambahkan payroll
 - PAYSLIP-001-J: tidak ada payroll calculation engine atau derived payroll value pada MVP.
 - PAYSLIP-001-K: account employee aktif yang terhubung ke employee inactive/resigned tidak dapat membaca payslip self-service.
 - PAYSLIP-001-L: preview/commit/publish transition tidak memakai `pool.query("BEGIN")`; seluruh transaction body berjalan pada satu connected client.
+- PAYSLIP-001-M: shell payslip employee menggunakan identitas employee aktif yang terhubung, bukan raw email fallback ketika profil employee tersedia.

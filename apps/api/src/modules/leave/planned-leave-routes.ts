@@ -365,7 +365,7 @@ async function hasActiveRole(
   return result.rows[0]?.allowed ?? false;
 }
 
-async function hasActivePermission(
+export async function hasActivePermission(
   db: Pool | PoolClient,
   accountId: string,
   permissionKey: string,

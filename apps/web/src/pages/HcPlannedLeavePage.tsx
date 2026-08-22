@@ -43,6 +43,7 @@ export function HcPlannedLeavePage() {
   const [validationQueue, setValidationQueue] = useState<PlannedHcQueue["items"]>([]);
   const [approvalQueue, setApprovalQueue] = useState<PlannedHcQueue["items"]>([]);
   const [canActualApprove, setCanActualApprove] = useState(false);
+  const [hasOrganizationHcAccess, setHasOrganizationHcAccess] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busyTask, setBusyTask] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -51,6 +52,7 @@ export function HcPlannedLeavePage() {
   const load = async () => {
     setLoading(true);
     setError(null);
+    setHasOrganizationHcAccess(false);
     try {
       const [nextSummary, validation] = await Promise.all([
         getPlannedLeaveSummary(),
@@ -58,6 +60,7 @@ export function HcPlannedLeavePage() {
       ]);
       setSummary(nextSummary);
       setValidationQueue(validation.items);
+      setHasOrganizationHcAccess(true);
 
       try {
         const approval = await getPlannedHcApprovalQueue();
@@ -72,6 +75,7 @@ export function HcPlannedLeavePage() {
         }
       }
     } catch (cause) {
+      setHasOrganizationHcAccess(false);
       setError(
         cause instanceof PlannedLeaveApiError
           ? cause.message
@@ -93,7 +97,6 @@ export function HcPlannedLeavePage() {
       initials: initials(employee?.fullName ?? "HC"),
       position: employee?.positionName ?? "Human Capital",
       unit: employee?.unitName ?? "Yayasan Sabilul Qur'an",
-      additionalRole: "Human Capital",
     };
   }, [summary]);
 
@@ -155,7 +158,11 @@ export function HcPlannedLeavePage() {
   };
 
   return (
-    <AppShell user={user} activeItem="Cuti Terencana">
+    <AppShell
+      user={user}
+      activeItem="Cuti Terencana"
+      capabilities={{ humanCapitalOrganization: hasOrganizationHcAccess }}
+    >
       <section>
         <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Human Capital</p>
         <h1 className="mt-1 text-2xl font-bold tracking-[-0.02em] text-brand-heading">Cuti terencana & tanpa gaji</h1>

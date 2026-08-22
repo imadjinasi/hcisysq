@@ -12,9 +12,9 @@ import { AppShell } from "@/layouts/AppShell";
 import {
   AttendanceResolutionApiError,
   decideAttendanceResolution,
-  getHcAttendanceResolutionQueue,
   type HcAttendanceResolutionQueue,
 } from "@/lib/attendanceResolution";
+import { resolveHcAttendanceQueue, type HcQueueState } from "@/lib/hcQueueState";
 
 function initials(name: string) {
   return name
@@ -35,28 +35,24 @@ function shortDate(value: string) {
 }
 
 export function HcAttendanceResolutionPage() {
-  const [queue, setQueue] = useState<HcAttendanceResolutionQueue | null>(null);
+  const [queueState, setQueueState] = useState<HcQueueState<HcAttendanceResolutionQueue>>({ status: "loading" });
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [busyCase, setBusyCase] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
   const load = async () => {
-    try {
-      setQueue(await getHcAttendanceResolutionQueue());
-      setError(null);
-    } catch (cause) {
-      setError(
-        cause instanceof AttendanceResolutionApiError
-          ? cause.message
-          : "Antrean penyelesaian ketidakhadiran tidak dapat dimuat.",
-      );
-    }
+    setQueueState({ status: "loading" });
+    setActionError(null);
+    setQueueState(await resolveHcAttendanceQueue());
   };
 
   useEffect(() => {
     void load();
   }, []);
+
+  const queue = queueState.status === "ready" ? queueState.queue : null;
+  const error = actionError ?? (queueState.status === "error" ? queueState.message : null);
 
   const user = useMemo(
     () => ({
@@ -64,7 +60,6 @@ export function HcAttendanceResolutionPage() {
       initials: initials(queue?.actor.fullName ?? "HC"),
       position: queue?.actor.positionName ?? "Human Capital",
       unit: queue?.actor.unitName ?? "Yayasan Sabilul Qur'an",
-      additionalRole: "Human Capital",
     }),
     [queue],
   );
@@ -75,11 +70,11 @@ export function HcAttendanceResolutionPage() {
   ) => {
     const note = notes[caseId]?.trim() || null;
     if (action !== "propose_annual_conversion" && !note) {
-      setError("Tambahkan catatan singkat sebelum menetapkan penyelesaian.");
+      setActionError("Tambahkan catatan singkat sebelum menetapkan penyelesaian.");
       return;
     }
     setBusyCase(caseId);
-    setError(null);
+    setActionError(null);
     setSuccess(null);
     try {
       const result = await decideAttendanceResolution(caseId, { action, note });
@@ -93,7 +88,7 @@ export function HcAttendanceResolutionPage() {
       );
       await load();
     } catch (cause) {
-      setError(
+      setActionError(
         cause instanceof AttendanceResolutionApiError
           ? cause.message
           : "Penyelesaian tidak dapat disimpan.",
@@ -104,7 +99,11 @@ export function HcAttendanceResolutionPage() {
   };
 
   return (
-    <AppShell user={user} activeItem="Penyelesaian Kehadiran">
+    <AppShell
+      user={user}
+      activeItem="Penyelesaian Kehadiran"
+      capabilities={{ humanCapitalOrganization: queueState.status === "ready" }}
+    >
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Human Capital</p>
@@ -113,12 +112,14 @@ export function HcAttendanceResolutionPage() {
             Hanya tanggal yang administrasi cutinya belum terpenuhi yang masuk ke sini. Tentukan klasifikasi akhirnya tanpa mengubah hak cuti tenaga pendidikan.
           </p>
         </div>
-        <a
-          href="/app/hc/leave"
-          className="inline-flex h-10 items-center rounded-xl border border-border bg-white px-4 text-sm font-semibold"
-        >
-          Validasi Cuti
-        </a>
+        {queueState.status === "ready" ? (
+          <a
+            href="/app/hc/leave"
+            className="inline-flex h-10 items-center rounded-xl border border-border bg-white px-4 text-sm font-semibold"
+          >
+            Validasi Cuti
+          </a>
+        ) : null}
       </section>
 
       {error ? (
@@ -147,18 +148,29 @@ export function HcAttendanceResolutionPage() {
         </div>
 
         <div className="divide-y divide-border/70">
-          {!queue ? (
+          {queueState.status === "loading" ? (
             <div className="flex items-center gap-2 px-5 py-8 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Memuat antrean...
             </div>
-          ) : queue.items.length === 0 ? (
+          ) : queueState.status === "error" ? (
+            <div className="px-5 py-8 text-sm text-muted-foreground">
+              <p>Antrean tidak dapat ditampilkan untuk akses ini.</p>
+              <button
+                type="button"
+                onClick={() => void load()}
+                className="mt-3 inline-flex min-h-10 items-center rounded-xl border border-border bg-white px-4 text-xs font-bold text-brand-heading"
+              >
+                Coba lagi
+              </button>
+            </div>
+          ) : queueState.queue.items.length === 0 ? (
             <div className="px-5 py-10 text-center">
               <ShieldCheck className="mx-auto h-8 w-8 text-brand-primary-deep" aria-hidden="true" />
               <p className="mt-3 text-sm font-bold text-brand-heading">Tidak ada kasus terbuka</p>
               <p className="mt-1 text-xs text-muted-foreground">Semua ketidakhadiran sudah memiliki klasifikasi.</p>
             </div>
           ) : (
-            queue.items.map((item) => (
+            queueState.queue.items.map((item) => (
               <article key={item.caseId} className="px-5 py-5">
                 <div className="grid gap-5 lg:grid-cols-[1fr_0.95fr]">
                   <div>
