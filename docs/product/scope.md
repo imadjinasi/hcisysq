@@ -1,31 +1,36 @@
 # Product Scope
 
-**Status:** DRAFT
+**Status:** ACCEPTED — MVP COMPLETE, POST-MVP PLANNING ACTIVE  
+**Updated:** 2026-08-22
 
 ## Prinsip sequencing
 
 HCIS dibangun melalui vertical slice, bukan membuat seluruh halaman lebih dahulu. Setiap slice harus mencakup UI, API, domain rule, permission, audit, test, dan operasional minimum yang relevan.
 
-MVP rinci mengikuti `docs/product/mvp.md`.
+MVP rinci mengikuti `docs/product/mvp.md`. Evidence final MVP dibekukan di `docs/product/mvp-release-checkpoint.md`.
 
 ## Foundation
 
-- API/runtime configuration dan health check.
-- PostgreSQL local/CI foundation dan migration runner.
-- Employee master + controlled XLSX import.
-- Struktur organisasi, unit, posisi, dan hubungan atasan.
-- Identity dan session.
-- Role, permission, scope, dan policy.
-- Audit trail.
-- Notification abstraction.
-- File/storage abstraction.
-- Logging, backup, dan restore runbook.
+Foundation MVP yang sudah terverifikasi mencakup:
 
-## Foundation slice 0: employee master
+- API/runtime configuration dan health check;
+- PostgreSQL local/CI/runtime verification dan migration runner;
+- employee master + controlled CSV/XLSX import;
+- struktur organisasi, unit, posisi, reporting line, dan Unit Approver foundation;
+- identity, session, dan account activation foundation;
+- role, permission, scope, dan policy;
+- audit trail;
+- notification outbox/intents yang dibutuhkan workflow MVP;
+- encrypted leave evidence storage adapter;
+- logging/deployment/backup runbook foundation.
+
+Production delivery adapters, full legacy cutover, dan production security sign-off tetap gate terpisah.
+
+## Foundation slice 0: employee master — VERIFIED
 
 ```text
 Start API + PostgreSQL
-  -> upload synthetic employee workbook
+  -> upload synthetic employee workbook/CSV
   -> preview validation
   -> confirm import
   -> upsert employee by NIP
@@ -33,88 +38,128 @@ Start API + PostgreSQL
   -> review import history
 ```
 
-Import employee precedes leave implementation because leave/approval depends on reliable employee, organization, and reporting data.
+Import employee tetap menjadi upstream source untuk employee/organization reference dan tidak otomatis membuat account.
 
-## Vertical slice pertama: leave
+## Vertical slice leave — VERIFIED
+
+MVP sekarang mencakup lebih dari annual leave minimum:
 
 ```text
 Login
-  -> profil pegawai
-  -> ajukan cuti
-  -> validasi saldo dan bentrok tanggal
+  -> employee leave preview/submit
+  -> working-day/policy validation
   -> approval chain di-resolve dan di-snapshot
-  -> approval atasan
-  -> audit log
+  -> line approval bila policy membutuhkan
+  -> HC notification / validation / actual approval sesuai policy
+  -> attendance resolution bila administrasi menyisakan unresolved dates
+  -> audit + notification intents
 ```
 
-Slice ini dipilih karena menguji identity, hierarchy, role/scope, approval, state transition, dan audit tanpa risiko finansial setinggi payroll calculation.
+Synthetic browser UAT telah memverifikasi annual, special, planned, unpaid, dan attendance-resolution boundaries.
 
-## MVP tambahan: payslip read-only
+## Attendance factual foundation — VERIFIED
 
-MVP menyertakan payslip **read-only** yang berasal dari proses import. HCIS belum menghitung payroll pada tahap ini.
+ATT-001 tersedia sebagai raw/factual attendance foundation:
+
+- employee self-read;
+- Super Admin manual create/update/delete;
+- immutable audit history;
+- explicit source/provenance;
+- Asia/Jakarta business-time handling.
+
+Yang **belum** termasuk dan tetap post-MVP:
+
+- work schedules/shift;
+- lateness tolerance;
+- absence inference dari missing punch;
+- overtime/work-hour calculation;
+- GPS/photo/fingerprint production flow;
+- payroll consequence.
+
+## Payslip read-only — VERIFIED
+
+MVP menyertakan payslip **read-only** dari controlled import. HCIS belum menghitung payroll.
 
 ```text
-HC/Finance import payslip dataset
-  -> validasi
-  -> review/publish
-  -> employee melihat payslip miliknya
+Authorized importer
+  -> upload CSV
+  -> validate
+  -> preview/review
+  -> commit draft
+  -> publish
+  -> employee melihat published payslip miliknya
 ```
+
+Import/publish, owner-only read, Board denial, published immutability, audit, dan canonical period serialization sudah diverifikasi dengan synthetic data.
 
 Reimbursement tidak termasuk MVP.
 
+## Foundation Board — VERIFIED
+
+`/board` adalah governance dashboard aggregate-first dan read-only. Browser UAT memverifikasi Board tidak dapat berpindah ke employee/admin principal area dan tidak mendapat personal payslip access.
+
 ## Modul target setelah MVP
 
-- Attendance dengan jadwal, lokasi, dan bukti yang disetujui.
+- Attendance schedule/shift, location, GPS/photo/fingerprint, dan evidence policy di luar ATT-001.
 - Reimbursement.
-- Payroll calculation, rekonsiliasi, dan payslip penuh.
+- Payroll calculation, reconciliation, statutory semantics, dan payslip penuh di luar opaque imported lines.
 - Employee loan dan cicilan.
 - Performance review.
 - Training dan learning record.
 - Surat kepegawaian dan peringatan.
-- Kalender kerja dan hari libur.
-- Announcement, reminder, email, dan WhatsApp notification.
-- Data change request.
+- Organization/academic calendar management yang lebih lengkap.
+- Announcement, reminder, production email, dan WhatsApp notification adapters.
+- Employee data change request.
 - Recruitment/careers bila lolos discovery dan prioritas produk.
-- Reporting sesuai role.
+- Reporting tambahan sesuai role dan kebutuhan governance.
+- Full legacy-data migration/cutover.
 
 ## Di luar scope awal
 
 - Native mobile app terpisah.
 - Real-time chat internal.
 - General ledger dan accounting lengkap.
-- Biometric device management yang vendor-specific tanpa adapter.
+- Vendor-specific biometric device management tanpa adapter boundary.
 - Data warehouse terpisah.
 - Multi-tenant komersial.
 
 ## Release gates
 
-### Foundation ready
+### Foundation ready — PASS
 
-- API dan PostgreSQL local dapat dijalankan dari clone bersih.
-- Migration clean-database lulus.
-- Employee import preview/commit lulus test dengan fixture sintetis.
-- Identity, permission, audit, dan environment configuration memiliki test sebelum pilot.
-- CI menjalankan lint, typecheck, test, build, dan security checks dasar.
+- API dan PostgreSQL dapat dijalankan dari clean/local verification environment.
+- Clean migration dan realistic upgrade path lulus.
+- Employee import memiliki automated verification dengan synthetic fixtures.
+- Identity, permission, scope, audit, dan environment configuration memiliki tests.
+- Lint, typecheck, tests, dan build lulus pada verified MVP checkpoint.
 
-### MVP ready
+### MVP ready — PASS
 
-- Leave vertical slice lulus acceptance test end-to-end.
-- Approval snapshot behavior dan role/scope memiliki automated test.
-- Payslip import + read-only access lulus acceptance test dengan synthetic data.
-- Foundation Board read-only boundary teruji.
-- Canonical repository dapat di-setup lokal dari clone bersih.
+- Leave vertical slices lulus synthetic end-to-end browser UAT.
+- Approval snapshot dan role/scope boundaries terverifikasi.
+- Attendance factual mutation + audit lulus synthetic UAT.
+- Payslip import/publish/read-only access lulus synthetic UAT.
+- Foundation Board read-only boundary lulus browser UAT.
+- Cross-principal authorization lulus browser UAT.
+- Final verified application SHA tercatat di `docs/product/mvp-release-checkpoint.md`.
 
-### Pilot ready
+### Pilot ready — PENDING
 
-- Staging menggunakan data sintetis/tersanitasi.
-- Backup dan restore diuji.
-- Observability minimum aktif.
-- Pilot user dan rollback procedure disetujui.
+MVP complete tidak otomatis berarti Pilot Ready. Sebelum pilot:
 
-### Production ready
+- tentukan staging/pilot data policy (synthetic atau sanitized copy);
+- lakukan backup **dan restore drill**, bukan hanya membuat backup;
+- pastikan observability minimum dan incident/rollback path tersedia;
+- tetapkan pilot users/personas dan scope operasi;
+- validasi organization setup yang dipakai pilot (manager, Unit Approver, role/scope, calendar);
+- review security/operational assumptions untuk data nyata yang dipakai pilot.
 
-- Migrasi rehearsal berhasil dan dapat direkonsiliasi.
-- Security review selesai.
-- Operational runbook tersedia.
-- Legacy freeze dan cutover plan disetujui.
-- Sistem lama tetap read-only selama periode verifikasi yang ditetapkan.
+### Production ready — PENDING
+
+- legacy-data migration/cutover rehearsal berhasil dan dapat direkonsiliasi;
+- security review selesai;
+- production operational runbook dan ownership tersedia;
+- legacy freeze/cutover plan disetujui;
+- rollback/data-recovery procedure diuji;
+- sistem lama tetap read-only selama periode verifikasi yang disetujui;
+- production go-live disetujui oleh owner operasional yang berwenang.
