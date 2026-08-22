@@ -9,57 +9,51 @@
 
 YSQ is a private foundation whose organization can change frequently. HCIS must therefore treat organization structure, reporting relationships, authority, vacancies, and acting assignments as **effective-dated configuration data**, not source-code assumptions.
 
-The target outcome is simple:
+Target outcome:
 
 > YSQ must be able to restructure the organization through an administrative UI without requiring application source-code changes.
 
-A new directorate, division, head position, supervisory layer, temporary acting appointment, or changed approval relationship should be represented by data/configuration. Existing submitted transactions must retain their historical approval snapshots.
+A new directorate, division, head position, supervisory layer, temporary acting appointment, changed approval relationship, or future restructure should be represented by data/configuration. Existing submitted transactions must retain their historical approval snapshots.
 
 ## Design principles
 
 1. **Structure is data, not code.**
-   - Do not encode rules such as `if title == Director` or `if level == 3` in workflow code.
+   - Do not encode title checks such as `if title == Director`.
+   - Do not encode workflow logic from numeric organization levels.
    - Do not infer authority from free-text job titles.
 
 2. **Structure, authority, and workflow policy are separate layers.**
-   - Organization structure answers: *how is YSQ arranged?*
-   - Authority relationships answer: *who is responsible for whom?*
-   - Workflow policy answers: *which authority is required for this business process?*
+   - Structure: *how is YSQ arranged?*
+   - Authority: *who is responsible for whom?*
+   - Workflow policy: *which authority is required for this process?*
 
-3. **Positions are different from job profiles and employees.**
-   - A job profile describes a kind of work, for example `Teacher` or `Finance Staff`.
-   - An organizational position/seat carries structural responsibility, for example `Head of SDIT`, `Curriculum Vice Principal`, or `Director`.
-   - An employee may occupy a position for a defined effective period.
-   - A position may exist while vacant.
+3. **Position, job profile, and employee are different concepts.**
+   - Job profile: type of work, e.g. `Teacher`.
+   - Organizational position/seat: authority-bearing place in the structure, e.g. `Head of SDIT`.
+   - Employee: person who may occupy a position for an effective period.
+   - A position remains in the structure while vacant.
 
-4. **Bulk structure should replace repetitive employee-by-employee setup.**
-   - A group of teachers should normally belong to one organizational node/team whose leader position is configured once.
-   - HC should not need to assign the same direct manager individually to dozens of employees.
+4. **Structure provides defaults; explicit override handles exceptions.**
+   - Do not configure the same manager individually for dozens of employees when one team/position relationship can define it once.
+   - Allow effective-dated employee reporting override for a real exception.
 
-5. **Explicit exceptions remain possible.**
-   - Structure provides the default.
-   - A documented effective-dated employee override may be used when a real reporting exception exists.
-
-6. **Vacancy behavior is explicit and policy-aware.**
+5. **Vacancy behavior is explicit.**
    - Supervisory resolution may climb past vacant positions.
-   - Sensitive authority may instead require an acting assignment or fail closed.
-   - Vacancy handling must never select an arbitrary employee.
+   - Sensitive authorities may require acting authority or block.
+   - Never choose an arbitrary fallback person.
 
-7. **Effective dating is mandatory.**
-   - Historical, current, and scheduled future structures must be distinguishable.
-   - A future restructure may be prepared before its effective date.
+6. **Effective dating is mandatory.**
+   - Historical, current, and scheduled future structure must be distinguishable.
 
-8. **Approval snapshots remain immutable.**
-   - Structure is dynamic.
-   - A submitted transaction resolves concrete approvers once and stores them as a snapshot according to APR-001.
+7. **Approval snapshots remain immutable.**
+   - Dynamic structure changes resolver inputs for new transactions only.
+   - Concrete approvers already stored on submitted requests do not change automatically.
 
 ## Three-layer model
 
-### 1. Organization structure
+### Organization structure
 
-Represents the organization itself.
-
-Examples:
+Example only; the model must not assume this shape is permanent:
 
 ```text
 YSQ
@@ -87,13 +81,9 @@ YSQ
     +-- Human Capital Staff
 ```
 
-The model must not assume this exact tree is permanent.
+### Authority relationships
 
-### 2. Authority relationships
-
-Represents structural responsibility and decision authority.
-
-Initial relationship vocabulary:
+Initial semantic vocabulary:
 
 - `supervisory_parent`
 - `leader_of`
@@ -101,65 +91,52 @@ Initial relationship vocabulary:
 - `unit_approver`
 - `governance_approver`
 - `oversight_parent`
-- documented employee-level override
+- documented employee reporting override
 
-A relationship should point to a structural entity or authority-bearing position whenever possible, not directly hardcode a person.
+Relationships should point to structural entities or positions whenever possible, not permanently hardcode the current person.
 
-### 3. Workflow policy
+### Workflow policy
 
-A workflow refers to authority resolvers, not named employees.
+Workflow templates refer to semantic authority, not names.
 
 Example annual leave policy:
 
 ```text
 Step 1: resolve DIRECT_MANAGER
 Step 2: resolve UNIT_APPROVER
-After final approval: notify ONE_LEVEL_ABOVE_FINAL_APPROVER
+After overall final approval: notify ONE_LEVEL_ABOVE_FINAL_LINE_APPROVER
 ```
 
-The organization resolver converts those semantic requirements into concrete employees for the relevant effective date.
+The organization resolver converts semantic requirements into concrete employees for the relevant effective date.
 
-## Core entities
-
-The exact physical schema may vary during implementation, but the domain model must preserve the following concepts.
+## Core domain concepts
 
 ### Organizational Node
 
-A structural grouping such as:
+A grouping such as foundation/governance group, directorate, school/unit, division, department, or team.
 
-- foundation/governance group;
-- directorate;
-- school/unit;
-- division;
-- department;
-- team.
-
-Suggested properties:
+Minimum concept:
 
 - stable UUID;
-- display name;
-- node type;
-- parent node relationship;
-- active/inactive state;
+- name;
+- type/classification;
+- parent relationship;
+- active state;
 - effective-from / effective-to;
-- optional code for integrations;
+- optional integration code;
 - audit metadata.
 
-Node type is classification and presentation metadata. Workflow logic must not depend on a hardcoded numeric node level.
+Node type/depth may help presentation, but workflow logic must not depend on a hardcoded numeric level.
 
 ### Job Profile
 
-Describes a type of work, for example:
+Describes the type of work, e.g. Teacher or Finance Staff.
 
-- Teacher;
-- Finance Staff;
-- Human Capital Staff.
-
-A job profile is **not** an approval position and must not automatically define reporting authority.
+A job profile is not an authority-bearing seat and does not automatically define approval routing.
 
 ### Organizational Position / Seat
 
-Represents a structural seat that may carry responsibility, for example:
+Examples:
 
 - Director;
 - Secretary of the Foundation;
@@ -167,21 +144,11 @@ Represents a structural seat that may carry responsibility, for example:
 - Curriculum Vice Principal;
 - Head of Social Division.
 
-Suggested properties:
-
-- stable UUID;
-- name;
-- owning organizational node;
-- structural parent position or parent supervisory node;
-- authority flags/bindings defined separately;
-- effective-from / effective-to;
-- active/inactive state.
-
-A seat remains in the structure when vacant.
+A seat belongs to the structure and may have a structural parent. It may exist without an incumbent.
 
 ### Membership
 
-Connects an employee to an organizational node/team for an effective period.
+Connects an employee to a team/node for an effective period.
 
 Example:
 
@@ -191,37 +158,28 @@ Job profile: Teacher
 Member of: SDIT / Curriculum
 ```
 
-All ordinary members of the same team may inherit the same structural leader without repeating an individual manager assignment.
+All ordinary members of one team may derive the same structural leader without repeated employee-by-employee manager setup.
 
 ### Position Assignment / Incumbency
 
 Connects an employee to an organizational position for an effective period.
 
-Assignment kinds should support at least:
+Support at least:
 
 - primary/permanent incumbent;
 - acting/temporary authority assignment.
 
-An acting assignment must have explicit effective dates and audit context. It participates in authority resolution only when its mandate is effective for the relevant date.
+Acting authority must be explicit, effective-dated, and audited.
 
 ### Employee Reporting Override
 
-An exceptional effective-dated relationship that replaces the structure-derived direct manager for one employee.
+Exceptional effective-dated reporting relationship for one employee when reality differs from the structural default.
 
-Use only when reality differs from the structural default. It must record:
-
-- employee;
-- override manager or authority-bearing position;
-- effective dates;
-- reason;
-- actor;
-- audit event.
-
-The override is the exception, not the primary organization-management mechanism.
+Record at minimum employee, override authority, effective dates, reason, actor, and audit event.
 
 ### Authority Binding
 
-Associates an authority responsibility with a structural position or node.
+Associates authority with a structural position/node.
 
 Examples:
 
@@ -232,51 +190,45 @@ unit_approver -> Head of SDIT
 
 ```text
 Director position
-governance_approver -> Secretary of the Foundation
+governance_approver -> Secretary position
 ```
 
-The binding should resolve the **effective incumbent**, not store the current employee as a permanent rule.
+The binding resolves the effective incumbent; it does not permanently bind the workflow to today's employee.
 
 ### Vacancy Policy
 
-Defines what happens when a required authority-bearing position has no effective incumbent.
-
-Initial policy vocabulary:
+Initial vocabulary:
 
 - `CLIMB_TO_PARENT`
 - `REQUIRE_ACTING_OR_BLOCK`
 - `BLOCK`
 
-`DIRECT_MANAGER` should default to structural climbing because operational supervision must remain resolvable when an intermediate position is vacant.
-
-High-risk authorities may choose a stricter vacancy policy.
+Direct-manager resolution should normally support structural climbing. Higher-risk authorities may use stricter behavior.
 
 ## Structural direct-manager resolution
 
-### Ordinary member
+For an ordinary employee:
 
-For an employee who is an ordinary member of a team/node:
-
-1. check for an effective employee-specific reporting override;
-2. otherwise identify the configured structural leader/supervisory position for the employee's effective membership;
-3. resolve its effective authority-bearing incumbent;
-4. if vacant and the relationship allows climbing, continue upward through supervisory parents;
-5. stop at the first valid active employee found;
+1. use an effective employee-specific override if one exists;
+2. otherwise locate the employee's effective team/node leader or supervisory position;
+3. resolve the effective authority-bearing incumbent;
+4. if vacant and climbing is allowed, move upward through supervisory parents;
+5. stop at the first valid active employee;
 6. fail closed if the root is reached without a valid manager.
 
-### Position incumbent
+For a position incumbent, begin from the position's supervisory parent instead of the member team's leader.
 
-For an employee occupying an authority-bearing position:
+Required safeguards:
 
-1. identify the effective supervisory parent position/authority;
-2. resolve its effective incumbent;
-3. if vacant and climbing is allowed, continue upward;
-4. reject self-resolution;
-5. fail closed if no valid authority exists.
+- self-resolution rejection;
+- cycle detection;
+- bounded traversal;
+- effective-date validation;
+- active employee/account validation;
+- no arbitrary fallback;
+- actionable configuration failure when unresolved.
 
-### Vacancy example: Social Division
-
-Structure:
+## Vacancy example: Social Division
 
 ```text
 Director
@@ -286,55 +238,26 @@ Head of Social Division   [VACANT]
 Social Staff
 ```
 
-For a Social Staff employee:
+Resolution:
 
 ```text
-DIRECT_MANAGER
--> Head of Social Division
--> vacant
--> climb to supervisory parent
--> Director
+Social Staff
+-> Head of Social Division [vacant]
+-> climb
+-> Director [occupied]
 ```
 
-Resolved direct manager:
+Result:
 
 ```text
 Social Staff -> Director
 ```
 
-The vacant Head of Social Division position remains visible in the organization chart. The structure is not rewritten merely because the seat is empty.
+The vacant position stays visible in the chart.
 
-### Multiple consecutive vacancies
+Multiple consecutive vacancies may be traversed until a valid authority is found or the configured root/fail-closed condition is reached.
 
-```text
-Director
-  |
-Head of Social Affairs      [VACANT]
-  |
-Head of Social Division     [VACANT]
-  |
-Social Staff
-```
-
-Resolution may continue:
-
-```text
-Social Staff
--> Head of Social Division [vacant]
--> Head of Social Affairs [vacant]
--> Director [occupied]
-```
-
-Required safeguards:
-
-- cycle detection;
-- bounded traversal;
-- effective-date checks;
-- active-employee checks;
-- no arbitrary fallback;
-- actionable configuration failure when no authority can be resolved.
-
-## Acting assignments
+## Acting authority
 
 Vacancy climbing must not ignore a valid acting authority.
 
@@ -353,41 +276,37 @@ During the acting period:
 Social Staff -> Yusuf
 ```
 
-After the acting period ends, if the seat remains vacant, the configured vacancy policy applies again.
+After the acting period ends, normal vacancy policy resumes if the seat is still vacant.
 
-If an acting assignment is intended to supersede a temporarily unavailable primary incumbent, that authority transfer must be explicit and effective-dated rather than inferred from absence.
+A temporary authority transfer must be explicit; it must not be inferred merely because a primary incumbent is absent.
 
 ## Unit approver resolution
 
-A unit should bind approval responsibility to a **position**, not repeatedly to individual employees.
-
-Example:
+A unit should bind approval authority to a **position**, not repeatedly to individual employees.
 
 ```text
 SDIT
 unit_approver -> Head of SDIT
 ```
 
-Changing the incumbent of `Head of SDIT` changes the approver for future requests automatically.
+Changing the incumbent automatically changes the resolver result for future requests. The concrete employee is still snapshotted at request submission.
 
-The leave resolver receives the concrete incumbent at submission time and snapshots that employee in the request.
-
-Vacancy behavior for `UNIT_APPROVER` is configurable. The default for leave may climb to the next authorized structural parent when explicitly enabled, but financial or higher-risk workflows may require acting authority or fail closed.
+Vacancy behavior is configurable. Leave may permit climbing where explicitly enabled; financial/high-risk workflows may require acting authority or block.
 
 ## Director governance rule
 
-The accepted YSQ rule for Director leave is:
+Accepted YSQ rule:
 
 ```text
 Director requester
 -> Secretary of the Foundation APPROVES
--> request becomes APPROVED
+-> request reaches final APPROVED
 -> Chair of the Foundation is NOTIFIED
 ```
 
-The Foundation Supervisor/Pembina is **not** notified by this rule.
+Pembina/Foundation Supervisor is not notified by this rule.
 
-This must be represented as structural configuration:
+Model this as data:
 
 ```text
 Director position
@@ -397,89 +316,115 @@ Secretary position
 oversight_parent -> Chair position
 ```
 
-The source code must not contain a special check for a title string such as `Director` or `Secretary`.
+Do not implement title-specific source-code branches.
 
-If YSQ later changes the governance rule so the Chair approves the Director directly, the administrator changes the authority binding. Existing submitted approval snapshots remain unchanged.
+If the governance rule changes next year, change the authority binding. Existing submitted approval snapshots remain unchanged.
 
 ## One-level-above post-approval notification
 
 Accepted rule:
 
-> For every line-approved leave request, after the request reaches final `approved`, notify one structural layer above the final approver.
+> Every leave workflow that contains a line/governance approval stage should, after the **overall request reaches final `approved`**, notify one structural layer above the **final line/governance approver**.
 
-This notification:
+This wording intentionally separates line/governance authority from Human Capital validation or approval.
 
-- occurs **after final approval**;
-- is informational only;
-- does not create another approval step;
-- does not block completion if delivery fails;
-- is recorded as a notification intent/audit-relevant event;
-- applies to all line-approved leave workflows unless a future policy explicitly opts out.
+Examples:
 
-Example:
+### Annual leave
 
 ```text
 Teacher
 -> Curriculum Vice Principal APPROVES
--> Head of SDIT APPROVES
--> APPROVED
+-> Head of SDIT APPROVES        [final line approver]
+-> overall request APPROVED
 -> Director NOTIFIED
 ```
 
-Director example:
+### Planned leave with later HC validation
+
+```text
+Employee
+-> Direct Manager
+-> Unit Approver                [final line approver]
+-> HC validates administration
+-> overall request APPROVED
+-> one layer above Unit Approver NOTIFIED
+```
+
+HC validation does not change the structural oversight target.
+
+### Unpaid leave
+
+```text
+Employee
+-> Unit Approver                [final line approver]
+-> HC actual approval
+-> overall request APPROVED
+-> one layer above Unit Approver NOTIFIED
+```
+
+HC's own supervisor is not automatically the oversight recipient merely because HC is the final workflow approver.
+
+### Director
 
 ```text
 Director
--> Secretary APPROVES
--> APPROVED
+-> Secretary APPROVES           [final governance approver]
+-> overall request APPROVED
 -> Chair NOTIFIED
 ```
 
-For this informational event, the recipient should normally be resolved against the effective structure when the final approval is committed, then persisted on the notification intent. Approval authority itself remains snapshotted at submission.
+The notification:
 
-## Approval resolution and snapshots
+- is emitted only after final approval;
+- is informational only;
+- does not create another approval step;
+- does not block the completed workflow if delivery fails;
+- is stored as a notification intent/auditable event;
+- applies to line/governance-approved leave unless a future policy explicitly opts out.
 
-The dynamic organization model does not change APR-001's core invariant.
+The structural recipient may be resolved against the effective organization when final approval commits, then persisted on the notification intent. Concrete approval authority remains snapshotted at submission.
+
+Existing HC-role notification requirements remain separate and additive where the leave policy already requires them.
+
+## Approval resolution and snapshot
 
 At submission:
 
-1. load the effective organization/authority configuration;
+1. load effective organization/authority configuration;
 2. resolve semantic workflow steps to concrete employees;
-3. apply vacancy policies and overrides;
+3. apply effective acting, vacancy, and override rules;
 4. reject self-approval;
-5. deduplicate repeated approvers;
-6. validate employee/account capability;
-7. persist concrete approval steps as an immutable snapshot;
-8. persist enough structural context to explain how each approver was resolved.
+5. deduplicate repeated concrete approvers;
+6. validate account/capability;
+7. persist concrete ordered approval steps;
+8. persist enough structural resolution context for audit/explanation.
 
 Example:
 
 ```text
 Requester: Teacher Ahmad
-
-Structure at submission:
-Curriculum team leader -> Yusuf
-SDIT unit approver -> Hasan
+Curriculum leader incumbent: Yusuf
+SDIT unit approver incumbent: Hasan
 
 Snapshot:
 Step 1 -> Yusuf
 Step 2 -> Hasan
 ```
 
-If the organization changes the next day, this request remains `Yusuf -> Hasan` unless an authorized reassignment occurs. A new request uses the new effective structure.
+A later restructure does not rewrite this request. New requests use the new effective structure.
 
-## Deduplication with vacancy fallback
+## Deduplication after vacancy fallback
 
 Example:
 
 ```text
 Requester: Social Staff
-Head of Social Division: vacant
-DIRECT_MANAGER resolves to Director
-UNIT_APPROVER resolves to Director
+DIRECT_MANAGER -> Director
+UNIT_APPROVER  -> Director
 ```
 
-The sequential approval snapshot must be:
+Stored chain:
 
 ```text
 Director
@@ -491,13 +436,13 @@ not:
 Director -> Director
 ```
 
-The existing no-self-approval and duplicate-approver invariants remain mandatory.
+APR-001 self-approval and duplicate rules remain mandatory.
 
 ## Effective dating
 
-Every structural relationship that can change over time should be effective-dated.
+Structural relationships and assignments that can change over time must be effective-dated.
 
-Examples:
+Example:
 
 ```text
 Curriculum Vice Principal
@@ -505,34 +450,28 @@ Ahmad: 2026-01-01 through 2026-12-31
 Yusuf: 2027-01-01 onward
 ```
 
-The admin UI must be able to display:
+Admin UX should allow viewing:
 
 - past structure;
 - current structure;
 - scheduled future structure.
 
-A date selector should allow an authorized administrator to answer:
+Historical structure must not be overwritten when current structure changes.
 
-> What did/will the organization look like on this date?
+## Draft, validate, preview, publish
 
-Historical records must not be mutated into the new structure merely because the current organization changed.
-
-## Draft and publish model
-
-Organization changes should support preparation before activation.
-
-Example:
+Future restructure should be preparable before activation.
 
 ```text
 Draft restructure
-Effective date: 2027-01-01
+Effective: 2027-01-01
 
 + Add Head of Education Affairs
 + Move Head of SDIT under Head of Education Affairs
-+ Assign new incumbent
++ Assign incumbent
 ```
 
-Expected lifecycle:
+Lifecycle:
 
 ```text
 DRAFT
@@ -542,23 +481,21 @@ DRAFT
 -> becomes effective on configured date
 ```
 
-Publishing must validate at least:
+Publishing validates at least:
 
 - no structural cycles;
-- no invalid parent references;
-- no illegal effective-date overlaps;
-- required leadership/authority relationships are resolvable or intentionally vacant;
-- no duplicate active primary incumbent where the seat requires one;
-- no invalid employee status;
+- valid parent references;
+- valid effective-date ranges/no illegal overlaps;
+- valid employee state;
+- no duplicate active primary incumbent where single occupancy is required;
+- resolvable or intentionally vacant required authority;
 - no unbounded authority loop.
 
 ## Organization Designer UX
 
-The target admin experience is a visual organization designer, not a table-only maintenance screen.
+Target experience is a visual organization designer, not only maintenance tables.
 
-### Chart view
-
-Illustrative view:
+Illustrative chart:
 
 ```text
                     Chair
@@ -578,269 +515,174 @@ Curriculum Vice Principal
     Teachers [32]
 ```
 
-Vacant seats remain visible:
+Vacancy remains visible:
 
 ```text
 Director
   |
 Head of Social Division
-[VACANT - climbs to Director]
+[VACANT - fallback: climb]
   |
 Social Staff [5]
 ```
 
-### Minimum admin actions
+Minimum planned actions:
 
-Authorized organization administrators should eventually be able to:
-
-- add organizational nodes;
-- add authority-bearing positions;
-- move a node/position under another parent;
-- assign or replace a primary incumbent;
-- assign an acting incumbent with effective dates;
-- bulk manage team membership;
-- configure node leader;
-- configure unit approver position;
-- configure governance approver relationship;
-- configure vacancy behavior where allowed;
+- add organizational node/team;
+- add authority-bearing position;
+- move node/position to another parent;
+- assign/replace primary incumbent;
+- assign acting incumbent with effective dates;
+- bulk-manage team membership;
+- configure team leader;
+- configure unit/governance authority bindings;
+- configure allowed vacancy policy;
 - set effective dates;
-- deactivate structure elements without deleting history;
-- create an individual reporting override with reason;
-- preview resolved approval chains for selected employees;
-- preview the impact of a draft restructure;
-- inspect historical/future charts by date;
-- publish a validated structure change.
+- deactivate without deleting history;
+- create employee reporting override with reason;
+- preview resolved approval chain for an employee;
+- preview draft-restructure impact;
+- inspect structure by effective date;
+- publish validated future changes.
 
-### Position detail
+## Do not use numeric organization level as workflow logic
 
-Example:
+The UI may display a level/depth for readability. Workflow logic must follow semantic relationships, not `level N -> level N-1` arithmetic.
 
-```text
-Position: Head of SDIT
-Node: SDIT
-Reports to: Director
-Primary incumbent: Hasan
-Acting incumbent: none
-Unit approver: yes
-Vacancy behavior for leave: climb to parent authority
-Effective: 2026-01-01 onward
-```
-
-### Team detail
-
-Example:
+This allows a restructure such as:
 
 ```text
-Node: SDIT / Curriculum
-Leader position: Curriculum Vice Principal
-Members: 32 employees
+2026:
+Director -> Head of SDIT
 
-[Manage members]
-[Change leader position]
-[Schedule restructure]
+2027:
+Director -> Head of Education Affairs -> Head of SDIT
 ```
 
-## Do not use numeric level as workflow logic
-
-The visual designer may display depth/level for readability, but workflow behavior must not be written as:
-
-```text
-level 4 -> level 3 approver
-```
-
-Organization depth can change after restructuring. Resolution must follow semantic relationships such as `supervisory_parent`, `unit_approver`, and `governance_approver`.
+without workflow source-code changes.
 
 ## Multiple hierarchy types
 
-YSQ may eventually need more than one organizational relationship, for example:
+Initial ORG-004 should support only what current YSQ workflows require:
 
-- supervisory/operational reporting;
-- governance authority;
-- functional/dotted-line reporting.
-
-ORG-004 should initially implement only what is required by real YSQ workflows:
-
-1. supervisory structure;
+1. supervisory/operational structure;
 2. governance approval/oversight relationships;
 3. documented employee reporting override.
 
-A generic matrix-organization engine is out of scope until a concrete use case requires it.
+A generic matrix/dotted-line engine is deferred until a concrete YSQ requirement exists.
 
 ## Access and security boundary
 
 Organization structure does not replace RBAC.
 
-An employee occupying a position may receive authority/capabilities only through an explicit documented binding between the structural responsibility and a role/permission model.
-
 Requirements:
 
-- backend remains authoritative;
-- structure edits require explicit admin permission;
-- draft/publish actions are audited;
-- incumbent/acting changes are audited;
-- authority-binding changes are audited;
-- overrides require actor, reason, and effective dates;
-- structure must never silently grant `SUPER_ADMIN`;
-- Foundation Board account type remains separate from employee operational authority unless an explicit employee/account relationship and permission model is designed.
+- backend authorization remains authoritative;
+- position/responsibility grants capability only through explicit documented binding;
+- structure edits, publish, incumbency, acting assignment, authority binding, and override changes are audited;
+- structure never silently grants `SUPER_ADMIN`;
+- free-text title or numeric level never grants permission;
+- Foundation Board account type remains distinct from operational employee authority unless an explicit mapping specification is approved.
 
 ## Compatibility with the verified MVP
 
-The verified MVP currently uses explicit current-state employee manager and unit-approver relationships. ORG-004 is a planned successor, not a claim about current runtime behavior.
+The verified MVP uses explicit current Direct Manager and Unit Approver relationships. ORG-004 is a planned successor, not a claim about current runtime behavior.
 
-Migration must be incremental.
+Recommended migration:
 
-Recommended implementation sequence:
+### Phase 1 — model + read-only visualization
 
-### Phase 1 — model and read-only visualization
+- add effective-dated nodes, positions, memberships, incumbencies;
+- map current references without changing approval authority;
+- render read-only chart;
+- identify ambiguous/missing mappings.
 
-- introduce effective-dated nodes, positions, memberships, and incumbencies;
-- map existing unit/position/import references into the new model without changing current approvals;
-- render a read-only organization chart;
-- identify missing/ambiguous structural mappings.
+### Phase 2 — configuration + preview
 
-### Phase 2 — configuration and preview
-
-- add Organization Designer editing;
-- add draft/effective-date validation;
-- add acting assignments and vacancy visualization;
-- add `preview resolved chain` for an employee;
-- continue using current MVP resolver as production authority.
+- Organization Designer editing;
+- draft/effective-date validation;
+- acting/vacancy visualization;
+- approval-chain preview;
+- current MVP resolver remains production authority.
 
 ### Phase 3 — shadow resolver
 
-- resolve approval chains using both the old explicit model and ORG-004;
+- resolve using current explicit model and ORG-004 in parallel;
 - compare results without changing transactions;
-- investigate mismatches;
-- validate real YSQ structure.
+- investigate mismatches using real YSQ structure.
 
 ### Phase 4 — controlled activation
 
-- enable structure-driven resolution for selected units/workflows;
-- preserve explicit employee overrides for exceptions;
-- keep approval snapshot invariants unchanged;
-- audit which resolver/version produced each chain.
+- activate structure-driven resolution for selected units/workflows;
+- preserve employee override for exceptions;
+- record resolver/version used for each chain;
+- preserve snapshot invariants.
 
-### Phase 5 — structure becomes authoritative
+### Phase 5 — structure authoritative
 
-- organization structure becomes the default source for reporting/authority resolution;
-- legacy per-employee direct-manager configuration becomes an exception/compatibility mechanism rather than normal administration;
-- no source-code change is required for ordinary restructuring.
+- structural resolution becomes normal administration;
+- legacy per-employee manager setup becomes compatibility/exception behavior;
+- ordinary restructuring requires no source-code change.
 
-Existing submitted approval snapshots must never be recomputed during any migration phase.
+Existing submitted snapshots are never recomputed during migration.
 
-## Planning scenarios that must be supported
+## Required planning scenarios
 
-### Scenario A — many employees share one leader
-
-Thirty-two teachers belong to `SDIT / Curriculum`.
-
-One configuration:
-
-```text
-Curriculum leader position -> Curriculum Vice Principal
-```
-
-All members resolve the current effective incumbent as their default direct manager. No 32-row manager setup is required.
-
-### Scenario B — individual exception
-
-One coordinator reports directly to the Head of SDIT rather than the Curriculum Vice Principal.
-
-Use an effective-dated employee reporting override. The rest of the team remains structure-derived.
-
-### Scenario C — vacant intermediate position
-
-```text
-Director
--> Head of Social Division [vacant]
--> Social Staff
-```
-
-Direct manager for Social Staff resolves to Director.
-
-### Scenario D — acting appointment
-
-Head of Social Division is vacant, but Yusuf is appointed acting head for three months.
-
-During that effective period, Yusuf resolves as the authority. After expiry, normal vacancy fallback resumes.
-
-### Scenario E — restructure next year
-
-2026:
-
-```text
-Director
--> Head of SDIT
-```
-
-2027:
-
-```text
-Director
--> Head of Education Affairs
--> Head of SDIT
-```
-
-Admin schedules the new layer effective 2027-01-01. No workflow source code changes.
-
-### Scenario F — Director leave
-
-```text
-Director submits leave
--> Secretary approves
--> request approved
--> Chair notified
-```
-
-Pembina is not notified by this rule.
+- Many employees share one team leader without repeated manager setup.
+- Individual employee reporting exception.
+- One or multiple vacant supervisory positions.
+- Effective acting appointment.
+- Future-dated restructure with inserted/removed hierarchy layers.
+- Director leave: Secretary approves, Chair notified, Pembina not notified.
+- Duplicate approver created by vacancy fallback is deduplicated.
+- Higher-risk authority can block rather than climb.
 
 ## Acceptance criteria
 
-- ORG-004-A: ordinary organization restructuring can be performed as data/configuration without application source-code changes.
-- ORG-004-B: job profile, organizational node, authority-bearing position, employee membership, and position incumbency are distinct concepts.
-- ORG-004-C: a position remains in the chart when vacant.
-- ORG-004-D: ordinary team members inherit their default direct manager from structure without repetitive employee-by-employee configuration.
-- ORG-004-E: documented employee-level reporting overrides are effective-dated and auditable.
-- ORG-004-F: direct-manager resolution can climb through one or more vacant supervisory positions until a valid effective authority is found.
-- ORG-004-G: an effective acting authority is honored before vacancy fallback where its mandate applies.
-- ORG-004-H: vacancy behavior can be stricter for sensitive authorities and can fail closed instead of always climbing.
-- ORG-004-I: structure traversal rejects cycles, invalid/inactive incumbents, and unresolved roots.
-- ORG-004-J: structure and incumbent changes are effective-dated and historical/future views are available.
-- ORG-004-K: administrators can prepare and validate a future restructure before its effective date.
-- ORG-004-L: approval workflows resolve semantic authority to concrete employees and then store immutable approval snapshots.
-- ORG-004-M: duplicate/self approvers created by structural fallback are removed/rejected according to APR-001.
-- ORG-004-N: all line-approved leave requests create a post-final-approval notification intent for one structural layer above the final approver unless a future policy explicitly opts out.
-- ORG-004-O: Director leave resolves Secretary as the approver and Chair as the post-approval notification recipient; Pembina is not included by this rule.
-- ORG-004-P: the Organization Designer exposes nodes, positions, vacancies, incumbents, memberships, authority relationships, effective dates, and draft/publish state in an understandable visual model.
-- ORG-004-Q: organization structure does not bypass backend RBAC or implicitly create `SUPER_ADMIN` access.
-- ORG-004-R: existing submitted approval snapshots are never rewritten by restructuring or by migration to ORG-004.
+- ORG-004-A: ordinary restructuring is configuration/data, not application source-code change.
+- ORG-004-B: job profile, node, position, employee membership, and incumbency are distinct concepts.
+- ORG-004-C: vacant positions remain visible and historical.
+- ORG-004-D: team members derive default direct manager from structure without repetitive per-employee setup.
+- ORG-004-E: employee reporting overrides are effective-dated, exceptional, and audited.
+- ORG-004-F: direct-manager resolution can climb through multiple vacant supervisory positions.
+- ORG-004-G: effective acting authority is honored before applicable vacancy fallback.
+- ORG-004-H: sensitive authority may require acting or block instead of always climbing.
+- ORG-004-I: traversal rejects cycles, invalid incumbents, and unresolved roots.
+- ORG-004-J: structure/incumbency is effective-dated with historical/current/future view.
+- ORG-004-K: future restructure can be drafted, validated, impact-previewed, and published before its effective date.
+- ORG-004-L: semantic authority resolves to concrete employees and approval steps are snapshotted at submission.
+- ORG-004-M: vacancy fallback cannot bypass self-approval/duplicate/capability validation.
+- ORG-004-N: after overall final approval, leave with line/governance approval notifies one layer above the final line/governance approver; HC validation/approval does not redefine that target by default.
+- ORG-004-O: Director leave resolves Secretary as approver and Chair as post-approval recipient; Pembina is not included by this rule.
+- ORG-004-P: Organization Designer exposes nodes, positions, vacancies, incumbents, memberships, authority relationships, effective dates, and draft/publish state visually.
+- ORG-004-Q: structure does not bypass RBAC or imply Super Admin authority.
+- ORG-004-R: existing submitted approval snapshots are never rewritten by restructure or ORG-004 migration.
 
-## Explicit non-goals for the first ORG-004 implementation
+## Explicit non-goals for initial ORG-004
 
-- generic visual workflow builder;
-- arbitrary BPMN engine;
+- generic visual workflow/BPMN builder;
 - parallel approval/quorum;
-- payroll or grading hierarchy;
-- full succession planning;
-- generic matrix/dotted-line organization engine without a concrete YSQ requirement;
-- automatic inference of organization from job-title text;
-- automatic legal/governance conclusions from titles;
-- deleting historical structures when a restructure occurs.
+- generic delegation engine beyond explicit acting authority needed by organization structure;
+- payroll/grading hierarchy;
+- succession planning;
+- generic matrix organization without a real YSQ requirement;
+- inference of authority from job-title text;
+- deleting historical structure on restructure.
 
 ## Product decision summary
 
-The accepted planning direction is:
+Accepted direction:
 
 ```text
 Structure-driven defaults
-+ effective-dated positions and incumbents
++ effective-dated nodes/positions/incumbencies
 + acting authority
 + vacancy fallback
-+ explicit exception overrides
-+ semantic authority bindings
-+ approval snapshot at transaction submission
-+ one-level-above notification after final approval
++ explicit exception override
++ semantic authority binding
++ approval snapshot at submission
++ one-level-above final-line-authority notification after overall final approval
 + visual Organization Designer
 ```
 
-This specification is the planning baseline for replacing repetitive current-state organization administration with a modular, restructuring-safe organization foundation.
+This is the planning baseline for replacing repetitive current-state organization administration with a modular, restructuring-safe organization foundation.
