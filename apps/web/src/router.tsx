@@ -19,11 +19,13 @@ import { AdminLeaveCalendarPage } from "@/pages/AdminLeaveCalendarPage";
 import { AdminLeaveConfigurationPage } from "@/pages/AdminLeaveConfigurationPage";
 import { AdminOrganizationPage } from "@/pages/AdminOrganizationPage";
 import { AdminPage } from "@/pages/AdminPage";
+import { AdminPayslipsPage } from "@/pages/AdminPayslipsPage";
 import { EmployeeApprovalsPage } from "@/pages/EmployeeApprovalsPage";
 import { EmployeeAttendancePage } from "@/pages/EmployeeAttendancePage";
 import { EmployeeAttendanceResolutionPage } from "@/pages/EmployeeAttendanceResolutionPage";
 import { EmployeeDashboardPage } from "@/pages/EmployeeDashboardPage";
 import { EmployeeLeavePage } from "@/pages/EmployeeLeavePage";
+import { EmployeePayslipsPage } from "@/pages/EmployeePayslipsPage";
 import { EmployeePlannedLeavePage } from "@/pages/EmployeePlannedLeavePage";
 import { EmployeeSpecialLeavePage } from "@/pages/EmployeeSpecialLeavePage";
 import { FoundationBoardPage } from "@/pages/FoundationBoardPage";
@@ -81,6 +83,13 @@ const employeeLeaveRoute = createRoute({
   path: "/app/leave",
   beforeLoad: () => requirePrincipal("EMPLOYEE"),
   component: EmployeeLeavePage,
+});
+
+const employeePayslipsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/app/payslips",
+  beforeLoad: () => requirePrincipal("EMPLOYEE"),
+  component: EmployeePayslipsPage,
 });
 
 const employeeSpecialLeaveRoute = createRoute({
@@ -195,6 +204,13 @@ const adminLeaveCalendarRoute = createRoute({
   component: AdminLeaveCalendarPage,
 });
 
+const adminPayslipsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/payslips",
+  beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
+  component: AdminPayslipsPage,
+});
+
 const adminAccessRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/access",
@@ -215,6 +231,7 @@ const routeTree = rootRoute.addChildren([
   appRoute,
   employeeAttendanceRoute,
   employeeLeaveRoute,
+  employeePayslipsRoute,
   employeeSpecialLeaveRoute,
   employeePlannedLeaveRoute,
   employeeAttendanceResolutionRoute,
@@ -231,6 +248,7 @@ const routeTree = rootRoute.addChildren([
   adminAttendanceRoute,
   adminLeaveRoute,
   adminLeaveCalendarRoute,
+  adminPayslipsRoute,
   adminAccessRoute,
   boardRoute,
 ]);
