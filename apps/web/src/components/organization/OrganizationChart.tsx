@@ -47,6 +47,9 @@ export type OrganizationSelection =
   | null;
 
 const ZOOM_STEP = 0.1;
+// A visual level is a real layout band, sized for a normal organization card.
+// Offsets are presentation-only and never alter structural parentage.
+export const ORGANIZATION_VISUAL_BAND_HEIGHT = 112;
 
 function DisplayOffsetBadge({ offset }: { offset: number }) {
   if (offset <= 0) return null;
@@ -148,7 +151,7 @@ function PositionLane({
   selected: boolean;
   onSelect: () => void;
 }) {
-  const offsetHeight = position.visualRankOffset * 40;
+  const offsetHeight = position.visualRankOffset * ORGANIZATION_VISUAL_BAND_HEIGHT;
   const connectorHeight = (position.parentPositionKey ? 16 : 0) + offsetHeight;
 
   return (
@@ -188,6 +191,7 @@ function TreeBranch({
   selection,
   onSelect,
   parentKey,
+  parentVisualDepth,
   expandAll,
   expansionVersion,
 }: {
@@ -195,6 +199,7 @@ function TreeBranch({
   selection: OrganizationSelection;
   onSelect: (selection: Exclude<OrganizationSelection, null>) => void;
   parentKey?: string;
+  parentVisualDepth?: number;
   expandAll: boolean;
   expansionVersion: number;
 }) {
@@ -202,8 +207,11 @@ function TreeBranch({
   useEffect(() => setExpanded(expandAll), [expandAll, expansionVersion]);
   const selected = selection?.kind === "node" && selection.key === item.stableKey;
   const hasDetails = item.positions.length > 0 || item.children.length > 0;
-  const nodeOffsetHeight = item.visualRankOffset * 48;
-  const connectorHeight = (parentKey ? 28 : 0) + nodeOffsetHeight;
+  const skippedVisualBands = parentVisualDepth === undefined
+    ? item.visualDepth
+    : Math.max(0, item.visualDepth - parentVisualDepth - 1);
+  const connectorHeight = (parentKey ? 28 : 0)
+    + skippedVisualBands * ORGANIZATION_VISUAL_BAND_HEIGHT;
 
   return (
     <li
@@ -297,10 +305,11 @@ function TreeBranch({
         <div className="relative mt-6 flex min-w-max flex-col items-center" data-child-level-of={item.stableKey}>
           <span aria-hidden="true" className="h-6 w-px bg-brand-primary/40" />
           <ol
-            className="flex min-w-max items-start justify-center gap-3 border-t border-brand-primary/40"
+            className="relative flex min-w-max items-start justify-center gap-3"
             data-layout-axis="horizontal"
             data-sibling-parent={item.stableKey}
           >
+            {item.children.length > 1 ? <span aria-hidden="true" className="absolute top-0 h-px bg-brand-primary/40" style={{ left: "8.75rem", right: "8.75rem" }} data-connector-kind="sibling-junction" data-connector-from={item.children[0]?.stableKey} data-connector-to={item.children.at(-1)?.stableKey} /> : null}
             {item.children.map((child) => (
               <TreeBranch
                 key={child.stableKey}
@@ -308,6 +317,7 @@ function TreeBranch({
                 selection={selection}
                 onSelect={onSelect}
                 parentKey={item.stableKey}
+                parentVisualDepth={item.visualDepth}
                 expandAll={expandAll}
                 expansionVersion={expansionVersion}
               />

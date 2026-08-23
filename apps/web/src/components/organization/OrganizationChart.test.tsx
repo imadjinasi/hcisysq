@@ -170,7 +170,7 @@ describe("Organization Designer chart", () => {
     const html = renderChart([baseNode, bureau], [vacantPosition]);
 
     expect(html).toMatch(/data-node-key="quran-bureau"[^>]*data-structural-depth="1"[^>]*data-visual-band="2"[^>]*data-visual-rank-offset="1"/);
-    expect(html).toContain('style="height:76px"');
+    expect(html).toContain('style="height:140px"');
   });
 
   it("uses position visual offset as a real lower layout band", () => {
@@ -185,7 +185,7 @@ describe("Organization Designer chart", () => {
     const html = renderChart([baseNode], [vacantPosition, vicePrincipal]);
 
     expect(html).toMatch(/data-position-key="vice-principal"[^>]*data-parent-position-key="director"[^>]*data-structural-depth="1"[^>]*data-visual-band="3"/);
-    expect(html).toContain('style="height:96px"');
+    expect(html).toContain('style="height:240px"');
     expect(html).toMatch(/data-connector-kind="position"[^>]*data-connector-from="director"[^>]*data-connector-to="vice-principal"/);
   });
 
@@ -218,6 +218,44 @@ describe("Organization Designer chart", () => {
     expect(html).toContain("VACANT · Belum ada pejabat");
     expect(html).toContain("Tampilan +2");
     expect(html).toContain("Tampilkan 2 tingkat lebih rendah. Hubungan struktural");
+  });
+
+  it("aligns equal computed visual depths to the same visual band for offsets 0 through 3", () => {
+    const levelOne = childNode("level-one", "Level one", 1);
+    const levelTwo: OrganizationNode = {
+      ...childNode("level-two", "Level two", 0),
+      parentNodeKey: levelOne.stableKey,
+    };
+    const roots = [0, 1, 2, 3].map((offset) => ({
+      ...baseNode,
+      id: `root-${offset}`,
+      stableKey: `root-${offset}`,
+      name: `Root ${offset}`,
+      visualRankOffset: offset,
+      leaderPositionKey: null,
+    }));
+    const tree = buildOrganizationTree([baseNode, levelOne, levelTwo, ...roots], []);
+    const main = tree.find((item) => item.stableKey === baseNode.stableKey)!;
+
+    expect(main.children[0]!.visualDepth).toBe(2);
+    expect(main.children[0]!.children[0]!.visualDepth).toBe(2);
+    expect(roots.map((item) => tree.find((entry) => entry.stableKey === item.stableKey)?.visualDepth))
+      .toEqual([0, 1, 2, 3]);
+  });
+
+  it("draws sibling junctions only between actual child centers with no one-child overhang", () => {
+    const oneChild = renderChart([baseNode, childNode("only", "Only")], [vacantPosition]);
+    const manyChildren = renderChart([
+      baseNode,
+      childNode("first", "First"),
+      childNode("middle", "Middle"),
+      childNode("last", "Last"),
+    ], [vacantPosition]);
+
+    expect(oneChild).not.toContain('data-connector-kind="sibling-junction"');
+    expect(manyChildren).toMatch(/data-connector-kind="sibling-junction"[^>]*data-connector-from="first"[^>]*data-connector-to="middle|last"/);
+    expect(manyChildren).toContain('style="left:8.75rem;right:8.75rem"');
+    expect(manyChildren).not.toContain("border-t border-brand-primary/40");
   });
 
   it("localizes node types, keeps cards compact, and de-emphasizes zero members", () => {

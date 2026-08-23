@@ -120,6 +120,9 @@ visual offset = 1
 
 visual offset = 2
 -> render two visual bands lower
+
+visual offset = 3
+-> render three visual bands lower
 ```
 
 Negative offsets should not be introduced in the first implementation unless a real YSQ case requires them, because rendering a structural child above its structural parent can make the chart misleading.
@@ -244,10 +247,17 @@ Tampilan
 - Tingkat normal
 - Tampilkan 1 tingkat lebih rendah
 - Tampilkan 2 tingkat lebih rendah
+- Tampilkan 3 tingkat lebih rendah
 ```
 
-Cards show only a compact `Tampilan +1` / `Tampilan +2` badge. The full
+Cards show only a compact `Tampilan +1` / `Tampilan +2` / `Tampilan +3` badge. The full
 explanation remains available through tooltip and the selection inspector.
+
+The renderer lays out `structuralDepth + visualRankOffset` as an actual visual
+band. Items with the same computed visual depth align to the same vertical band
+within normal card-height tolerance. Connectors are explicit: the horizontal
+junction spans only the centers of the first and last real child, and a single
+child has no horizontal extension.
 
 ## Add-below and add-sibling actions
 
@@ -366,6 +376,8 @@ This keeps future features such as attendance clarification, reimbursement, loan
 - ORG-004-VIS-G: draft impact preview distinguishes pure layout changes from structural/authority changes.
 - ORG-004-VIS-H: historical/future chart views preserve the visual layout appropriate to the selected effective structure.
 - ORG-004-VIS-I: future workflow modules can consume organization authority without depending on visualization metadata.
+- ORG-004-VIS-J: offsets 0, 1, 2, and 3 map to computed visual-depth bands rather than small arbitrary pixel nudges.
+- ORG-004-VIS-K: sibling connectors do not extend into empty canvas beyond actual child centers.
 
 ## Implementation boundary
 

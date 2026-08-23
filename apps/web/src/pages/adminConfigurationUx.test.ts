@@ -11,6 +11,10 @@ const leaveSource = readFileSync(
   new URL("./AdminLeaveConfigurationPage.tsx", import.meta.url),
   "utf8",
 );
+const adminShellSource = readFileSync(
+  new URL("../layouts/AdminShell.tsx", import.meta.url),
+  "utf8",
+);
 
 describe("Organization Designer administration UX contracts", () => {
   it("keeps add-below parent context fixed and integration code advanced", () => {
@@ -19,6 +23,16 @@ describe("Organization Designer administration UX contracts", () => {
     expect(organizationSource).toContain("Pengaturan lanjutan");
     expect(organizationSource).toContain("Kode integrasi");
     expect(organizationSource).toContain("Tampilkan 1 tingkat lebih rendah");
+    expect(organizationSource).toContain("Tampilkan 3 tingkat lebih rendah");
+  });
+
+  it("makes same-day revisions, destructive draft deletion, and account holders explicit", () => {
+    expect(organizationSource).toContain("Versi sebelumnya tetap tersimpan sebagai histori");
+    expect(organizationSource).toContain("Hapus kelompok dan subtree?");
+    expect(organizationSource).toContain("Buang seluruh draft?");
+    expect(organizationSource).toContain("Account Organ Yayasan");
+    expect(organizationSource).toContain('href="/admin/access"');
+    expect(organizationSource).toContain("tidak memberikan izin Leave atau employee self-service");
   });
 
   it("provides a selected-item inspector and intentional Move actions", () => {
@@ -61,5 +75,20 @@ describe("Leave administration transition UX contracts", () => {
     expect(leaveSource).toContain('preview.routing.mode === "SHADOW"');
     expect(leaveSource).toContain("Kandidat Struktur Organisasi");
     expect(leaveSource).toContain("side effect oversight struktural");
+  });
+});
+
+describe("Admin navigation compaction", () => {
+  it("preserves all destinations and active-item behavior in a compact scrollable desktop shell", () => {
+    for (const href of [
+      "/admin", "/admin/employees", "/admin/employees/import", "/admin/employees/imports",
+      "/admin/organization", "/admin/attendance", "/admin/leave", "/admin/leave/calendar",
+      "/admin/payslips", "/admin/access",
+    ]) expect(adminShellSource).toContain(`href: "${href}"`);
+    expect(adminShellSource).toContain('item.key === active');
+    expect(adminShellSource).toContain('aria-current={selected ? "page" : undefined}');
+    expect(adminShellSource).toContain('lg:grid-cols-[14.5rem_minmax(0,1fr)]');
+    expect(adminShellSource).toContain('lg:overflow-y-auto');
+    expect(adminShellSource).toContain('whitespace-nowrap');
   });
 });

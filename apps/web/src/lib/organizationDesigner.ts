@@ -16,12 +16,15 @@ export interface OrganizationDraft {
   createdAt: string;
   validatedAt: string | null;
   publishedAt: string | null;
+  baseChangeSetId?: string | null;
 }
 
 export interface OrganizationIncumbent {
   assignmentId?: string;
   positionKey?: string;
-  employeeId: string;
+  employeeId: string | null;
+  accountId?: string | null;
+  accountStatus?: string | null;
   employeeNumber?: string;
   employeeName: string;
   effectiveFrom: string;
@@ -56,6 +59,7 @@ export interface OrganizationPosition {
   effectiveFrom: string;
   effectiveTo: string | null;
   visualRankOffset: number;
+  holderSource?: "EMPLOYEE" | "ACCOUNT";
   primaryIncumbent: OrganizationIncumbent | null;
   actingIncumbent: OrganizationIncumbent | null;
 }
@@ -99,6 +103,7 @@ export interface OrganizationDesignerView {
   viewDate: string;
   mode: OrganizationViewMode;
   draft: OrganizationDraft | null;
+  isSameDayRevision?: boolean;
   nodes: OrganizationNode[];
   positions: OrganizationPosition[];
   memberships: OrganizationMembership[];
@@ -269,6 +274,23 @@ export function updateOrganizationNode(
   });
 }
 
+export async function listFoundationBoardAccounts(): Promise<OrganizationAccountOption[]> {
+  const result = await request<
+    OrganizationAccountOption[] | { items: OrganizationAccountOption[] }
+  >("/foundation-board-accounts");
+  return Array.isArray(result) ? result : result.items;
+}
+
+export interface OrganizationAccountOption {
+  id: string;
+  email: string;
+  status: "invited" | "active" | "suspended" | "inactive";
+}
+
+export function deleteOrganizationNode(draftId: string, nodeId: string): Promise<Record<string, number>> {
+  return request<Record<string, number>>(`/drafts/${draftId}/nodes/${nodeId}`, { method: "DELETE" });
+}
+
 export function createOrganizationPosition(
   draftId: string,
   input: {
@@ -278,6 +300,7 @@ export function createOrganizationPosition(
     vacancyPolicy: OrganizationVacancyPolicy;
     singleIncumbent?: boolean;
     visualRankOffset?: number;
+    holderSource?: "EMPLOYEE" | "ACCOUNT";
   },
 ): Promise<OrganizationPosition> {
   return request<OrganizationPosition>(`/drafts/${draftId}/positions`, {
@@ -299,6 +322,7 @@ export function updateOrganizationPosition(
       | "singleIncumbent"
       | "active"
       | "visualRankOffset"
+      | "holderSource"
     >
   >,
 ): Promise<OrganizationPosition> {
@@ -328,6 +352,7 @@ export function replaceOrganizationIncumbencies(
   input: {
     positionKey: string;
     primaryEmployeeId?: string | null;
+    primaryAccountId?: string | null;
     actingEmployeeId?: string | null;
     actingFrom?: string | null;
     actingTo?: string | null;
@@ -386,6 +411,10 @@ export function previewOrganizationResolution(
 
 export function publishOrganizationDraft(draftId: string): Promise<OrganizationDraft> {
   return request<OrganizationDraft>(`/drafts/${draftId}/publish`, { method: "POST" });
+}
+
+export function discardOrganizationDraft(draftId: string): Promise<void> {
+  return request<void>(`/drafts/${draftId}`, { method: "DELETE" });
 }
 
 export async function getOrganizationRollout(): Promise<OrganizationRolloutConfiguration> {
