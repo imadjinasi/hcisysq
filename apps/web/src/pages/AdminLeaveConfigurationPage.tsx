@@ -1,11 +1,13 @@
 import {
   AlertTriangle,
+  Archive,
   CalendarDays,
   CheckCircle2,
+  ExternalLink,
+  GitCompareArrows,
   Network,
   Search,
   ShieldCheck,
-  UsersRound,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -20,11 +22,7 @@ import {
   updateLeaveEntitlementGroup,
   updateUnitLeaveApprover,
 } from "@/lib/adminLeave";
-
-function percent(done: number, total: number) {
-  if (!total) return 0;
-  return Math.round((done / total) * 100);
-}
+import { modeCopy, routingSource } from "@/lib/adminLeaveRouting";
 
 export function AdminLeaveConfigurationPage() {
   const [data, setData] = useState<LeaveConfigurationResponse | null>(null);
@@ -157,24 +155,13 @@ export function AdminLeaveConfigurationPage() {
 
   const activeUnits = data?.units.filter((unit) => unit.activeEmployeeCount > 0) ?? [];
   const summary = data?.summary;
-  const unitCoverage = percent(
-    activeUnits.filter((unit) => unit.approverEmployeeId).length,
-    activeUnits.length,
-  );
-  const managerCoverage = percent(
-    summary?.directManagerConfigured ?? 0,
-    summary?.activeEmployees ?? 0,
-  );
-  const groupCoverage = percent(
-    summary?.entitlementGroupConfigured ?? 0,
-    summary?.activeEmployees ?? 0,
-  );
+  const rolloutState = data?.rollout.state ?? "LEGACY";
 
   return (
     <AdminShell
       active="leave"
       title="Konfigurasi Cuti"
-      description="Siapkan approver unit, klasifikasi hak cuti, dan cek rantai approval sebelum modul cuti dibuka untuk pegawai."
+      description="Kelola kebijakan Cuti secara independen dan pantau transisi routing approval Legacy → Shadow → Struktur Organisasi."
     >
       {error ? (
         <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
@@ -182,30 +169,29 @@ export function AdminLeaveConfigurationPage() {
         </div>
       ) : null}
 
-      <section className="grid gap-3 sm:grid-cols-3">
-        <article className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
-          <Network className="h-5 w-5 text-brand-primary-deep" aria-hidden="true" />
-          <p className="mt-4 text-2xl font-bold text-brand-heading">{unitCoverage}%</p>
-          <p className="mt-1 text-sm font-semibold">Approver unit siap</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {activeUnits.filter((unit) => unit.approverEmployeeId).length} dari {activeUnits.length} unit aktif.
-          </p>
-        </article>
-        <article className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
-          <UsersRound className="h-5 w-5 text-brand-primary-deep" aria-hidden="true" />
-          <p className="mt-4 text-2xl font-bold text-brand-heading">{managerCoverage}%</p>
-          <p className="mt-1 text-sm font-semibold">Atasan langsung siap</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {summary?.directManagerConfigured ?? 0} dari {summary?.activeEmployees ?? 0} pegawai aktif.
-          </p>
+      <section className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(18rem,0.7fr)]">
+        <article className="rounded-2xl border border-brand-primary/20 bg-white p-5 shadow-[var(--shadow-soft)]">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2"><Network className="h-5 w-5 text-brand-primary-deep" aria-hidden="true" /><h2 className="text-base font-bold text-brand-heading">Status routing approval</h2></div>
+              <p className="mt-3 text-xs font-semibold text-muted-foreground">Sumber approval aktif</p>
+              <p className="mt-1 text-xl font-bold text-brand-heading">{routingSource(rolloutState)}</p>
+            </div>
+            <span className="self-start rounded-full bg-brand-primary-pale px-3 py-1.5 text-xs font-bold text-brand-primary-deep">{rolloutState}</span>
+          </div>
+          <p className="mt-3 text-sm leading-6 text-muted-foreground">{modeCopy(rolloutState)}</p>
+          <div className="mt-4 flex flex-wrap gap-2 text-[11px] font-semibold">
+            <span className="rounded-full bg-slate-100 px-2.5 py-1">LEGACY {data?.rollout.counts.LEGACY ?? 0}</span>
+            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-blue-900">SHADOW {data?.rollout.counts.SHADOW ?? 0}</span>
+            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-900">STRUCTURE {data?.rollout.counts.STRUCTURE ?? 0}</span>
+          </div>
+          <a href="/admin/organization" className="mt-4 inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-3 text-xs font-bold text-white hover:bg-brand-primary-deep">Buka Organization Designer <ExternalLink className="h-3.5 w-3.5" /></a>
         </article>
         <article className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
           <ShieldCheck className="h-5 w-5 text-brand-primary-deep" aria-hidden="true" />
-          <p className="mt-4 text-2xl font-bold text-brand-heading">{groupCoverage}%</p>
-          <p className="mt-1 text-sm font-semibold">Kelompok hak cuti siap</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Pendidikan / non-pendidikan dikonfigurasi eksplisit, tidak ditebak dari jabatan.
-          </p>
+          <p className="mt-4 text-2xl font-bold text-brand-heading">{summary?.entitlementGroupConfigured ?? 0}<span className="text-sm font-semibold text-muted-foreground"> / {summary?.activeEmployees ?? 0}</span></p>
+          <p className="mt-1 text-sm font-semibold">Kelompok hak cuti dikonfigurasi</p>
+          <p className="mt-2 text-xs leading-5 text-muted-foreground">Pendidikan / non-pendidikan tetap kebijakan Cuti yang eksplisit dan tidak diturunkan dari node, posisi, judul, atau tingkat struktur.</p>
         </article>
       </section>
 
@@ -229,10 +215,10 @@ export function AdminLeaveConfigurationPage() {
       </section>
 
       <section className="mt-5 overflow-hidden rounded-2xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
-        <div className="border-b border-border/70 px-5 py-4">
-          <h2 className="text-base font-bold text-brand-heading">Approver Unit</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Kepala unit biasanya menjadi approver. Saat vacant, pilih Kabid, Direktur, atau pegawai yang memang diberi kewenangan. Sistem tidak melompat otomatis.
+        <div className="border-b border-amber-200 bg-amber-50/60 px-5 py-4">
+          <div className="flex items-center gap-2"><Archive className="h-5 w-5 text-amber-800" aria-hidden="true" /><h2 className="text-base font-bold text-brand-heading">Legacy approval routing</h2></div>
+          <p className="mt-1 text-xs leading-5 text-amber-950">
+            Digunakan sementara selama mode LEGACY/SHADOW. Setelah STRUCTURE aktif, approval mengikuti Struktur Organisasi. Field legacy dipertahankan untuk kompatibilitas migrasi dan rollback, bukan sebagai konfigurasi jangka panjang.
           </p>
         </div>
         <div className="overflow-x-auto">
@@ -240,31 +226,28 @@ export function AdminLeaveConfigurationPage() {
             <thead className="bg-surface text-xs text-muted-foreground">
               <tr>
                 <th className="px-5 py-3 font-semibold">Unit</th>
+                <th className="px-5 py-3 font-semibold">Mode cakupan</th>
                 <th className="px-5 py-3 text-right font-semibold">Pegawai aktif</th>
-                <th className="px-5 py-3 font-semibold">Approver unit saat ini</th>
+                <th className="px-5 py-3 font-semibold">Unit Approver legacy</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/70">
               {activeUnits.map((unit) => (
                 <tr key={unit.id}>
                   <td className="px-5 py-3 font-semibold">{unit.name}</td>
+                  <td className="px-5 py-3"><span className="rounded-full bg-surface px-2.5 py-1 text-[11px] font-bold">{unit.rolloutState}</span></td>
                   <td className="px-5 py-3 text-right text-muted-foreground">{unit.activeEmployeeCount}</td>
                   <td className="px-5 py-3">
-                    <select
-                      value={unit.approverEmployeeId ?? ""}
-                      disabled={savingKey === `unit:${unit.id}`}
-                      onChange={(event) =>
-                        void updateApprover(unit.id, event.target.value || null)
-                      }
-                      className="h-10 w-full rounded-xl border border-border bg-white px-3 text-sm outline-none focus:border-brand-primary"
-                    >
-                      <option value="">Belum dikonfigurasi</option>
-                      {(data?.employees ?? []).map((employee) => (
-                        <option key={employee.id} value={employee.id}>
-                          {employee.fullName} — {employee.unitName ?? "Tanpa unit"}
-                        </option>
-                      ))}
-                    </select>
+                    {unit.rolloutState === "STRUCTURE" ? <div className="rounded-xl border border-dashed border-border bg-surface px-3 py-2 text-xs text-muted-foreground"><span className="font-bold text-brand-heading">Diarsipkan / read-only</span><span className="mt-0.5 block">{unit.approverName ?? "Belum pernah dikonfigurasi"}</span></div> : <select
+                        aria-label={`Unit Approver legacy untuk ${unit.name}`}
+                        value={unit.approverEmployeeId ?? ""}
+                        disabled={savingKey === `unit:${unit.id}`}
+                        onChange={(event) => void updateApprover(unit.id, event.target.value || null)}
+                        className="h-10 w-full rounded-xl border border-amber-300 bg-white px-3 text-sm outline-none focus:border-brand-primary"
+                      >
+                        <option value="">Belum dikonfigurasi</option>
+                        {(data?.employees ?? []).map((employee) => <option key={employee.id} value={employee.id}>{employee.fullName} — {employee.unitName ?? "Tanpa unit"}</option>)}
+                      </select>}
                   </td>
                 </tr>
               ))}
@@ -297,7 +280,7 @@ export function AdminLeaveConfigurationPage() {
               <tr>
                 <th className="px-5 py-3 font-semibold">Pegawai</th>
                 <th className="px-5 py-3 font-semibold">Unit / Jabatan</th>
-                <th className="px-5 py-3 font-semibold">Atasan langsung</th>
+                <th className="px-5 py-3 font-semibold">Atasan langsung legacy</th>
                 <th className="px-5 py-3 font-semibold">Kelompok hak</th>
                 <th className="px-5 py-3 text-right font-semibold">Preview</th>
               </tr>
@@ -312,9 +295,10 @@ export function AdminLeaveConfigurationPage() {
                   <td className="px-5 py-3">
                     <p>{employee.unitName ?? "—"}</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">{employee.positionName ?? "—"}</p>
+                    <span className="mt-1.5 inline-flex rounded-full bg-surface px-2 py-0.5 text-[10px] font-bold text-brand-heading">{employee.rolloutMode}</span>
                   </td>
                   <td className="px-5 py-3 text-muted-foreground">
-                    {employee.directManagerName ?? (
+                    {employee.rolloutMode === "STRUCTURE" ? <span className="inline-flex items-center gap-1 text-xs"><Archive className="h-3.5 w-3.5" /> Diarsipkan: {employee.directManagerName ?? "belum pernah diatur"}</span> : employee.directManagerName ?? (
                       <span className="inline-flex items-center gap-1 text-amber-700">
                         <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" /> Belum diatur
                       </span>
@@ -365,9 +349,14 @@ export function AdminLeaveConfigurationPage() {
             <h2 className="text-base font-bold text-brand-heading">Preview — {preview.employee.fullName}</h2>
           </div>
 
+          <div className="mt-4 grid gap-3 rounded-xl border border-brand-primary/20 bg-brand-primary-pale/30 p-4 sm:grid-cols-2">
+            <div><p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Mode</p><p className="mt-1 text-sm font-bold text-brand-heading">{preview.routing.mode}</p></div>
+            <div><p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Sumber authoritative</p><p className="mt-1 text-sm font-bold text-brand-heading">{preview.routing.authoritativeSource === "STRUCTURE" ? "Struktur Organisasi" : "Legacy"}</p></div>
+          </div>
+
           <div className="mt-4 grid gap-4 lg:grid-cols-2">
             <div className="rounded-xl bg-surface p-4">
-              <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">Approval Cuti Tahunan</p>
+              <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">Resolved chain authoritative</p>
               <div className="mt-3 space-y-2 text-sm">
                 {preview.approvalChain.length ? (
                   preview.approvalChain.map((step, index) => (
@@ -409,6 +398,18 @@ export function AdminLeaveConfigurationPage() {
               )}
             </div>
           </div>
+
+          {preview.routing.mode === "SHADOW" ? (
+            <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-2"><GitCompareArrows className="h-4 w-4 text-blue-800" /><p className="text-xs font-bold uppercase tracking-[0.12em] text-blue-950">Kandidat Struktur Organisasi</p></div><span className={preview.routing.comparison?.status === "MATCH" ? "rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-900" : "rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-950"}>{preview.routing.comparison?.status ?? "MISMATCH"}</span></div>
+              <div className="mt-3 space-y-2 text-sm">
+                {preview.routing.structuralCandidateChain?.length ? preview.routing.structuralCandidateChain.map((step, index) => <div key={`${step.employeeId}-${index}`} className="flex items-center gap-2"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-900">{index + 1}</span><span className="font-semibold text-brand-heading">{employeeName(step.employeeId)}</span><span className="text-xs text-blue-800">{step.sources.join(" + ")}</span></div>) : <p className="text-sm text-blue-900">Kandidat struktural belum dapat diselesaikan.</p>}
+              </div>
+              {preview.routing.comparison?.reasons.length ? <p className="mt-3 text-xs text-blue-900">Alasan: {preview.routing.comparison.reasons.join(", ")}</p> : null}
+              {preview.routing.comparison?.error ? <p className="mt-1 text-xs font-semibold text-amber-900">{preview.routing.comparison.error.code} — {preview.routing.comparison.error.message}</p> : null}
+              <p className="mt-3 text-[11px] leading-4 text-blue-900">Hasil ini diagnostik saja. Chain authoritative tetap Legacy dan tidak ada side effect oversight struktural.</p>
+            </div>
+          ) : null}
 
           {preview.warnings.length ? (
             <div className="mt-4 space-y-2">

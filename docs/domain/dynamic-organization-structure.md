@@ -1,13 +1,13 @@
 # Dynamic Organization Structure and Authority Resolution
 
-**Status:** IMPLEMENTED AND TESTED LOCALLY — NOT DEPLOYED — NOT PRODUCTION VALIDATED
+**Status:** IMPLEMENTED, REVIEWED, BROWSER-UAT TESTED, MERGED, AND DEPLOYED — STRUCTURE ACTIVATION REMAINS CONTROLLED
 **Specification:** ORG-004  
 **Related:** ORG-001, ORG-002, AUTH-010, APR-001, LEAVE-003, LEAVE-004  
 **Decision date:** 2026-08-22
 
 ## Implementation record
 
-ORG-004 is implemented on the `agent/dynamic-organization-foundation` branch as an additive successor to ORG-002. The implementation does not seed, infer, or activate a real YSQ hierarchy and does not modify existing employee reporting fields or submitted Leave approval snapshots.
+ORG-004 is deployed as an additive successor to ORG-002. Deployment does not itself infer or activate a real YSQ hierarchy, does not rewrite existing employee reporting fields, and does not modify submitted Leave approval snapshots. Organization Designer UX refinements may be released independently without changing rollout authority.
 
 ### Physical persistence model
 
@@ -48,6 +48,14 @@ Structural incumbency validity is intentionally narrower than workflow eligibili
 - `SHADOW`: ORG-002 remains authoritative while the structural result and mismatch reason are recorded for diagnostics; ORG-004 does not enqueue structural oversight.
 - `STRUCTURE`: the structural resolver and post-final-approval oversight behavior are authoritative and fail closed; they do not silently return to ORG-002.
 
+Legacy fields `employees.direct_manager_employee_id` and
+`organizational_units.leave_approver_employee_id` are migration-compatibility
+state. They remain authoritative only in `LEGACY` and `SHADOW`. In
+`STRUCTURE`, ORG-004 structural resolution is the only routing authority and
+legacy values are retained only as archived rollback/reference data. The admin
+experience must never present legacy and structure as two simultaneously
+authoritative routing configurations.
+
 Leave is the first consumer. Annual and Planned Leave preserve Direct Manager then Unit Approver semantics; Unpaid Leave preserves line/governance authority followed by actual HC approval; Special Leave retains its existing notification/administrative-validation rules. Concrete people and structural explanation metadata are snapshotted at submission.
 
 For a request submitted in `STRUCTURE`, final approval creates an idempotent informational intent for the configured oversight authority above the snapshotted final line/governance approver. The submission-time rollout mode is stored with the request and remains authoritative if rollout configuration changes while the request is in flight. `LEGACY`, `SHADOW`, and older requests without mode metadata never enqueue this structural side effect. The resolver is not based on a later HC validator/approver. Oversight resolution and outbox insertion are isolated so failure cannot roll back or repeat the approval decision.
@@ -64,7 +72,13 @@ Automated regression coverage accompanies each invariant. The browser UAT used o
 
 ### Deployment and deferred operational work
 
-This implementation has not been deployed and has not been validated with production/pre-release employee data. Before real activation, authorized YSQ owners must configure and review the real structure, map governance principals to active employee accounts/capabilities, run SHADOW comparison, approve selected workflow/node activation, and complete targeted pilot/security review. Production notification delivery adapters remain outside ORG-004.
+The ORG-004 application and additive migration are deployed, but deployment is
+not authority activation. Before `STRUCTURE` is activated for a scope,
+authorized YSQ owners must configure and review the real structure, map
+governance principals to active employee accounts/capabilities, run `SHADOW`
+comparison, approve selected workflow/node activation, and complete targeted
+pilot/security review. Production notification delivery adapters remain
+outside ORG-004.
 
 ## Purpose
 
@@ -606,6 +620,28 @@ Minimum planned actions:
 - inspect structure by effective date;
 - publish validated future changes.
 
+The implemented administration canvas additionally provides:
+
+- zoom out/current percentage/zoom in;
+- fit structure to viewport;
+- center root and center selected item;
+- drag-to-pan plus collapse/expand controls, so horizontal scroll is not the
+  only navigation mechanism;
+- compact localized node cards, de-emphasized zero-member counts, and compact
+  `Tampilan +N` badges;
+- selected structural breadcrumb and a right-side inspector showing parent,
+  positions, member count, authority bindings, vacancy/acting state, and
+  display-only offset;
+- fixed parent context for Add Below/Add Sibling, with Move/Reparent as a
+  distinct intentional operation;
+- integration code under advanced settings;
+- an explicit preview-and-confirm membership copy from a selected legacy unit.
+
+The legacy-unit aid copies membership only. It never infers hierarchy or
+authority from titles, never creates positions/incumbencies/leaders, and never
+creates approval bindings. Canvas zoom, pan, collapse, and selection state are
+not organizational data and are not persisted.
+
 ## Do not use numeric organization level as workflow logic
 
 The UI may display a level/depth for readability. Workflow logic must follow semantic relationships, not `level N -> level N-1` arithmetic.
@@ -647,7 +683,9 @@ Requirements:
 
 ## Compatibility with the verified MVP
 
-The verified MVP uses explicit current Direct Manager and Unit Approver relationships. ORG-004 is a planned successor, not a claim about current runtime behavior.
+The verified MVP baseline used explicit Direct Manager and Unit Approver
+relationships. The deployed ORG-004 successor now selects authority through
+the effective rollout mode without rewriting that historical baseline.
 
 Recommended migration:
 
@@ -682,7 +720,8 @@ Recommended migration:
 ### Phase 5 — structure authoritative
 
 - structural resolution becomes normal administration;
-- legacy per-employee manager setup becomes compatibility/exception behavior;
+- legacy per-employee manager and unit-approver values become archived
+  migration-compatibility state and are not a routing fallback;
 - ordinary restructuring requires no source-code change.
 
 Existing submitted snapshots are never recomputed during migration.

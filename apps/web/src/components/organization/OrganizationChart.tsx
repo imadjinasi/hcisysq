@@ -4,11 +4,24 @@ import {
   Building2,
   ChevronDown,
   ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  Focus,
+  LocateFixed,
+  Maximize2,
+  Minus,
   Plus,
   UserCheck,
   UsersRound,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import {
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import type {
   OrganizationNode,
@@ -19,12 +32,33 @@ import {
   type OrganizationLayoutPosition,
   type OrganizationTreeNode,
 } from "@/lib/organizationTree";
+import {
+  clampCanvasZoom,
+  fitZoomForViewport,
+  MAX_CANVAS_ZOOM,
+  MIN_CANVAS_ZOOM,
+  organizationNodeTypeLabel,
+} from "@/lib/organizationCanvas";
 import { cn } from "@/lib/utils";
 
 export type OrganizationSelection =
   | { kind: "node"; key: string }
   | { kind: "position"; key: string }
   | null;
+
+const ZOOM_STEP = 0.1;
+
+function DisplayOffsetBadge({ offset }: { offset: number }) {
+  if (offset <= 0) return null;
+  return (
+    <span
+      title={`Tampilkan ${offset} tingkat lebih rendah. Hubungan struktural, reporting, dan approval tetap mengikuti induk sebenarnya.`}
+      className="inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-800"
+    >
+      Tampilan +{offset}
+    </span>
+  );
+}
 
 function PositionCard({
   position,
@@ -48,24 +82,27 @@ function PositionCard({
         event.stopPropagation();
         onSelect();
       }}
+      aria-pressed={selected}
       className={cn(
-        "w-full rounded-xl border px-3 py-2.5 text-left transition-colors",
+        "w-full rounded-lg border px-2.5 py-2 text-left transition-colors",
         selected
           ? "border-brand-primary bg-brand-primary-pale/60 ring-2 ring-brand-primary/15"
           : vacant
-            ? "border-dashed border-amber-300 bg-amber-50/60 hover:border-amber-400"
-            : "border-border/70 bg-surface/70 hover:border-brand-primary/40",
+            ? "border-dashed border-amber-400 bg-amber-50/70 hover:border-amber-500"
+            : acting
+              ? "border-blue-300 bg-blue-50/60 hover:border-blue-400"
+              : "border-border/70 bg-surface/70 hover:border-brand-primary/40",
       )}
     >
-      <span className="flex items-start justify-between gap-3">
+      <span className="flex items-start justify-between gap-2">
         <span className="min-w-0">
-          <span className="block truncate text-xs font-bold text-brand-heading">
+          <span title={position.title} className="block break-words text-xs font-bold leading-4 text-brand-heading">
             {position.title}
           </span>
           <span
             className={cn(
-              "mt-0.5 block truncate text-[11px]",
-              vacant ? "font-semibold text-amber-800" : "text-muted-foreground",
+              "mt-0.5 block break-words text-[11px] leading-4",
+              vacant ? "font-bold text-amber-900" : acting ? "font-semibold text-blue-900" : "text-muted-foreground",
             )}
           >
             {acting
@@ -81,14 +118,19 @@ function PositionCard({
           <BriefcaseBusiness className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-primary-deep" aria-hidden="true" />
         )}
       </span>
-      {position.visualRankOffset > 0 ? (
-        <span className="mt-2 inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-800">
-          Tampilan {position.visualRankOffset} tingkat lebih rendah
-        </span>
-      ) : null}
-      {isLeader ? (
-        <span className="mt-2 ml-1 inline-flex rounded-full bg-brand-primary-pale px-2 py-0.5 text-[10px] font-semibold text-brand-primary-deep">
-          Leader kelompok
+      {position.visualRankOffset > 0 || isLeader || acting ? (
+        <span className="mt-2 flex flex-wrap gap-1">
+          <DisplayOffsetBadge offset={position.visualRankOffset} />
+          {isLeader ? (
+            <span className="inline-flex rounded-full bg-brand-primary-pale px-2 py-0.5 text-[10px] font-semibold text-brand-primary-deep">
+              Leader
+            </span>
+          ) : null}
+          {acting ? (
+            <span className="inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-900">
+              PLT
+            </span>
+          ) : null}
         </span>
       ) : null}
     </button>
@@ -146,13 +188,18 @@ function TreeBranch({
   selection,
   onSelect,
   parentKey,
+  expandAll,
+  expansionVersion,
 }: {
   item: OrganizationTreeNode;
   selection: OrganizationSelection;
   onSelect: (selection: Exclude<OrganizationSelection, null>) => void;
   parentKey?: string;
+  expandAll: boolean;
+  expansionVersion: number;
 }) {
   const [expanded, setExpanded] = useState(true);
+  useEffect(() => setExpanded(expandAll), [expandAll, expansionVersion]);
   const selected = selection?.kind === "node" && selection.key === item.stableKey;
   const hasDetails = item.positions.length > 0 || item.children.length > 0;
   const nodeOffsetHeight = item.visualRankOffset * 48;
@@ -160,7 +207,7 @@ function TreeBranch({
 
   return (
     <li
-      className="relative flex min-w-[22rem] flex-col items-center px-3"
+      className="relative flex min-w-[17.5rem] flex-col items-center px-2"
       data-node-key={item.stableKey}
       data-parent-node-key={item.parentNodeKey ?? undefined}
       data-structural-depth={item.structuralDepth}
@@ -180,6 +227,7 @@ function TreeBranch({
       <article
         role="button"
         tabIndex={0}
+        aria-pressed={selected}
         onClick={() => onSelect({ kind: "node", key: item.stableKey })}
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") {
@@ -188,21 +236,24 @@ function TreeBranch({
           }
         }}
         className={cn(
-          "w-[22rem] rounded-2xl border bg-white p-4 shadow-[var(--shadow-soft)] transition-colors",
+          "w-[17.5rem] rounded-xl border bg-white p-3 shadow-[var(--shadow-soft)] transition-colors",
           selected
             ? "border-brand-primary ring-2 ring-brand-primary/15"
             : "border-border/70 hover:border-brand-primary/40",
         )}
       >
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 items-start gap-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-primary-pale text-brand-primary-deep">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex min-w-0 items-start gap-2.5">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-primary-pale text-brand-primary-deep">
               <Building2 className="h-4 w-4" aria-hidden="true" />
             </span>
             <span className="min-w-0">
-              <span className="block truncate text-sm font-bold text-brand-heading">{item.name}</span>
-              <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                {item.nodeType} · {item.memberCount} anggota
+              <span title={item.name} className="block break-words text-sm font-bold leading-5 text-brand-heading">
+                {item.name}
+              </span>
+              <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-muted-foreground">
+                <span>{organizationNodeTypeLabel(item.nodeType)}</span>
+                {item.memberCount > 0 ? <span>· {item.memberCount} anggota</span> : null}
               </span>
             </span>
           </div>
@@ -214,7 +265,7 @@ function TreeBranch({
                 event.stopPropagation();
                 setExpanded((value) => !value);
               }}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
             >
               {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
             </button>
@@ -222,13 +273,13 @@ function TreeBranch({
         </div>
 
         {item.visualRankOffset > 0 ? (
-          <div className="mt-3 rounded-lg bg-blue-50 px-2.5 py-2 text-[10px] leading-4 text-blue-800">
-            Rank visual diturunkan {item.visualRankOffset} tingkat. Hubungan struktural tetap mengikuti garis induk.
+          <div className="mt-2">
+            <DisplayOffsetBadge offset={item.visualRankOffset} />
           </div>
         ) : null}
 
         {expanded && item.positions.length > 0 ? (
-          <div className="mt-3 space-y-2 border-t border-border/60 pt-3">
+          <div className="mt-2.5 space-y-1.5 border-t border-border/60 pt-2.5">
             {item.positions.map((position) => (
               <PositionLane
                 key={position.stableKey}
@@ -243,10 +294,10 @@ function TreeBranch({
       </article>
 
       {expanded && item.children.length > 0 ? (
-        <div className="relative mt-8 flex min-w-max flex-col items-center" data-child-level-of={item.stableKey}>
-          <span aria-hidden="true" className="h-7 w-px bg-brand-primary/40" />
+        <div className="relative mt-6 flex min-w-max flex-col items-center" data-child-level-of={item.stableKey}>
+          <span aria-hidden="true" className="h-6 w-px bg-brand-primary/40" />
           <ol
-            className="flex min-w-max items-start justify-center gap-6 border-t border-brand-primary/40"
+            className="flex min-w-max items-start justify-center gap-3 border-t border-brand-primary/40"
             data-layout-axis="horizontal"
             data-sibling-parent={item.stableKey}
           >
@@ -257,12 +308,39 @@ function TreeBranch({
                 selection={selection}
                 onSelect={onSelect}
                 parentKey={item.stableKey}
+                expandAll={expandAll}
+                expansionVersion={expansionVersion}
               />
             ))}
           </ol>
         </div>
       ) : null}
     </li>
+  );
+}
+
+function ToolbarButton({
+  label,
+  onClick,
+  disabled,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-white px-2 text-[11px] font-semibold text-brand-heading hover:bg-muted disabled:cursor-not-allowed disabled:opacity-45 [&_svg]:h-3.5 [&_svg]:w-3.5"
+    >
+      {children}
+    </button>
   );
 }
 
@@ -282,6 +360,81 @@ export function OrganizationChart({
   onStart: () => void;
 }) {
   const roots = useMemo(() => buildOrganizationTree(nodes, positions), [nodes, positions]);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ pointerId: number; x: number; y: number; left: number; top: number } | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const [expandAll, setExpandAll] = useState(true);
+  const [expansionVersion, setExpansionVersion] = useState(0);
+  const zoomPercent = Math.round(zoom * 100);
+
+  const updateExpansion = (expanded: boolean) => {
+    setExpandAll(expanded);
+    setExpansionVersion((value) => value + 1);
+  };
+
+  const centerItem = (kind: "node" | "position", key: string) => {
+    const viewport = viewportRef.current;
+    const content = contentRef.current;
+    if (!viewport || !content) return;
+    const attribute = kind === "node" ? "nodeKey" : "positionKey";
+    const target = Array.from(content.querySelectorAll<HTMLElement>(`[data-${kind}-key]`))
+      .find((item) => item.dataset[attribute] === key);
+    if (!target) return;
+    const viewportRect = viewport.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    viewport.scrollTo({
+      left: Math.max(0, viewport.scrollLeft + targetRect.left - viewportRect.left + targetRect.width / 2 - viewport.clientWidth / 2),
+      top: Math.max(0, viewport.scrollTop + targetRect.top - viewportRect.top + targetRect.height / 2 - viewport.clientHeight / 2),
+      behavior: "smooth",
+    });
+  };
+
+  const centerRoot = () => {
+    const root = roots[0];
+    if (root) centerItem("node", root.stableKey);
+  };
+
+  const fitToViewport = () => {
+    const viewport = viewportRef.current;
+    const content = contentRef.current;
+    if (!viewport || !content) return;
+    const nextZoom = fitZoomForViewport({
+      contentWidth: content.scrollWidth,
+      contentHeight: content.scrollHeight,
+      viewportWidth: viewport.clientWidth,
+      viewportHeight: viewport.clientHeight,
+    });
+    setZoom(nextZoom);
+    window.requestAnimationFrame(() => {
+      viewport.scrollTo({ left: 0, top: 0, behavior: "smooth" });
+    });
+  };
+
+  const startPan = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const viewport = viewportRef.current;
+    if (!viewport || event.button !== 0 || (event.target as HTMLElement).closest("button, article, input, select, a")) return;
+    drag.current = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      left: viewport.scrollLeft,
+      top: viewport.scrollTop,
+    };
+    viewport.setPointerCapture(event.pointerId);
+  };
+
+  const pan = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const viewport = viewportRef.current;
+    const active = drag.current;
+    if (!viewport || !active || active.pointerId !== event.pointerId) return;
+    viewport.scrollLeft = active.left - (event.clientX - active.x);
+    viewport.scrollTop = active.top - (event.clientY - active.y);
+  };
+
+  const stopPan = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (drag.current?.pointerId === event.pointerId) drag.current = null;
+  };
 
   if (nodes.length === 0) {
     return (
@@ -308,17 +461,70 @@ export function OrganizationChart({
   }
 
   return (
-    <div className="min-w-max overflow-auto p-5 sm:p-7">
-      <ol className="flex min-w-max items-start justify-center gap-8" data-layout-axis="horizontal" data-root-level>
-      {roots.map((root) => (
-        <TreeBranch
-          key={root.stableKey}
-          item={root}
-          selection={selection}
-          onSelect={onSelect}
-        />
-      ))}
-      </ol>
+    <div className="flex min-h-[34rem] flex-col" data-organization-canvas>
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-border/70 bg-white px-3 py-2" data-canvas-toolbar>
+        <ToolbarButton label="Zoom out" disabled={zoom <= MIN_CANVAS_ZOOM} onClick={() => setZoom((value) => clampCanvasZoom(value - ZOOM_STEP))}>
+          <Minus />
+        </ToolbarButton>
+        <output aria-label="Zoom saat ini" className="inline-flex h-8 min-w-14 items-center justify-center rounded-lg bg-surface px-2 text-[11px] font-bold text-brand-heading">
+          {zoomPercent}%
+        </output>
+        <ToolbarButton label="Zoom in" disabled={zoom >= MAX_CANVAS_ZOOM} onClick={() => setZoom((value) => clampCanvasZoom(value + ZOOM_STEP))}>
+          <Plus />
+        </ToolbarButton>
+        <span className="mx-0.5 h-5 w-px bg-border" aria-hidden="true" />
+        <ToolbarButton label="Fit structure to viewport" onClick={fitToViewport}>
+          <Maximize2 /> Fit struktur
+        </ToolbarButton>
+        <ToolbarButton label="Center root" onClick={centerRoot}>
+          <LocateFixed /> Pusatkan akar
+        </ToolbarButton>
+        <ToolbarButton
+          label="Center selected"
+          disabled={!selection}
+          onClick={() => selection && centerItem(selection.kind, selection.key)}
+        >
+          <Focus /> Pusatkan pilihan
+        </ToolbarButton>
+        <span className="mx-0.5 h-5 w-px bg-border" aria-hidden="true" />
+        <ToolbarButton label="Collapse all" onClick={() => updateExpansion(false)}>
+          <ChevronsDownUp /> Ciutkan semua
+        </ToolbarButton>
+        <ToolbarButton label="Expand useful scope" onClick={() => updateExpansion(true)}>
+          <ChevronsUpDown /> Buka struktur
+        </ToolbarButton>
+        <span className="ml-auto hidden text-[10px] text-muted-foreground lg:inline">Seret ruang kosong untuk menggeser canvas</span>
+      </div>
+      <div
+        ref={viewportRef}
+        onPointerDown={startPan}
+        onPointerMove={pan}
+        onPointerUp={stopPan}
+        onPointerCancel={stopPan}
+        className="min-h-[30rem] flex-1 cursor-grab overflow-auto bg-[#f8fbfa] active:cursor-grabbing"
+        data-canvas-viewport
+      >
+        <div
+          ref={contentRef}
+          className="min-w-max p-4 sm:p-5"
+          style={{ transform: `scale(${zoom})`, transformOrigin: "top left" }}
+          data-canvas-content
+          data-canvas-zoom={zoom.toFixed(2)}
+        >
+          <ol className="flex min-w-max items-start justify-center gap-5" data-layout-axis="horizontal" data-root-level>
+            {roots.map((root) => (
+              <TreeBranch
+                key={root.stableKey}
+                item={root}
+                selection={selection}
+                onSelect={onSelect}
+                expandAll={expandAll}
+                expansionVersion={expansionVersion}
+              />
+            ))}
+          </ol>
+        </div>
+      </div>
     </div>
   );
 }

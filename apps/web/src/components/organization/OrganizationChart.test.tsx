@@ -3,6 +3,11 @@ import { describe, expect, it } from "vitest";
 
 import { OrganizationChart } from "@/components/organization/OrganizationChart";
 import type { OrganizationNode, OrganizationPosition } from "@/lib/organizationDesigner";
+import {
+  centeredScrollOffset,
+  fitZoomForViewport,
+  organizationNodeTypeLabel,
+} from "@/lib/organizationCanvas";
 import { buildOrganizationTree, selectableOrganizationParents } from "@/lib/organizationTree";
 
 const baseNode: OrganizationNode = {
@@ -91,6 +96,32 @@ describe("Organization Designer chart", () => {
 
     expect(html).toContain("Start organization structure");
     expect(html).toContain("Buat draft struktur");
+  });
+
+  it("renders canvas navigation controls without persisting viewport state", () => {
+    const html = renderChart([baseNode], [vacantPosition]);
+
+    expect(html).toContain('data-organization-canvas="true"');
+    expect(html).toContain('aria-label="Zoom out"');
+    expect(html).toContain('aria-label="Zoom saat ini"');
+    expect(html).toContain('aria-label="Zoom in"');
+    expect(html).toContain('aria-label="Fit structure to viewport"');
+    expect(html).toContain('aria-label="Center root"');
+    expect(html).toContain('aria-label="Center selected"');
+    expect(html).toContain('aria-label="Collapse all"');
+    expect(html).toContain('aria-label="Expand useful scope"');
+    expect(html).toContain('data-canvas-zoom="1.00"');
+  });
+
+  it("calculates fit-to-view and center-selected offsets for a laptop viewport", () => {
+    expect(fitZoomForViewport({
+      contentWidth: 2400,
+      contentHeight: 900,
+      viewportWidth: 1000,
+      viewportHeight: 600,
+    })).toBe(0.4);
+    expect(centeredScrollOffset({ itemStart: 900, itemSize: 280, viewportSize: 1000, zoom: 0.8 }))
+      .toBe(332);
   });
 
   it("keeps structural parentage unchanged when a child has a visual offset", () => {
@@ -185,6 +216,36 @@ describe("Organization Designer chart", () => {
     );
 
     expect(html).toContain("VACANT · Belum ada pejabat");
-    expect(html).toContain("Tampilan 2 tingkat lebih rendah");
+    expect(html).toContain("Tampilan +2");
+    expect(html).toContain("Tampilkan 2 tingkat lebih rendah. Hubungan struktural");
+  });
+
+  it("localizes node types, keeps cards compact, and de-emphasizes zero members", () => {
+    const html = renderChart([{ ...baseNode, memberCount: 0 }], [vacantPosition]);
+
+    expect(organizationNodeTypeLabel("FOUNDATION")).toBe("Yayasan / Foundation");
+    expect(organizationNodeTypeLabel("DIRECTORATE")).toBe("Direktorat / Bidang");
+    expect(html).toContain("Yayasan / Foundation");
+    expect(html).not.toContain("0 anggota");
+    expect(html).toContain("w-[17.5rem]");
+    expect(html).not.toContain("w-[22rem]");
+  });
+
+  it("keeps long labels accessible and acting incumbency visually distinct", () => {
+    const longName = "Direktorat Pendidikan dan Pengembangan Kurikulum Terpadu Sabilul Qur'an";
+    const actingPosition: OrganizationPosition = {
+      ...vacantPosition,
+      actingIncumbent: {
+        employeeId: "acting-id",
+        employeeName: "Pegawai Acting Sintetis",
+        effectiveFrom: "2027-01-01",
+        effectiveTo: "2027-03-31",
+      },
+    };
+    const html = renderChart([{ ...baseNode, name: longName }], [actingPosition]);
+
+    expect(html).toContain(`title="${longName.replaceAll("'", "&#x27;")}"`);
+    expect(html).toContain("Pegawai Acting Sintetis · Pelaksana tugas");
+    expect(html).toContain("PLT");
   });
 });

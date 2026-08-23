@@ -54,12 +54,13 @@ import {
   type OrganizationVacancyPolicy,
 } from "@/lib/organizationDesigner";
 import { cn } from "@/lib/utils";
+import { organizationNodeTypeLabel } from "@/lib/organizationCanvas";
 import { selectableOrganizationParents } from "@/lib/organizationTree";
 
 type EditorAction =
   | { type: "draft" }
-  | { type: "node"; mode: "root" | "child" | "sibling" | "edit"; node?: OrganizationNode }
-  | { type: "position"; mode: "create" | "edit"; nodeKey: string; parentPositionKey?: string | null; position?: OrganizationPosition }
+  | { type: "node"; mode: "root" | "child" | "sibling" | "edit" | "move"; node?: OrganizationNode }
+  | { type: "position"; mode: "create" | "edit" | "move"; nodeKey: string; parentPositionKey?: string | null; position?: OrganizationPosition }
   | { type: "incumbency"; position: OrganizationPosition; acting: boolean }
   | { type: "members"; node: OrganizationNode }
   | { type: "visual"; item: OrganizationNode | OrganizationPosition; kind: "node" | "position" }
@@ -180,6 +181,105 @@ function ImpactCard({ label, count, tone = "default" }: { label: string; count: 
   );
 }
 
+function MembershipEditor({
+  node,
+  employees,
+  memberships,
+  saving,
+  onCancel,
+  onSubmit,
+}: {
+  node: OrganizationNode;
+  employees: OrganizationEmployeeOption[];
+  memberships: OrganizationDesignerView["memberships"];
+  saving: boolean;
+  onCancel: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  const [selected, setSelected] = useState(
+    () => new Set(memberships.filter((item) => item.nodeKey === node.stableKey).map((item) => item.employeeId)),
+  );
+  const [legacyUnit, setLegacyUnit] = useState("");
+  const legacyUnits = useMemo(
+    () => [...new Set(employees.map((employee) => employee.unitName).filter((value): value is string => Boolean(value)))].sort(),
+    [employees],
+  );
+  const legacyCandidates = useMemo(
+    () => legacyUnit ? employees.filter((employee) => employee.unitName === legacyUnit && employee.status !== "inactive" && employee.status !== "resigned") : [],
+    [employees, legacyUnit],
+  );
+
+  const toggle = (employeeId: string, checked: boolean) => {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (checked) next.add(employeeId);
+      else next.delete(employeeId);
+      return next;
+    });
+  };
+
+  return (
+    <form onSubmit={onSubmit}>
+      <section className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+        <h3 className="text-xs font-bold text-blue-950">Tambahkan anggota dari unit lama</h3>
+        <p className="mt-1 text-[11px] leading-4 text-blue-900">
+          Bantuan migrasi ini hanya menyalin keanggotaan. Posisi, leader, hierarchy, dan kewenangan tidak dibuat otomatis.
+        </p>
+        <select
+          aria-label="Pilih unit organisasi lama"
+          value={legacyUnit}
+          onChange={(event) => setLegacyUnit(event.target.value)}
+          className={`${inputClass} mt-3`}
+        >
+          <option value="">Pilih unit lama untuk preview...</option>
+          {legacyUnits.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
+        </select>
+        {legacyUnit ? (
+          <div className="mt-3 rounded-lg bg-white/80 p-3">
+            <p className="text-xs font-bold text-brand-heading">Preview: {legacyCandidates.length} pegawai aktif</p>
+            <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">
+              {legacyCandidates.map((employee) => employee.fullName).join(", ") || "Tidak ada pegawai aktif pada unit ini."}
+            </p>
+            <button
+              type="button"
+              disabled={legacyCandidates.length === 0}
+              onClick={() => setSelected((current) => new Set([...current, ...legacyCandidates.map((employee) => employee.id)]))}
+              className="mt-3 h-9 rounded-lg border border-blue-300 bg-white px-3 text-xs font-bold text-blue-950 disabled:opacity-50"
+            >
+              Tambahkan {legacyCandidates.length} anggota dari unit lama
+            </button>
+          </div>
+        ) : null}
+      </section>
+
+      <div className="mt-4 flex items-center justify-between">
+        <p className="text-xs font-bold text-brand-heading">Anggota terpilih: {selected.size}</p>
+        <button type="button" onClick={() => setSelected(new Set())} className="text-[11px] font-semibold text-muted-foreground hover:text-brand-heading">Kosongkan pilihan</button>
+      </div>
+      <div className="mt-2 max-h-[22rem] space-y-1 overflow-y-auto rounded-xl border border-border p-2">
+        {employees.map((employee) => (
+          <label key={employee.id} className="flex cursor-pointer items-start gap-3 rounded-lg px-3 py-2.5 hover:bg-muted">
+            <input
+              type="checkbox"
+              name="employeeIds"
+              value={employee.id}
+              checked={selected.has(employee.id)}
+              onChange={(event) => toggle(employee.id, event.target.checked)}
+              className="mt-1 h-4 w-4 accent-[var(--color-brand-primary)]"
+            />
+            <span>
+              <span className="block text-sm font-semibold text-brand-heading">{employee.fullName}</span>
+              <span className="text-[11px] text-muted-foreground">{employee.employeeNumber} · {employee.unitName ?? "Tanpa unit"}</span>
+            </span>
+          </label>
+        ))}
+        {employees.length === 0 ? <p className="p-4 text-center text-sm text-muted-foreground">Daftar pegawai aktif belum tersedia.</p> : null}
+      </div>
+      <SubmitRow saving={saving} onCancel={onCancel} label="Simpan anggota" />
+    </form>
+  );
+}
+
 export function AdminOrganizationPage() {
   const [initialState] = useState(initialDesignerState);
   const [effectiveDate, setEffectiveDate] = useState(initialState.effectiveDate);
@@ -224,6 +324,36 @@ export function AdminOrganizationPage() {
     () => selection?.kind === "position" ? data?.positions.find((position) => position.stableKey === selection.key) ?? null : null,
     [data?.positions, selection],
   );
+  const selectedPositionNode = useMemo(
+    () => selectedPosition ? data?.nodes.find((node) => node.stableKey === selectedPosition.nodeKey) ?? null : null,
+    [data?.nodes, selectedPosition],
+  );
+  const selectedParentNode = useMemo(
+    () => selectedNode?.parentNodeKey ? data?.nodes.find((node) => node.stableKey === selectedNode.parentNodeKey) ?? null : null,
+    [data?.nodes, selectedNode],
+  );
+  const selectedParentPosition = useMemo(
+    () => selectedPosition?.parentPositionKey ? data?.positions.find((position) => position.stableKey === selectedPosition.parentPositionKey) ?? null : null,
+    [data?.positions, selectedPosition],
+  );
+  const selectedBindings = useMemo(() => {
+    const key = selectedNode?.stableKey ?? selectedPosition?.stableKey;
+    return key ? data?.bindings.filter((binding) => binding.sourceKey === key) ?? [] : [];
+  }, [data?.bindings, selectedNode, selectedPosition]);
+  const selectedPath = useMemo(() => {
+    const target = selectedNode ?? selectedPositionNode;
+    if (!target || !data) return [];
+    const byKey = new Map(data.nodes.map((node) => [node.stableKey, node]));
+    const path: OrganizationNode[] = [];
+    const seen = new Set<string>();
+    let current: OrganizationNode | undefined = target;
+    while (current && !seen.has(current.stableKey)) {
+      path.unshift(current);
+      seen.add(current.stableKey);
+      current = current.parentNodeKey ? byKey.get(current.parentNodeKey) : undefined;
+    }
+    return path;
+  }, [data, selectedNode, selectedPositionNode]);
   const canEdit = data?.draft?.status === "DRAFT";
   const hasActiveDraft = data?.draft?.status === "DRAFT" || data?.draft?.status === "VALIDATED";
   const status = statusCopy(data?.mode ?? "CURRENT");
@@ -268,6 +398,15 @@ export function AdminOrganizationPage() {
     event.preventDefault();
     if (!data?.draft) return;
     const form = new FormData(event.currentTarget);
+    if (editor.mode === "move" && editor.node) {
+      void mutate(
+        () => updateOrganizationNode(data.draft!.id, editor.node!.id, {
+          parentNodeKey: String(form.get("parentNodeKey")) || null,
+        }),
+        "Kelompok dipindahkan ke induk struktural baru.",
+      );
+      return;
+    }
     const input = {
       name: String(form.get("name")),
       nodeType: String(form.get("nodeType")),
@@ -285,6 +424,16 @@ export function AdminOrganizationPage() {
     event.preventDefault();
     if (!data?.draft) return;
     const form = new FormData(event.currentTarget);
+    if (editor.mode === "move" && editor.position) {
+      void mutate(
+        () => updateOrganizationPosition(data.draft!.id, editor.position!.id, {
+          nodeKey: String(form.get("nodeKey")),
+          parentPositionKey: String(form.get("parentPositionKey")) || null,
+        }),
+        "Posisi dipindahkan secara struktural.",
+      );
+      return;
+    }
     const input = {
       nodeKey: String(form.get("nodeKey")),
       title: String(form.get("title")),
@@ -451,34 +600,77 @@ export function AdminOrganizationPage() {
           </div>
         </div>
 
-        {canEdit && (selectedNode || selectedPosition) ? <div className="flex flex-col gap-3 border-b border-amber-200 bg-white px-5 py-3 lg:flex-row lg:items-center lg:justify-between">
-          <div><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Dipilih</p><p className="mt-0.5 text-sm font-bold text-brand-heading">{selectedNode?.name ?? selectedPosition?.title}</p></div>
-          <div className="flex flex-wrap gap-2">
-            {selectedNode ? <>
-              <ActionButton onClick={() => setAction({ type: "node", mode: "child", node: selectedNode })} icon={<GitBranchPlus />}>Tambah di bawah</ActionButton>
-              <ActionButton onClick={() => setAction({ type: "node", mode: "sibling", node: selectedNode })} icon={<Plus />}>Tambah sejajar</ActionButton>
-              <ActionButton onClick={() => setAction({ type: "position", mode: "create", nodeKey: selectedNode.stableKey })} icon={<BriefcaseBusiness />}>Tambah posisi</ActionButton>
-              <ActionButton onClick={() => setAction({ type: "node", mode: "edit", node: selectedNode })} icon={<ArrowRightLeft />}>Edit / pindah</ActionButton>
-              <ActionButton onClick={() => setAction({ type: "members", node: selectedNode })} icon={<UsersRound />}>Anggota</ActionButton>
-              <ActionButton onClick={() => setAction({ type: "visual", item: selectedNode, kind: "node" })} icon={<ArrowDownToLine />}>Rank visual</ActionButton>
-              <ActionButton onClick={() => setAction({ type: "authority", item: selectedNode, kind: "node" })} icon={<Network />}>Kewenangan</ActionButton>
-            </> : selectedPosition ? <>
-              <ActionButton onClick={() => setAction({ type: "position", mode: "create", nodeKey: selectedPosition.nodeKey, parentPositionKey: selectedPosition.stableKey })} icon={<GitBranchPlus />}>Posisi di bawah</ActionButton>
-              <ActionButton onClick={() => setAction({ type: "position", mode: "create", nodeKey: selectedPosition.nodeKey, parentPositionKey: selectedPosition.parentPositionKey })} icon={<Plus />}>Posisi sejajar</ActionButton>
-              <ActionButton onClick={() => setAction({ type: "incumbency", position: selectedPosition, acting: false })} icon={<CircleUserRound />}>Tetapkan pejabat</ActionButton>
-              <ActionButton onClick={() => setAction({ type: "incumbency", position: selectedPosition, acting: true })} icon={<UserCog />}>Pelaksana tugas</ActionButton>
-              {selectedPosition.actingIncumbent ? <ActionButton onClick={() => clearActing(selectedPosition)} icon={<X />}>Hapus acting</ActionButton> : null}
-              <ActionButton onClick={() => markVacant(selectedPosition)} icon={<PanelRightClose />}>Tandai vacant</ActionButton>
-              <ActionButton onClick={() => setAction({ type: "position", mode: "edit", nodeKey: selectedPosition.nodeKey, position: selectedPosition })} icon={<ArrowRightLeft />}>Edit / pindah</ActionButton>
-              <ActionButton onClick={() => setAction({ type: "visual", item: selectedPosition, kind: "position" })} icon={<ArrowDownToLine />}>Rank visual</ActionButton>
-              <ActionButton onClick={() => setAction({ type: "authority", item: selectedPosition, kind: "position" })} icon={<Network />}>Kewenangan</ActionButton>
-            </> : null}
-          </div>
-        </div> : null}
+        {selectedPath.length > 0 ? (
+          <nav aria-label="Jalur struktural terpilih" className="flex flex-wrap items-center gap-1 border-b border-border/70 bg-white px-5 py-2.5 text-[11px] text-muted-foreground">
+            {selectedPath.map((node, index) => (
+              <span key={node.stableKey} className="contents">
+                {index > 0 ? <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" /> : null}
+                <button type="button" onClick={() => setSelection({ kind: "node", key: node.stableKey })} className="rounded-md px-1.5 py-1 font-semibold hover:bg-muted hover:text-brand-heading">{node.name}</button>
+              </span>
+            ))}
+            {selectedPosition ? <><ChevronRight className="h-3.5 w-3.5" aria-hidden="true" /><span className="rounded-md bg-brand-primary-pale px-1.5 py-1 font-bold text-brand-primary-deep">{selectedPosition.title}</span></> : null}
+          </nav>
+        ) : null}
 
-        <div className="relative min-h-[34rem] overflow-auto bg-[#f8fbfa]">
+        <div className={cn("relative grid min-h-[34rem] bg-[#f8fbfa]", selectedNode || selectedPosition ? "xl:grid-cols-[minmax(0,1fr)_20rem]" : "grid-cols-1")}>
           {loading ? <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 text-sm font-semibold text-muted-foreground"><LoaderCircle className="mr-2 h-5 w-5 animate-spin" /> Memuat chart...</div> : null}
           <OrganizationChart nodes={data?.nodes ?? []} positions={data?.positions ?? []} selection={selection} onSelect={setSelection} canEdit={Boolean(canEdit)} onStart={startFromEmpty} />
+
+          {selectedNode || selectedPosition ? (
+            <aside aria-label="Inspector pilihan struktur" className="border-t border-border/70 bg-white p-4 xl:border-t-0 xl:border-l">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Dipilih</p>
+                  <h2 className="mt-1 break-words text-base font-bold text-brand-heading">{selectedNode?.name ?? selectedPosition?.title}</h2>
+                  <p className="mt-1 text-xs text-muted-foreground">{selectedNode ? organizationNodeTypeLabel(selectedNode.nodeType) : "Posisi organisasi"}</p>
+                </div>
+                <button type="button" aria-label="Tutup inspector" onClick={() => setSelection(null)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"><X className="h-4 w-4" /></button>
+              </div>
+
+              <dl className="mt-4 space-y-3 rounded-xl bg-surface p-3 text-xs">
+                <div><dt className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Induk struktural</dt><dd className="mt-1 font-semibold text-brand-heading">{selectedNode ? selectedParentNode?.name ?? "Paling atas" : selectedParentPosition?.title ?? selectedPositionNode?.name ?? "Paling atas"}</dd></div>
+                {selectedNode ? <>
+                  <div><dt className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Posisi</dt><dd className="mt-1 font-semibold text-brand-heading">{data?.positions.filter((position) => position.nodeKey === selectedNode.stableKey).length ?? 0} posisi</dd></div>
+                  <div><dt className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Anggota</dt><dd className="mt-1 font-semibold text-brand-heading">{selectedNode.memberCount} anggota</dd></div>
+                </> : <>
+                  <div><dt className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Kelompok</dt><dd className="mt-1 font-semibold text-brand-heading">{selectedPositionNode?.name ?? "—"}</dd></div>
+                  <div><dt className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Pejabat utama</dt><dd className="mt-1 font-semibold text-brand-heading">{selectedPosition?.primaryIncumbent?.employeeName ?? "VACANT"}</dd></div>
+                  {selectedPosition?.actingIncumbent ? <div><dt className="text-[10px] font-bold uppercase tracking-wide text-blue-800">Pelaksana tugas</dt><dd className="mt-1 font-bold text-blue-950">{selectedPosition.actingIncumbent.employeeName}</dd></div> : null}
+                  <div><dt className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Kebijakan vacancy</dt><dd className="mt-1 font-semibold text-brand-heading">{selectedPosition?.vacancyPolicy}</dd></div>
+                </>}
+                <div><dt className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Kewenangan terkait</dt><dd className="mt-1 font-semibold text-brand-heading">{selectedBindings.length > 0 ? selectedBindings.map((binding) => binding.authorityType).join(", ") : "Belum ada binding langsung"}</dd></div>
+                <div><dt className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Penempatan tampilan</dt><dd className="mt-1 font-semibold text-brand-heading">{(selectedNode?.visualRankOffset ?? selectedPosition?.visualRankOffset ?? 0) > 0 ? `Tampilkan ${selectedNode?.visualRankOffset ?? selectedPosition?.visualRankOffset} tingkat lebih rendah` : "Tingkat normal"}</dd></div>
+              </dl>
+
+              {(selectedNode?.visualRankOffset ?? selectedPosition?.visualRankOffset ?? 0) > 0 ? <p className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-[11px] leading-4 text-blue-900">Penempatan ini hanya untuk tampilan chart. Hubungan struktural, reporting, dan approval tidak berubah.</p> : null}
+
+              {canEdit ? <div className="mt-4">
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Tindakan</p>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {selectedNode ? <>
+                    <ActionButton onClick={() => setAction({ type: "node", mode: "edit", node: selectedNode })} icon={<ArrowRightLeft />}>Edit</ActionButton>
+                    <ActionButton onClick={() => setAction({ type: "node", mode: "child", node: selectedNode })} icon={<GitBranchPlus />}>Tambah di bawah</ActionButton>
+                    <ActionButton onClick={() => setAction({ type: "node", mode: "sibling", node: selectedNode })} icon={<Plus />}>Tambah sejajar</ActionButton>
+                    <ActionButton onClick={() => setAction({ type: "position", mode: "create", nodeKey: selectedNode.stableKey })} icon={<BriefcaseBusiness />}>Tambah posisi</ActionButton>
+                    <ActionButton onClick={() => setAction({ type: "members", node: selectedNode })} icon={<UsersRound />}>Anggota</ActionButton>
+                    <ActionButton onClick={() => setAction({ type: "authority", item: selectedNode, kind: "node" })} icon={<Network />}>Kewenangan</ActionButton>
+                    <ActionButton onClick={() => setAction({ type: "visual", item: selectedNode, kind: "node" })} icon={<ArrowDownToLine />}>Tampilan</ActionButton>
+                    <ActionButton onClick={() => setAction({ type: "node", mode: "move", node: selectedNode })} icon={<ArrowRightLeft />}>Pindahkan</ActionButton>
+                  </> : selectedPosition ? <>
+                    <ActionButton onClick={() => setAction({ type: "position", mode: "edit", nodeKey: selectedPosition.nodeKey, position: selectedPosition })} icon={<ArrowRightLeft />}>Edit posisi</ActionButton>
+                    <ActionButton onClick={() => setAction({ type: "incumbency", position: selectedPosition, acting: false })} icon={<CircleUserRound />}>Pejabat utama</ActionButton>
+                    <ActionButton onClick={() => setAction({ type: "incumbency", position: selectedPosition, acting: true })} icon={<UserCog />}>Pelaksana tugas</ActionButton>
+                    <ActionButton onClick={() => markVacant(selectedPosition)} icon={<PanelRightClose />}>Tandai vacant</ActionButton>
+                    <ActionButton onClick={() => setAction({ type: "position", mode: "edit", nodeKey: selectedPosition.nodeKey, position: selectedPosition })} icon={<ShieldCheck />}>Aturan vacancy</ActionButton>
+                    <ActionButton onClick={() => setAction({ type: "authority", item: selectedPosition, kind: "position" })} icon={<Network />}>Kewenangan</ActionButton>
+                    <ActionButton onClick={() => setAction({ type: "visual", item: selectedPosition, kind: "position" })} icon={<ArrowDownToLine />}>Tampilan</ActionButton>
+                    <ActionButton onClick={() => setAction({ type: "position", mode: "move", nodeKey: selectedPosition.nodeKey, position: selectedPosition })} icon={<ArrowRightLeft />}>Pindahkan</ActionButton>
+                    {selectedPosition.actingIncumbent ? <ActionButton onClick={() => clearActing(selectedPosition)} icon={<X />}>Hapus acting</ActionButton> : null}
+                  </> : null}
+                </div>
+              </div> : <p className="mt-4 text-xs text-muted-foreground">Buat atau buka draft untuk mengubah item ini.</p>}
+            </aside>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/70 bg-white px-5 py-3 text-[11px] text-muted-foreground">
           <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm border border-brand-primary bg-brand-primary-pale" /> Posisi terisi</span>
@@ -510,15 +702,51 @@ export function AdminOrganizationPage() {
 
       {action?.type === "draft" ? <Modal title="Jadwalkan perubahan struktur" description="Buat draft terpisah agar struktur terpublikasi dan riwayat sebelumnya tidak tertimpa." onClose={() => setAction(null)}><form onSubmit={handleDraft} className="space-y-4"><Field label="Nama draft"><input name="name" required defaultValue={`Restrukturisasi ${effectiveDate}`} className={inputClass} /></Field><Field label="Tanggal efektif" hint="Asia/Jakarta"><input name="effectiveOn" type="date" required min={jakartaToday()} defaultValue={effectiveDate < jakartaToday() ? jakartaToday() : effectiveDate} className={inputClass} /></Field><SubmitRow saving={saving} onCancel={() => setAction(null)} label="Buat draft" /></form></Modal> : null}
 
-      {action?.type === "node" ? <Modal title={action.mode === "edit" ? "Edit atau pindahkan kelompok" : action.mode === "sibling" ? "Tambah kelompok sejajar" : action.mode === "child" ? "Tambah kelompok di bawah" : "Tambah kelompok pertama"} description="Kelompok adalah container organisasi. Posisi kewenangan ditambahkan secara terpisah." onClose={() => setAction(null)}><form onSubmit={(event) => handleNode(event, action)} className="space-y-4"><Field label="Nama kelompok / unit"><input name="name" required defaultValue={action.mode === "edit" ? action.node?.name : ""} placeholder="Contoh: Education Affairs" className={inputClass} /></Field><Field label="Jenis kelompok"><select name="nodeType" defaultValue={action.node?.nodeType ?? "UNIT"} className={inputClass}><option value="FOUNDATION">Foundation</option><option value="DIRECTORATE">Direktorat / bidang</option><option value="UNIT">Unit</option><option value="DIVISION">Divisi</option><option value="DEPARTMENT">Departemen</option><option value="TEAM">Tim</option></select></Field><Field label="Induk struktural"><select name="parentNodeKey" defaultValue={action.mode === "child" ? action.node?.stableKey ?? "" : action.mode === "sibling" ? action.node?.parentNodeKey ?? "" : action.node?.parentNodeKey ?? ""} className={inputClass}><option value="">Tidak ada — paling atas</option>{selectableOrganizationParents(data?.nodes ?? [], action.mode, action.node?.stableKey).map((node) => <option key={node.stableKey} value={node.stableKey}>{node.name}</option>)}</select></Field><Field label="Rank tampilan" hint="hanya presentasi chart"><select name="visualRankOffset" defaultValue={action.node?.visualRankOffset ?? 0} className={inputClass}><option value="0">Tingkat struktural normal</option><option value="1">Tampilkan 1 tingkat lebih rendah</option><option value="2">Tampilkan 2 tingkat lebih rendah</option></select></Field><Field label="Kode integrasi" hint="opsional"><input name="integrationCode" defaultValue={action.node?.integrationCode ?? ""} className={inputClass} /></Field><SubmitRow saving={saving} onCancel={() => setAction(null)} label={action.mode === "edit" ? "Simpan perubahan" : "Tambah kelompok"} /></form></Modal> : null}
+      {action?.type === "node" ? (
+        <Modal
+          title={action.mode === "move" ? "Pindahkan kelompok" : action.mode === "edit" ? "Edit kelompok" : action.mode === "sibling" ? "Tambah kelompok sejajar" : action.mode === "child" ? "Tambah kelompok di bawah" : "Tambah kelompok pertama"}
+          description={action.mode === "move" ? "Pemindahan mengubah induk struktural dan harus dilakukan secara sengaja. Tinjau dampak approval sebelum publish." : "Kelompok adalah container organisasi. Posisi dan kewenangan ditambahkan secara terpisah."}
+          onClose={() => setAction(null)}
+        >
+          <form onSubmit={(event) => handleNode(event, action)} className="space-y-4">
+            {action.mode === "move" ? <>
+              <div className="rounded-xl bg-surface p-3"><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Pindahkan</p><p className="mt-1 text-sm font-bold text-brand-heading">{action.node?.name}</p></div>
+              <Field label="Induk struktural baru"><select name="parentNodeKey" defaultValue={action.node?.parentNodeKey ?? ""} className={inputClass}><option value="">Tidak ada — paling atas</option>{selectableOrganizationParents(data?.nodes ?? [], "edit", action.node?.stableKey).map((node) => <option key={node.stableKey} value={node.stableKey}>{node.name}</option>)}</select></Field>
+            </> : <>
+              <Field label="Nama"><input name="name" required defaultValue={action.mode === "edit" ? action.node?.name : ""} placeholder="Contoh: Bidang Pendidikan" className={inputClass} /></Field>
+              <Field label="Jenis kelompok" hint="contoh: Direktorat, Unit, Divisi, atau Tim"><select name="nodeType" defaultValue={action.node?.nodeType ?? "UNIT"} className={inputClass}><option value="FOUNDATION">Yayasan / Foundation</option><option value="DIRECTORATE">Direktorat / Bidang</option><option value="UNIT">Unit</option><option value="DIVISION">Divisi</option><option value="DEPARTMENT">Departemen</option><option value="TEAM">Tim</option></select></Field>
+              {action.mode === "child" || action.mode === "sibling" ? <div className="rounded-xl border border-border bg-surface p-3"><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{action.mode === "child" ? "Di bawah" : "Induk bersama"}</p><p className="mt-1 text-sm font-bold text-brand-heading">{action.mode === "child" ? action.node?.name : data?.nodes.find((node) => node.stableKey === action.node?.parentNodeKey)?.name ?? "Tingkat paling atas"}</p><input type="hidden" name="parentNodeKey" value={action.mode === "child" ? action.node?.stableKey ?? "" : action.node?.parentNodeKey ?? ""} /></div> : <input type="hidden" name="parentNodeKey" value={action.node?.parentNodeKey ?? ""} />}
+              <Field label="Tampilan" hint="opsional, tidak mengubah reporting atau approval"><select name="visualRankOffset" defaultValue={action.node?.visualRankOffset ?? 0} className={inputClass}><option value="0">Tingkat normal</option><option value="1">Tampilkan 1 tingkat lebih rendah</option><option value="2">Tampilkan 2 tingkat lebih rendah</option></select></Field>
+              <details className="rounded-xl border border-border bg-surface p-3"><summary className="cursor-pointer text-xs font-bold text-brand-heading">Pengaturan lanjutan</summary><div className="mt-3"><Field label="Kode integrasi" hint="opsional, untuk integrasi teknis"><input name="integrationCode" defaultValue={action.node?.integrationCode ?? ""} className={inputClass} /></Field></div></details>
+            </>}
+            <SubmitRow saving={saving} onCancel={() => setAction(null)} label={action.mode === "move" ? "Pindahkan kelompok" : action.mode === "edit" ? "Simpan perubahan" : "Tambah kelompok"} />
+          </form>
+        </Modal>
+      ) : null}
 
-      {action?.type === "position" ? <Modal title={action.mode === "edit" ? "Edit atau pindahkan posisi" : "Tambah posisi"} description="Judul posisi adalah data tampilan; resolver memakai hubungan kewenangan yang dikonfigurasi." onClose={() => setAction(null)}><form onSubmit={(event) => handlePosition(event, action)} className="space-y-4"><Field label="Judul posisi"><input name="title" required defaultValue={action.position?.title ?? ""} placeholder="Contoh: Head of Education Affairs" className={inputClass} /></Field><Field label="Berada di kelompok"><select name="nodeKey" required defaultValue={action.position?.nodeKey ?? action.nodeKey} className={inputClass}>{data?.nodes.map((node) => <option key={node.stableKey} value={node.stableKey}>{node.name}</option>)}</select></Field><Field label="Posisi atasan struktural"><select name="parentPositionKey" defaultValue={action.position?.parentPositionKey ?? action.parentPositionKey ?? ""} className={inputClass}><option value="">Tidak ada / mengikuti leader kelompok</option>{data?.positions.filter((position) => position.stableKey !== action.position?.stableKey).map((position) => <option key={position.stableKey} value={position.stableKey}>{position.title}</option>)}</select></Field><Field label="Ketika posisi vacant"><select name="vacancyPolicy" defaultValue={action.position?.vacancyPolicy ?? "CLIMB_TO_PARENT"} className={inputClass}><option value="CLIMB_TO_PARENT">Naik ke kewenangan struktural di atas</option><option value="REQUIRE_ACTING_OR_BLOCK">Wajib pelaksana tugas atau blokir</option><option value="BLOCK">Blokir jika vacant</option></select></Field><input type="hidden" name="visualRankOffset" value={action.position?.visualRankOffset ?? 0} /><SubmitRow saving={saving} onCancel={() => setAction(null)} label={action.mode === "edit" ? "Simpan perubahan" : "Tambah posisi"} /></form></Modal> : null}
+      {action?.type === "position" ? (
+        <Modal title={action.mode === "move" ? "Pindahkan posisi" : action.mode === "edit" ? "Edit posisi" : "Tambah posisi"} description={action.mode === "move" ? "Pemindahan ini mengubah konteks struktural posisi." : "Judul posisi adalah data tampilan; resolver memakai hubungan kewenangan yang dikonfigurasi."} onClose={() => setAction(null)}>
+          <form onSubmit={(event) => handlePosition(event, action)} className="space-y-4">
+            {action.mode === "move" ? <>
+              <div className="rounded-xl bg-surface p-3 text-sm font-bold text-brand-heading">{action.position?.title}</div>
+              <Field label="Kelompok baru"><select name="nodeKey" required defaultValue={action.position?.nodeKey ?? action.nodeKey} className={inputClass}>{data?.nodes.map((node) => <option key={node.stableKey} value={node.stableKey}>{node.name}</option>)}</select></Field>
+              <Field label="Posisi atasan struktural baru"><select name="parentPositionKey" defaultValue={action.position?.parentPositionKey ?? ""} className={inputClass}><option value="">Tidak ada / mengikuti leader kelompok</option>{data?.positions.filter((position) => position.stableKey !== action.position?.stableKey).map((position) => <option key={position.stableKey} value={position.stableKey}>{position.title}</option>)}</select></Field>
+            </> : <>
+              <Field label="Judul posisi"><input name="title" required defaultValue={action.position?.title ?? ""} placeholder="Contoh: Kepala Bidang Pendidikan" className={inputClass} /></Field>
+              {action.mode === "create" ? <><Field label="Berada di kelompok"><select name="nodeKey" required defaultValue={action.nodeKey} className={inputClass}>{data?.nodes.map((node) => <option key={node.stableKey} value={node.stableKey}>{node.name}</option>)}</select></Field><Field label="Posisi atasan struktural"><select name="parentPositionKey" defaultValue={action.parentPositionKey ?? ""} className={inputClass}><option value="">Tidak ada / mengikuti leader kelompok</option>{data?.positions.map((position) => <option key={position.stableKey} value={position.stableKey}>{position.title}</option>)}</select></Field></> : <><div className="rounded-xl border border-border bg-surface p-3 text-xs"><span className="text-muted-foreground">Kelompok: </span><span className="font-bold text-brand-heading">{data?.nodes.find((node) => node.stableKey === action.position?.nodeKey)?.name}</span></div><input type="hidden" name="nodeKey" value={action.position?.nodeKey} /><input type="hidden" name="parentPositionKey" value={action.position?.parentPositionKey ?? ""} /></>}
+              <Field label="Ketika posisi vacant"><select name="vacancyPolicy" defaultValue={action.position?.vacancyPolicy ?? "CLIMB_TO_PARENT"} className={inputClass}><option value="CLIMB_TO_PARENT">Naik ke kewenangan struktural di atas</option><option value="REQUIRE_ACTING_OR_BLOCK">Wajib pelaksana tugas atau blokir</option><option value="BLOCK">Blokir jika vacant</option></select></Field>
+              <input type="hidden" name="visualRankOffset" value={action.position?.visualRankOffset ?? 0} />
+            </>}
+            <SubmitRow saving={saving} onCancel={() => setAction(null)} label={action.mode === "move" ? "Pindahkan posisi" : action.mode === "edit" ? "Simpan perubahan" : "Tambah posisi"} />
+          </form>
+        </Modal>
+      ) : null}
 
       {action?.type === "incumbency" ? <Modal title={action.acting ? "Tetapkan pelaksana tugas" : "Tetapkan pejabat utama"} description={action.acting ? "Acting authority selalu eksplisit dan berbatas tanggal; sistem tidak menginferensikannya dari absensi." : "Penetapan ini tidak otomatis memberikan role atau permission aplikasi."} onClose={() => setAction(null)}><form onSubmit={(event) => handleIncumbency(event, action)} className="space-y-4"><div className="rounded-xl bg-surface p-3 text-sm font-bold text-brand-heading">{action.position.title}</div><Field label="Pegawai"><select name="employeeId" required defaultValue={action.acting ? action.position.actingIncumbent?.employeeId ?? "" : action.position.primaryIncumbent?.employeeId ?? ""} className={inputClass}><option value="">Pilih pegawai...</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.fullName} — {employee.employeeNumber}</option>)}</select></Field>{action.acting ? <><Field label="Mulai acting"><input type="date" name="actingFrom" required defaultValue={action.position.actingIncumbent?.effectiveFrom ?? data?.draft?.effectiveOn} className={inputClass} /></Field><Field label="Berakhir acting"><input type="date" name="actingTo" required defaultValue={action.position.actingIncumbent?.effectiveTo ?? ""} className={inputClass} /></Field></> : <Field label="Mulai menjabat"><input type="date" name="effectiveFrom" required defaultValue={action.position.primaryIncumbent?.effectiveFrom ?? data?.draft?.effectiveOn} className={inputClass} /></Field>}<SubmitRow saving={saving} onCancel={() => setAction(null)} label="Simpan penetapan" /></form></Modal> : null}
 
-      {action?.type === "members" ? <Modal title={`Kelola anggota · ${action.node.name}`} description="Anggota biasa diringkas sebagai jumlah pada chart agar struktur besar tetap mudah dibaca." onClose={() => setAction(null)}><form onSubmit={(event) => handleMembers(event, action)}><div className="max-h-[24rem] space-y-1 overflow-y-auto rounded-xl border border-border p-2">{employees.map((employee) => { const checked = data?.memberships.some((membership) => membership.nodeKey === action.node.stableKey && membership.employeeId === employee.id); return <label key={employee.id} className="flex cursor-pointer items-start gap-3 rounded-lg px-3 py-2.5 hover:bg-muted"><input type="checkbox" name="employeeIds" value={employee.id} defaultChecked={checked} className="mt-1 h-4 w-4 accent-[var(--color-brand-primary)]" /><span><span className="block text-sm font-semibold text-brand-heading">{employee.fullName}</span><span className="text-[11px] text-muted-foreground">{employee.employeeNumber} · {employee.unitName ?? "Tanpa unit"}</span></span></label>; })}{employees.length === 0 ? <p className="p-4 text-center text-sm text-muted-foreground">Daftar pegawai aktif belum tersedia.</p> : null}</div><SubmitRow saving={saving} onCancel={() => setAction(null)} label="Simpan anggota" /></form></Modal> : null}
+      {action?.type === "members" ? <Modal title={`Kelola anggota · ${action.node.name}`} description="Pilih satu per satu atau gunakan unit lama sebagai bantuan migrasi keanggotaan yang eksplisit." onClose={() => setAction(null)}><MembershipEditor node={action.node} employees={employees} memberships={data?.memberships ?? []} saving={saving} onCancel={() => setAction(null)} onSubmit={(event) => handleMembers(event, action)} /></Modal> : null}
 
-      {action?.type === "visual" ? <Modal title="Atur rank visual" description="Pengaturan ini hanya mengubah posisi kotak pada chart. Reporting, Direct Manager, Unit Approver, dan kewenangan lain tidak berubah." onClose={() => setAction(null)}><form onSubmit={(event) => handleVisual(event, action)}><div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm font-bold text-blue-950">{"name" in action.item ? action.item.name : action.item.title}</div><div className="mt-4 space-y-2">{[0, 1, 2].map((offset) => <label key={offset} className="flex cursor-pointer gap-3 rounded-xl border border-border p-3 hover:bg-muted"><input type="radio" name="visualRankOffset" value={offset} defaultChecked={action.item.visualRankOffset === offset} className="mt-0.5 accent-[var(--color-brand-primary)]" /><span><span className="block text-sm font-bold text-brand-heading">{offset === 0 ? "Tingkat struktural normal" : `Tampilkan ${offset} tingkat lebih rendah`}</span><span className="mt-0.5 block text-[11px] text-muted-foreground">{offset === 0 ? "Ikuti kedalaman hubungan induk." : "Garis konektor tetap menunjuk ke induk struktural sebenarnya."}</span></span></label>)}</div><SubmitRow saving={saving} onCancel={() => setAction(null)} label="Simpan rank visual" /></form></Modal> : null}
+      {action?.type === "visual" ? <Modal title="Atur tampilan" description="Pengaturan ini hanya mengubah posisi kotak pada chart. Reporting, Direct Manager, Unit Approver, dan kewenangan lain tidak berubah." onClose={() => setAction(null)}><form onSubmit={(event) => handleVisual(event, action)}><div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm font-bold text-blue-950">{"name" in action.item ? action.item.name : action.item.title}</div><div className="mt-4 space-y-2">{[0, 1, 2].map((offset) => <label key={offset} className="flex cursor-pointer gap-3 rounded-xl border border-border p-3 hover:bg-muted"><input type="radio" name="visualRankOffset" value={offset} defaultChecked={action.item.visualRankOffset === offset} className="mt-0.5 accent-[var(--color-brand-primary)]" /><span><span className="block text-sm font-bold text-brand-heading">{offset === 0 ? "Tingkat normal" : `Tampilkan ${offset} tingkat lebih rendah`}</span><span className="mt-0.5 block text-[11px] text-muted-foreground">{offset === 0 ? "Ikuti kedalaman hubungan induk." : "Garis konektor tetap menunjuk ke induk struktural sebenarnya."}</span></span></label>)}</div><SubmitRow saving={saving} onCancel={() => setAction(null)} label="Simpan tampilan" /></form></Modal> : null}
 
       {action?.type === "authority" ? <Modal title="Konfigurasi kewenangan" description="Pilih hubungan semantik dan posisi target. Nama jabatan tidak dipakai sebagai business rule." onClose={() => setAction(null)}><form onSubmit={(event) => handleAuthority(event, action)} className="space-y-4"><Field label="Jenis kewenangan"><select name="authorityType" className={inputClass}>{action.kind === "position" ? <><option value="SUPERVISORY_PARENT">Atasan struktural</option><option value="GOVERNANCE_APPROVER">Governance approver</option><option value="OVERSIGHT_PARENT">Oversight di atas approver</option></> : <><option value="LEADER">Leader kelompok</option><option value="UNIT_APPROVER">Unit approver</option></>}</select></Field><Field label="Posisi target"><select name="targetPositionKey" required className={inputClass}><option value="">Pilih posisi...</option>{data?.positions.map((position) => <option key={position.stableKey} value={position.stableKey}>{position.title}</option>)}</select></Field><Field label="Jika posisi target vacant"><select name="vacancyPolicy" defaultValue="CLIMB_TO_PARENT" className={inputClass}><option value="CLIMB_TO_PARENT">Naik ke atas</option><option value="REQUIRE_ACTING_OR_BLOCK">Wajib acting atau blokir</option><option value="BLOCK">Blokir</option></select></Field><SubmitRow saving={saving} onCancel={() => setAction(null)} label="Simpan kewenangan" /></form></Modal> : null}
     </AdminShell>

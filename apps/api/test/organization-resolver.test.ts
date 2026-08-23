@@ -414,6 +414,32 @@ describe("ORG-004 rollout service", () => {
       expect.objectContaining({ employeeId: employeeIds.director, source: "UNIT_APPROVER" }),
     ]);
   });
+
+  it("summarizes effective rollout modes per employee scope without claiming one global mode", async () => {
+    const query = vi.fn(async () => ({
+      rows: [
+        { nodeKey: "node-team", mode: "STRUCTURE" },
+        { nodeKey: null, mode: "LEGACY" },
+      ],
+      rowCount: 2,
+    }));
+    const repository = new PostgresOrganizationRepository({ query } as never);
+    vi.spyOn(repository, "loadEffectiveSnapshot").mockResolvedValue(snapshot());
+
+    const modes = await repository.getRolloutModes(
+      "leave.annual",
+      [employeeIds.staff, "employee-outside-structure"],
+      "2026-08-22",
+    );
+
+    expect(modes.get(employeeIds.staff)).toBe("STRUCTURE");
+    expect(modes.get("employee-outside-structure")).toBe("LEGACY");
+    expect(query).toHaveBeenCalledWith(expect.stringContaining("node_key = ANY"), [
+      "leave.annual",
+      "2026-08-22",
+      ["node-team"],
+    ]);
+  });
 });
 
 describe("ORG-004 draft validation and impact", () => {

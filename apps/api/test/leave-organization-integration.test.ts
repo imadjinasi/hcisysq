@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import type { PoolClient } from "pg";
 import { describe, expect, it, vi } from "vitest";
 
@@ -21,6 +22,17 @@ function authority(
 }
 
 describe("ORG-004 Leave rollout consumer", () => {
+  it("keeps the admin preview on the same rollout-aware service as submission", () => {
+    const source = readFileSync(
+      new URL("../src/modules/leave/admin-routes.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain("resolveLeaveAuthorities(pool");
+    expect(source).toContain('workflowKey: "leave.annual"');
+    expect(source).not.toContain("resolveLeaveLineApprovalChain");
+  });
+
   it("keeps LEGACY authorities authoritative by safe default", () => {
     const result: RolloutAuthorityResult = {
       mode: "LEGACY",
@@ -93,6 +105,30 @@ describe("ORG-004 Leave rollout consumer", () => {
         sources: ["GOVERNANCE_APPROVER"],
       },
     ]);
+  });
+
+  it("never appends legacy authorities to a STRUCTURE chain", () => {
+    const result: RolloutAuthorityResult = {
+      mode: "STRUCTURE",
+      authoritativeSource: "STRUCTURE",
+      authorities: [authority("structural-manager", "DIRECT_MANAGER"), authority("structural-unit", "UNIT_APPROVER")],
+    };
+
+    const snapshot = snapshotLeaveRolloutAuthorities(result, {
+      requesterEmployeeId: "employee",
+      policyChain: "LINE_AND_UNIT",
+      legacy: {
+        directManagerEmployeeId: "legacy-manager",
+        unitApproverEmployeeId: "legacy-unit",
+      },
+    });
+
+    expect(snapshot.approvalChain).toEqual([
+      { employeeId: "structural-manager", sources: ["DIRECT_MANAGER"] },
+      { employeeId: "structural-unit", sources: ["UNIT_APPROVER"] },
+    ]);
+    expect(snapshot.approvalChain.map((step) => step.employeeId)).not.toContain("legacy-manager");
+    expect(snapshot.approvalChain.map((step) => step.employeeId)).not.toContain("legacy-unit");
   });
 
   it("fails closed when STRUCTURE mode has no required authority", () => {

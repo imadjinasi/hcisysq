@@ -1,6 +1,6 @@
 # Leave Policy YSQ
 
-**Status:** VERIFIED MVP BASELINE — ORG-004 EXTENSION IMPLEMENTED LOCALLY, NOT DEPLOYED — POLICY SOURCE STILL REQUIRES LEGAL REVIEW
+**Status:** VERIFIED MVP BASELINE — ORG-004 EXTENSION DEPLOYED WITH CONTROLLED ROLLOUT — POLICY SOURCE STILL REQUIRES LEGAL REVIEW
 **Specification:** LEAVE-003  
 **Related:** LEAVE-001, LEAVE-002, APR-001, ORG-002, ORG-004
 
@@ -32,9 +32,9 @@ HC_APPROVER
 
 These responsibilities must not be collapsed into one generic `HC approval` step.
 
-## Line approval — verified MVP
+## Line approval and compatibility routing
 
-For leave that needs line approval, the verified MVP uses ORG-002:
+For leave that needs line approval, legacy compatibility resolution uses ORG-002:
 
 ```text
 DIRECT_MANAGER
@@ -44,6 +44,17 @@ DIRECT_MANAGER
 ```
 
 The resolved concrete people are snapshotted at submission according to APR-001.
+
+The legacy sources are:
+
+- `employees.direct_manager_employee_id`;
+- `organizational_units.leave_approver_employee_id`.
+
+They are migration-compatibility state, not a second permanent authority
+model. They are authoritative in `LEGACY` and remain authoritative while
+structure is diagnostic-only in `SHADOW`. In `STRUCTURE`, only ORG-004
+structural resolution is authoritative; legacy values are archived for
+rollback/reference and must not be appended or used as a silent fallback.
 
 ## ORG-004 authority resolution
 
@@ -64,6 +75,12 @@ It must not infer approval from free-text job-title strings or numeric organizat
 Concrete approvers are still snapshotted at submission. A later restructure does not rewrite an existing request.
 
 The resolved rollout mode is also snapshotted. `LEGACY` and `SHADOW` preserve the verified routing and produce no ORG-004 oversight notification; only a request submitted in `STRUCTURE` may produce that structural side effect. A later rollout-mode change does not alter an in-flight request.
+
+The Leave administration preview uses the same rollout-aware backend authority
+service as real submission. It reports the effective mode, authoritative
+source, concrete resolved chain, and semantic sources. In `SHADOW`, it also
+reports the structural candidate, `MATCH`/`MISMATCH`, and diagnostic reason.
+The web layer does not implement a resolver.
 
 ## Post-final-approval structural oversight notification
 
@@ -174,7 +191,7 @@ These notification/validation-only workflows do not automatically enter the ORG-
 
 HC is therefore an actual approver for this leave type, not merely a validator.
 
-For the planned ORG-004 structural oversight notification, the reference point remains the final **line/governance approver** (for example Unit Approver), while HC continues as the policy-required actual approver.
+For the ORG-004 structural oversight notification in `STRUCTURE`, the reference point remains the final **line/governance approver** (for example Unit Approver), while HC continues as the policy-required actual approver.
 
 ### 4. Organization event, not individual leave request
 
@@ -361,6 +378,10 @@ Later organization changes must not rewrite already snapshotted approval chains.
 
 ORG-004 plans to replace direct person-based organization administration with effective-dated structure/position authority for new resolution while preserving this transaction history boundary.
 
+`leave_entitlement_group` remains editable Leave-policy data in every rollout
+mode. It is never derived from node type, structural position, title text, or a
+numeric/display hierarchy.
+
 ## Verification
 
 Final synthetic browser UAT verified the implemented policy boundaries across:
@@ -374,7 +395,10 @@ Final synthetic browser UAT verified the implemented policy boundaries across:
 
 These tests verify HCIS behavior against the working policy baseline. They do not replace the pending legal review of the underlying YSQ policy document.
 
-ORG-004 structural resolution and oversight notification are implemented and covered by isolated automated tests on the implementation branch. They were not part of the completed MVP UAT, are not deployed, and are not production validated.
+ORG-004 structural resolution and oversight notification are implemented,
+deployed behind controlled rollout settings, and covered by automated and
+browser-UAT regression. Deployment does not imply that every scope is in
+`STRUCTURE`; administrators must read the scope-effective mode.
 
 ## Acceptance criteria
 
@@ -390,7 +414,7 @@ ORG-004 structural resolution and oversight notification are implemented and cov
 - LEAVE-003-H: organization-event leave and attendance dispensation are not modeled as ordinary individual leave requests.
 - LEAVE-003-I: education/non-education classification is explicit and never inferred from title text.
 
-### Planned ORG-004 extension
+### ORG-004 controlled-rollout extension
 
 - LEAVE-003-J: line/governance authority can be resolved from effective organization structure without title-text inference.
 - LEAVE-003-K: concrete approvers remain snapshotted at submission even when structural resolution is used.

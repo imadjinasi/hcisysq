@@ -1,6 +1,6 @@
 # Approval Engine
 
-**Status:** ACCEPTED — ORG-004 EXTENSION IMPLEMENTED LOCALLY, NOT DEPLOYED
+**Status:** ACCEPTED — ORG-004 EXTENSION DEPLOYED WITH CONTROLLED ROLLOUT
 **Specification:** APR-001  
 **Related:** ORG-002, ORG-004
 
@@ -18,9 +18,16 @@ Hierarchy, role, or organization changes after submission must not silently rewr
 
 APR-001 describes the verified approval engine behavior used by the completed MVP. The accepted post-MVP organization successor is ORG-004 (`docs/domain/dynamic-organization-structure.md`).
 
-ORG-004 changes how semantic authority may be resolved from organization data; it does **not** change APR-001's immutable snapshot rule.
+ORG-004 changes how semantic authority may be resolved from organization data; it does **not** change APR-001's immutable snapshot rule. The implementation is deployed, but structural authority applies only where the effective rollout setting is `STRUCTURE`.
 
-Agents must not assume ORG-004 structural resolution is already implemented until that milestone is explicitly activated.
+Legacy direct-manager and unit-approver fields are migration-compatibility
+state. There is no dual-authoritative configuration:
+
+- `LEGACY`: legacy is authoritative; structure has no routing/oversight side effect;
+- `SHADOW`: legacy is authoritative; structure is comparison-only and has no
+  structural notification side effect;
+- `STRUCTURE`: ORG-004 is authoritative and fails closed; legacy is neither
+  appended nor used as fallback.
 
 ## Initial release scope
 
@@ -72,6 +79,11 @@ Step 2 -> Siti
 ```
 
 The stored approval steps are `Budi -> Siti`, not a live query that keeps following organization changes.
+
+Administrative preview must call the same rollout-aware backend authority
+service as submission. It may present additional `SHADOW` diagnostics, but it
+must not reproduce resolution rules in the web layer or merge authoritative and
+candidate chains.
 
 ## ORG-004 structural resolvers
 

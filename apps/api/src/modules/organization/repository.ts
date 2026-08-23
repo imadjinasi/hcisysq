@@ -355,24 +355,48 @@ export class PostgresOrganizationRepository {
     employeeId: string,
     effectiveDate: string,
   ): Promise<OrganizationRolloutMode> {
+    return (await this.getRolloutModes(workflowKey, [employeeId], effectiveDate)).get(employeeId)
+      ?? "LEGACY";
+  }
+
+  async getRolloutModes(
+    workflowKey: string,
+    employeeIds: string[],
+    effectiveDate: string,
+  ): Promise<Map<string, OrganizationRolloutMode>> {
     const snapshot = await this.loadEffectiveSnapshot(effectiveDate);
-    const nodeKey = snapshot?.memberships.find(
-      (item) => item.employeeId === employeeId && item.isPrimary
-        && item.effectiveFrom <= effectiveDate
-        && (item.effectiveTo === null || item.effectiveTo >= effectiveDate),
-    )?.nodeKey ?? null;
-    const result = await this.db.query<{ mode: OrganizationRolloutMode }>(
-      `SELECT mode
+    const employeeSet = new Set(employeeIds);
+    const nodeByEmployee = new Map(
+      snapshot?.memberships
+        .filter((item) => employeeSet.has(item.employeeId) && item.isPrimary
+          && item.effectiveFrom <= effectiveDate
+          && (item.effectiveTo === null || item.effectiveTo >= effectiveDate))
+        .map((item) => [item.employeeId, item.nodeKey]) ?? [],
+    );
+    const nodeKeys = [...new Set(nodeByEmployee.values())];
+    const result = await this.db.query<{
+      nodeKey: string | null;
+      mode: OrganizationRolloutMode;
+    }>(
+      `SELECT node_key AS "nodeKey", mode
        FROM organization_rollout_settings
        WHERE workflow_key = $1
          AND effective_from <= $2::date
          AND (effective_to IS NULL OR effective_to >= $2::date)
-         AND (node_key = $3::uuid OR node_key IS NULL)
-       ORDER BY CASE WHEN node_key = $3::uuid THEN 0 ELSE 1 END, effective_from DESC
-       LIMIT 1`,
-      [workflowKey, effectiveDate, nodeKey],
+         AND (node_key = ANY($3::uuid[]) OR node_key IS NULL)
+       ORDER BY effective_from DESC, created_at DESC`,
+      [workflowKey, effectiveDate, nodeKeys],
     );
-    return result.rows[0]?.mode ?? "LEGACY";
+    const global = result.rows.find((item) => item.nodeKey === null)?.mode ?? "LEGACY";
+    const scoped = new Map(
+      result.rows
+        .filter((item): item is { nodeKey: string; mode: OrganizationRolloutMode } => item.nodeKey !== null)
+        .map((item) => [item.nodeKey, item.mode]),
+    );
+    return new Map(employeeIds.map((employeeId) => [
+      employeeId,
+      scoped.get(nodeByEmployee.get(employeeId) ?? "") ?? global,
+    ]));
   }
 
   async validate(

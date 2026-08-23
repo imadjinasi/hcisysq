@@ -1,6 +1,6 @@
 # Organization Designer Visual Ranking
 
-**Status:** IMPLEMENTED AND TESTED LOCALLY — NOT DEPLOYED — NOT PRODUCTION VALIDATED
+**Status:** IMPLEMENTED, TESTED, AND DEPLOYED AS ORG-004 PRESENTATION METADATA
 **Specification:** ORG-004 visual-layout addendum  
 **Related:** ORG-002, ORG-004, APR-001  
 **Decision date:** 2026-08-22
@@ -237,6 +237,18 @@ Suggested explanation:
 
 > Adjust visual rank without changing reporting or approval relationships.
 
+The HC administrator wording is:
+
+```text
+Tampilan
+- Tingkat normal
+- Tampilkan 1 tingkat lebih rendah
+- Tampilkan 2 tingkat lebih rendah
+```
+
+Cards show only a compact `Tampilan +1` / `Tampilan +2` badge. The full
+explanation remains available through tooltip and the selection inspector.
+
 ## Add-below and add-sibling actions
 
 The visual builder should preserve the simple administration model already accepted for ORG-004:
@@ -277,6 +289,12 @@ The renderer must also support:
 - collapsed member counts for non-leadership employees;
 - historical/current/future effective-date views from ORG-004;
 - visual offsets that remain stable across those views when effective for the selected date.
+
+Large structures are navigated as a canvas with zoom, fit-to-viewport,
+center-root, center-selected, drag-to-pan, and collapse/expand controls. These
+controls operate only on local viewport state and are never persisted as
+organization configuration. Compact cards preserve horizontal sibling layout
+and the existing structural connector source/target at every zoom level.
 
 ## Effective dating
 
@@ -351,6 +369,7 @@ This keeps future features such as attendance clarification, reimbursement, loan
 
 ## Implementation boundary
 
-This document is a **design requirement only**.
-
-It does not change the currently deployed HCIS runtime or the verified MVP approval resolver. Implementation must be performed as part of ORG-004 and validated before any workflow treats the dynamic structure as authoritative.
+Visual ranking and canvas navigation are deployed presentation behavior. They
+do not change resolver inputs or rollout semantics. A workflow may treat
+dynamic structure as authoritative only through an applicable `STRUCTURE`
+rollout setting; visual metadata never activates or alters that authority.

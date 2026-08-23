@@ -25,6 +25,7 @@ export interface LeaveUnitConfiguration {
   activeEmployeeCount: number;
   approverEmployeeId: string | null;
   approverName: string | null;
+  rolloutState: "LEGACY" | "SHADOW" | "STRUCTURE" | "MIXED";
 }
 
 export interface LeaveEmployeeConfiguration {
@@ -38,6 +39,7 @@ export interface LeaveEmployeeConfiguration {
   directManagerEmployeeId: string | null;
   directManagerName: string | null;
   leaveEntitlementGroup: LeaveEntitlementGroup | null;
+  rolloutMode: "LEGACY" | "SHADOW" | "STRUCTURE";
 }
 
 export interface LeaveConfigurationResponse {
@@ -51,6 +53,12 @@ export interface LeaveConfigurationResponse {
     directManagerConfigured: number;
     entitlementGroupConfigured: number;
   };
+  rollout: {
+    workflowKey: "leave.annual";
+    effectiveDate: string;
+    state: "LEGACY" | "SHADOW" | "STRUCTURE" | "MIXED";
+    counts: Record<"LEGACY" | "SHADOW" | "STRUCTURE", number>;
+  };
 }
 
 export interface LeaveApprovalPreviewResponse {
@@ -62,8 +70,21 @@ export interface LeaveApprovalPreviewResponse {
   referenceDate: string;
   approvalChain: Array<{
     employeeId: string;
-    sources: Array<"DIRECT_MANAGER" | "UNIT_APPROVER">;
+    sources: Array<"DIRECT_MANAGER" | "UNIT_APPROVER" | "GOVERNANCE_APPROVER">;
   }>;
+  routing: {
+    mode: "LEGACY" | "SHADOW" | "STRUCTURE";
+    authoritativeSource: "LEGACY" | "STRUCTURE";
+    structuralCandidateChain: Array<{
+      employeeId: string;
+      sources: Array<"DIRECT_MANAGER" | "UNIT_APPROVER" | "GOVERNANCE_APPROVER">;
+    }> | null;
+    comparison: null | {
+      status: "MATCH" | "MISMATCH";
+      reasons: string[];
+      error?: { code: string; message: string };
+    };
+  };
   annualLeave: null | {
     annualEntitlementDays: number;
     eligibilityMonths: number;
