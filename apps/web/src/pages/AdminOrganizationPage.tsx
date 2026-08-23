@@ -188,6 +188,33 @@ function ImpactCard({ label, count, tone = "default" }: { label: string; count: 
   );
 }
 
+function subtreeDeletionImpact(data: OrganizationDesignerView, selected: OrganizationNode) {
+  const nodeKeys = new Set([selected.stableKey]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const node of data.nodes) {
+      if (node.parentNodeKey && nodeKeys.has(node.parentNodeKey) && !nodeKeys.has(node.stableKey)) {
+        nodeKeys.add(node.stableKey);
+        changed = true;
+      }
+    }
+  }
+  const positionKeys = new Set(
+    data.positions.filter((item) => nodeKeys.has(item.nodeKey)).map((item) => item.stableKey),
+  );
+  return {
+    childGroups: nodeKeys.size - 1,
+    positions: positionKeys.size,
+    memberships: data.memberships.filter((item) => nodeKeys.has(item.nodeKey)).length,
+    incumbencies: data.assignments.filter((item) => item.positionKey && positionKeys.has(item.positionKey)).length,
+    authorityBindings: data.bindings.filter((item) =>
+      positionKeys.has(item.targetPositionKey)
+      || (item.sourceType === "NODE" ? nodeKeys.has(item.sourceKey) : positionKeys.has(item.sourceKey))).length,
+    reportingOverrides: data.reportingOverrides.filter((item) => positionKeys.has(item.managerPositionKey)).length,
+  };
+}
+
 function MembershipEditor({
   node,
   employees,
@@ -366,6 +393,10 @@ export function AdminOrganizationPage() {
   const canEdit = data?.draft?.status === "DRAFT";
   const hasActiveDraft = data?.draft?.status === "DRAFT" || data?.draft?.status === "VALIDATED";
   const status = statusCopy(data?.mode ?? "CURRENT");
+  const pendingDeletionImpact = useMemo(
+    () => action?.type === "delete-node" && data ? subtreeDeletionImpact(data, action.node) : null,
+    [action, data],
+  );
 
   const mutate = async (operation: () => Promise<unknown>, success: string) => {
     setSaving(true);
@@ -785,7 +816,7 @@ export function AdminOrganizationPage() {
 
       {action?.type === "visual" ? <Modal title="Atur tampilan" description="Pengaturan ini hanya mengubah posisi kotak pada chart. Reporting, Direct Manager, Unit Approver, dan kewenangan lain tidak berubah." onClose={() => setAction(null)}><form onSubmit={(event) => handleVisual(event, action)}><div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm font-bold text-blue-950">{"name" in action.item ? action.item.name : action.item.title}</div><div className="mt-4 space-y-2">{[0, 1, 2, 3].map((offset) => <label key={offset} className="flex cursor-pointer gap-3 rounded-xl border border-border p-3 hover:bg-muted"><input type="radio" name="visualRankOffset" value={offset} defaultChecked={action.item.visualRankOffset === offset} className="mt-0.5 accent-[var(--color-brand-primary)]" /><span><span className="block text-sm font-bold text-brand-heading">{offset === 0 ? "Tingkat normal" : `Tampilkan ${offset} tingkat lebih rendah`}</span><span className="mt-0.5 block text-[11px] text-muted-foreground">{offset === 0 ? "Ikuti kedalaman hubungan induk." : "Garis konektor tetap menunjuk ke induk struktural sebenarnya."}</span></span></label>)}</div><SubmitRow saving={saving} onCancel={() => setAction(null)} label="Simpan tampilan" /></form></Modal> : null}
 
-      {action?.type === "delete-node" ? <Modal title="Hapus kelompok dan subtree?" description="Tindakan ini hanya tersedia pada DRAFT dan tidak mengubah histori yang sudah dipublikasikan." onClose={() => setAction(null)}><div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900"><p className="font-bold">{action.node.name}</p><p className="mt-2 text-xs leading-5">Seluruh kelompok anak, posisi, memberships, incumbencies, authority bindings, dan reporting override yang bergantung pada subtree ini ikut dihapus secara atomik. Stable key yatim tidak akan dipertahankan.</p></div><div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setAction(null)} className="h-10 rounded-xl border border-border px-4 text-sm font-semibold">Batal</button><button type="button" disabled={saving} onClick={() => deleteNodeSubtree(action.node)} className="h-10 rounded-xl bg-red-700 px-4 text-sm font-bold text-white disabled:opacity-60">Hapus subtree</button></div></Modal> : null}
+      {action?.type === "delete-node" ? <Modal title="Hapus kelompok dan subtree?" description="Tindakan ini hanya tersedia pada DRAFT dan tidak mengubah histori yang sudah dipublikasikan." onClose={() => setAction(null)}><div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900"><p className="font-bold">{action.node.name}</p><p className="mt-2 text-xs leading-5">Seluruh referensi draft yang bergantung ikut dihapus secara atomik. Stable key yatim tidak akan dipertahankan.</p><dl className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">{Object.entries({ "Kelompok anak": pendingDeletionImpact?.childGroups ?? 0, Posisi: pendingDeletionImpact?.positions ?? 0, Membership: pendingDeletionImpact?.memberships ?? 0, Incumbency: pendingDeletionImpact?.incumbencies ?? 0, "Authority binding": pendingDeletionImpact?.authorityBindings ?? 0, "Reporting override": pendingDeletionImpact?.reportingOverrides ?? 0 }).map(([label, count]) => <div key={label} className="rounded-lg bg-white/80 p-2"><dt className="text-[10px] text-red-700">{label}</dt><dd className="mt-0.5 font-bold">{count}</dd></div>)}</dl></div><div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setAction(null)} className="h-10 rounded-xl border border-border px-4 text-sm font-semibold">Batal</button><button type="button" disabled={saving} onClick={() => deleteNodeSubtree(action.node)} className="h-10 rounded-xl bg-red-700 px-4 text-sm font-bold text-white disabled:opacity-60">Hapus subtree</button></div></Modal> : null}
 
       {action?.type === "discard-draft" ? <Modal title="Buang seluruh draft?" description="DRAFT atau hasil validasi yang belum dipublikasikan dapat dibuang. PUBLISHED tidak pernah dapat dihapus." onClose={() => setAction(null)}><div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900"><p className="font-bold">{data?.draft?.name}</p><p className="mt-2 text-xs leading-5">Semua perubahan yang belum dipublikasikan dalam draft ini akan dihapus. Versi terpublikasi dan audit event tetap tersimpan.</p></div><div className="mt-6 flex justify-end gap-2"><button type="button" onClick={() => setAction(null)} className="h-10 rounded-xl border border-border px-4 text-sm font-semibold">Batal</button><button type="button" disabled={saving} onClick={() => void discardDraft()} className="h-10 rounded-xl bg-red-700 px-4 text-sm font-bold text-white disabled:opacity-60">Buang draft</button></div></Modal> : null}
 
