@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   jakartaBusinessDate,
+  deleteOrganizationSubtree,
   OrganizationAuthorityResolver,
   OrganizationDraftService,
   OrganizationResolutionError,
@@ -415,6 +416,22 @@ describe("ORG-004 rollout service", () => {
     ]);
   });
 
+  it("fails closed when an ACCOUNT-only governance holder is used as an actionable authority", async () => {
+    const structure = snapshot();
+    structure.positions = structure.positions.map((item) => item.stableKey === "position-head"
+      ? { ...item, holderSource: "ACCOUNT" as const }
+      : item);
+    structure.incumbencies = structure.incumbencies.map((item) => item.positionKey === "position-head"
+      ? { ...item, employeeId: null, accountId: "foundation-board-account" }
+      : item);
+
+    await expect(resolver(structure).resolveDirectManager({
+      requesterEmployeeId: employeeIds.staff,
+      effectiveDate: "2026-08-22",
+      requiredCapability: "leave.approve",
+    })).rejects.toMatchObject({ code: "ACCOUNT_HOLDER_NOT_ACTIONABLE" });
+  });
+
   it("summarizes effective rollout modes per employee scope without claiming one global mode", async () => {
     const query = vi.fn(async () => ({
       rows: [
@@ -443,6 +460,31 @@ describe("ORG-004 rollout service", () => {
 });
 
 describe("ORG-004 draft validation and impact", () => {
+  it("deletes a draft subtree and every dependent reference without orphan stable keys", () => {
+    const draft = snapshot({
+      nodes: [node("node-root", null, 0), node("node-team", "node-root", 0), node("node-child", "node-team", 0)],
+      positions: [
+        position("position-director", "node-root", null),
+        position("position-head", "node-team", "position-director"),
+        position("position-child", "node-child", "position-head"),
+      ],
+      reportingOverrides: [{
+        id: "override", employeeId: employeeIds.staffTwo, managerPositionKey: "position-head",
+        managerEmployeeId: null, reason: "Synthetic dependency", effectiveFrom, effectiveTo: null,
+      }],
+    });
+    const selectedId = draft.nodes.find((item) => item.stableKey === "node-team")!.id;
+
+    const deleted = deleteOrganizationSubtree(draft, selectedId);
+
+    expect(deleted?.counts).toMatchObject({ childGroups: 1, positions: 2, memberships: 2, incumbencies: 1, reportingOverrides: 1 });
+    expect(draft.nodes.map((item) => item.stableKey)).toEqual(["node-root"]);
+    expect(draft.positions.map((item) => item.stableKey)).toEqual(["position-director"]);
+    expect(draft.memberships).toEqual([]);
+    expect(draft.authorityBindings).toEqual([]);
+    expect(draft.reportingOverrides).toEqual([]);
+  });
+
   it("separates active structural employment from login eligibility", async () => {
     const query = vi.fn(async (sql: string) => {
       if (sql.includes("SELECT (status = 'active')")) {
@@ -472,7 +514,7 @@ describe("ORG-004 draft validation and impact", () => {
     draft.changeSet.validatedAt = null;
     draft.changeSet.publishedAt = null;
     const fakeRepository = {
-      loadChangeSetSnapshot: async () => draft,
+      loadChangeSetSnapshotForUpdate: async () => draft,
       validateStructuralIncumbent: async () => ({ eligible: true, reason: null }),
       markValidated: async (_id: string, _actor: string, report: { valid: boolean }) => {
         draft.changeSet.status = report.valid ? "VALIDATED" : "DRAFT";
@@ -538,7 +580,7 @@ describe("ORG-004 draft validation and impact", () => {
     draft.changeSet.validatedAt = null;
     draft.changeSet.publishedAt = null;
     const fakeRepository = {
-      loadChangeSetSnapshot: async () => draft,
+      loadChangeSetSnapshotForUpdate: async () => draft,
       validateStructuralIncumbent: async (employeeId: string) => employeeId === employeeIds.head
         ? { eligible: false, reason: "EMPLOYEE_NOT_ACTIVE" }
         : { eligible: true, reason: null },
@@ -567,7 +609,7 @@ describe("ORG-004 draft validation and impact", () => {
     draft.changeSet.publishedAt = null;
     let persistedValid: boolean | null = null;
     const fakeRepository = {
-      loadChangeSetSnapshot: async () => draft,
+      loadChangeSetSnapshotForUpdate: async () => draft,
       validateStructuralIncumbent: async () => ({ eligible: true, reason: null }),
       markValidated: async (_id: string, _actor: string, report: { valid: boolean }) => {
         persistedValid = report.valid;

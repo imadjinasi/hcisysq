@@ -355,6 +355,15 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /admin/organization/designer/foundation-board-accounts:
+    get:
+      tags: [Organization]
+      operationId: listOrganizationDesignerFoundationBoardAccounts
+      responses:
+        '200': { description: FOUNDATION_BOARD account options with email and account status }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /admin/organization/designer/drafts:
     post:
       tags: [Organization]
@@ -378,6 +387,17 @@ paths:
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/organization/designer/drafts/{draftId}:
+    delete:
+      tags: [Organization]
+      operationId: discardOrganizationDraft
+      parameters: [{ $ref: '#/components/parameters/DraftId' }]
+      responses:
+        '204': { description: Unpublished DRAFT or VALIDATED change set discarded; audit remains }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Published history is immutable }
 
   /admin/organization/designer/drafts/{draftId}/nodes:
     post:
@@ -414,6 +434,20 @@ paths:
         '200': { description: Organizational group updated within the draft }
         '400': { $ref: '#/components/responses/ValidationError' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: Draft is not editable }
+    delete:
+      tags: [Organization]
+      operationId: deleteOrganizationNodeSubtree
+      parameters:
+        - { $ref: '#/components/parameters/DraftId' }
+        - name: itemId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Draft subtree and dependent draft references deleted atomically with impact counts }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { description: Draft is not editable }
 
   /admin/organization/designer/drafts/{draftId}/positions:
@@ -489,6 +523,7 @@ paths:
               properties:
                 positionKey: { type: string, format: uuid }
                 primaryEmployeeId: { type: [string, 'null'], format: uuid }
+                primaryAccountId: { type: [string, 'null'], format: uuid }
                 actingEmployeeId: { type: [string, 'null'], format: uuid }
                 actingFrom: { type: [string, 'null'], format: date }
                 actingTo: { type: [string, 'null'], format: date }
@@ -815,6 +850,7 @@ components:
         createdAt: { type: string, format: date-time }
         validatedAt: { type: [string, 'null'], format: date-time }
         publishedAt: { type: [string, 'null'], format: date-time }
+        baseChangeSetId: { type: [string, 'null'], format: uuid }
 
     OrganizationNodeInput:
       type: object
@@ -847,6 +883,7 @@ components:
         singleIncumbent: { type: boolean, default: true }
         vacancyPolicy: { type: string, enum: [CLIMB_TO_PARENT, REQUIRE_ACTING_OR_BLOCK, BLOCK] }
         visualRankOffset: { type: integer, minimum: 0, maximum: 10, default: 0 }
+        holderSource: { type: string, enum: [EMPLOYEE, ACCOUNT], default: EMPLOYEE }
 
     OrganizationPositionPatch:
       type: object
@@ -858,6 +895,7 @@ components:
         singleIncumbent: { type: boolean }
         vacancyPolicy: { type: string, enum: [CLIMB_TO_PARENT, REQUIRE_ACTING_OR_BLOCK, BLOCK] }
         visualRankOffset: { type: integer, minimum: 0, maximum: 10 }
+        holderSource: { type: string, enum: [EMPLOYEE, ACCOUNT] }
         active: { type: boolean }
 
     OrganizationAuthorityBindingInput:

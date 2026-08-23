@@ -26,6 +26,39 @@ Published structure is stored as complete, immutable, effective-dated snapshots:
 
 The migration is additive. No synthetic employee, inferred authority, rollout row, or organization snapshot is seeded. Absence of a rollout setting resolves to `LEGACY`.
 
+### Published revisions and mutation safety
+
+Published snapshots are immutable, but more than one published revision may
+share an `effective_on` date. The latest publication is authoritative using the
+deterministic order `effective_on`, `published_at`, `created_at`, then `id`, all
+descending. A same-day correction is a new snapshot whose
+`base_change_set_id` points to the previously authoritative revision; it never
+updates or deletes that prior publication.
+
+Every mutable snapshot mutation locks its owning change-set row before loading
+the snapshot rows. Mutation, full-snapshot persistence, audit, and commit remain
+one transaction so overlapping administrators cannot silently overwrite each
+other's changes.
+
+### Governance account holders
+
+An organization position declares its holder source explicitly as `EMPLOYEE`
+or `ACCOUNT`. Existing positions and incumbencies remain `EMPLOYEE` by default.
+An `ACCOUNT` position may reference only an existing `FOUNDATION_BOARD` account,
+shown by email and account status; it never creates a fake employee or a second
+email registry. Chart identity is separate from workflow authority. If an
+employee/action-capable resolver reaches an account-only holder, resolution
+fails closed with an explicit configuration error and never casts the account
+identifier to an employee identifier or grants new permissions.
+
+### Draft deletion
+
+Only a DRAFT group subtree may be deleted from a snapshot. The server removes
+its descendant groups, positions, memberships, incumbencies, authority
+bindings, and dependent reporting references atomically and audits impact
+counts. A whole DRAFT or VALIDATED-but-unpublished change set may be discarded
+after destructive confirmation. PUBLISHED history cannot be deleted.
+
 ### Resolver behavior
 
 The reusable backend resolver applies this precedence:

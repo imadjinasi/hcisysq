@@ -130,7 +130,7 @@ export class PostgresOrganizationRepository {
           validated_at AS "validatedAt", published_at AS "publishedAt"
         FROM organization_change_sets
         WHERE status = 'PUBLISHED' AND effective_on <= $1::date
-        ORDER BY effective_on DESC, published_at DESC
+        ORDER BY effective_on DESC, published_at DESC, created_at DESC, id DESC
         LIMIT 1
       `,
       [effectiveDate],
@@ -269,11 +269,12 @@ export class PostgresOrganizationRepository {
       await this.db.query(
         `INSERT INTO organization_positions
           (id, change_set_id, stable_key, node_key, title, parent_position_key,
-           single_incumbent, vacancy_policy, active, effective_from, effective_to, visual_rank_offset)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+           single_incumbent, vacancy_policy, active, effective_from, effective_to, visual_rank_offset,
+           holder_source)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
         [item.id, snapshot.changeSet.id, item.stableKey, item.nodeKey, item.title,
           item.parentPositionKey, item.singleIncumbent, item.vacancyPolicy, item.active,
-          item.effectiveFrom, item.effectiveTo, item.visualRankOffset],
+          item.effectiveFrom, item.effectiveTo, item.visualRankOffset, item.holderSource ?? "EMPLOYEE"],
       );
     }
     for (const item of snapshot.memberships) {
@@ -289,9 +290,9 @@ export class PostgresOrganizationRepository {
     for (const item of snapshot.incumbencies) {
       await this.db.query(
         `INSERT INTO organization_incumbencies
-          (id, change_set_id, position_key, employee_id, kind, effective_from, effective_to, reason)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [item.id, snapshot.changeSet.id, item.positionKey, item.employeeId,
+          (id, change_set_id, position_key, employee_id, account_id, kind, effective_from, effective_to, reason)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [item.id, snapshot.changeSet.id, item.positionKey, item.employeeId, item.accountId ?? null,
           item.kind, item.effectiveFrom, item.effectiveTo, item.reason],
       );
     }
@@ -357,6 +358,28 @@ export class PostgresOrganizationRepository {
   ): Promise<OrganizationRolloutMode> {
     return (await this.getRolloutModes(workflowKey, [employeeId], effectiveDate)).get(employeeId)
       ?? "LEGACY";
+  }
+
+  /**
+   * Serialize every mutable snapshot read behind the owning change-set row.
+   * Callers must keep the returned snapshot, mutation, persistence, and audit in
+   * the same transaction; taking this lock after loading rows permits lost updates.
+   */
+  async loadEditableSnapshotForUpdate(changeSetId: string): Promise<OrganizationSnapshot | null> {
+    const snapshot = await this.loadChangeSetSnapshotForUpdate(changeSetId);
+    return snapshot?.changeSet.status === "DRAFT" ? snapshot : null;
+  }
+
+  async loadChangeSetSnapshotForUpdate(changeSetId: string): Promise<OrganizationSnapshot | null> {
+    if (hasTransactionPool(this.db)) {
+      return this.inTransaction((repository) => repository.loadChangeSetSnapshotForUpdate(changeSetId));
+    }
+    const state = await this.db.query<{ id: string }>(
+      "SELECT id FROM organization_change_sets WHERE id = $1 FOR UPDATE",
+      [changeSetId],
+    );
+    if (!state.rows[0]) return null;
+    return this.loadChangeSetSnapshot(changeSetId);
   }
 
   async getRolloutModes(
@@ -451,47 +474,57 @@ export class PostgresOrganizationRepository {
       : { eligible: false, reason: "EMPLOYEE_NOT_ACTIVE" };
   }
 
+  async validateStructuralAccount(accountId: string): Promise<boolean> {
+    const result = await this.db.query<{ valid: boolean }>(
+      `SELECT (principal_type = 'FOUNDATION_BOARD') AS valid
+       FROM accounts WHERE id = $1`,
+      [accountId],
+    );
+    return result.rows[0]?.valid ?? false;
+  }
+
   private async loadSnapshotRows(changeSet: OrganizationChangeSet): Promise<OrganizationSnapshot> {
     const id = changeSet.id;
-    const [nodes, jobProfiles, positions, memberships, incumbencies, bindings, overrides] =
-      await Promise.all([
-        this.db.query<NodeRow>(
+    // A transaction-scoped pg client must not execute overlapping queries.
+    // Keep snapshot reads sequential after the change-set lock is acquired.
+    const nodes = await this.db.query<NodeRow>(
           `SELECT id, stable_key AS "stableKey", name, node_type AS "nodeType",
             parent_node_key AS "parentNodeKey", active, effective_from AS "effectiveFrom",
             effective_to AS "effectiveTo", visual_rank_offset AS "visualRankOffset",
             integration_code AS "integrationCode"
-           FROM organization_nodes WHERE change_set_id = $1`, [id]),
-        this.db.query<JobProfileRow>(
+           FROM organization_nodes WHERE change_set_id = $1`, [id]);
+    const jobProfiles = await this.db.query<JobProfileRow>(
           `SELECT id, stable_key AS "stableKey", name, active,
             effective_from AS "effectiveFrom", effective_to AS "effectiveTo"
-           FROM organization_job_profiles WHERE change_set_id = $1`, [id]),
-        this.db.query<PositionRow>(
+           FROM organization_job_profiles WHERE change_set_id = $1`, [id]);
+    const positions = await this.db.query<PositionRow>(
           `SELECT id, stable_key AS "stableKey", node_key AS "nodeKey", title,
             parent_position_key AS "parentPositionKey", single_incumbent AS "singleIncumbent",
             vacancy_policy AS "vacancyPolicy", active, effective_from AS "effectiveFrom",
-            effective_to AS "effectiveTo", visual_rank_offset AS "visualRankOffset"
-           FROM organization_positions WHERE change_set_id = $1`, [id]),
-        this.db.query<MembershipRow>(
+            effective_to AS "effectiveTo", visual_rank_offset AS "visualRankOffset",
+            holder_source AS "holderSource"
+           FROM organization_positions WHERE change_set_id = $1`, [id]);
+    const memberships = await this.db.query<MembershipRow>(
           `SELECT id, employee_id AS "employeeId", node_key AS "nodeKey",
             job_profile_key AS "jobProfileKey", is_primary AS "isPrimary",
             effective_from AS "effectiveFrom", effective_to AS "effectiveTo"
-           FROM organization_memberships WHERE change_set_id = $1`, [id]),
-        this.db.query<IncumbencyRow>(
-          `SELECT id, position_key AS "positionKey", employee_id AS "employeeId", kind,
+           FROM organization_memberships WHERE change_set_id = $1`, [id]);
+    const incumbencies = await this.db.query<IncumbencyRow>(
+          `SELECT id, position_key AS "positionKey", employee_id AS "employeeId",
+            account_id AS "accountId", kind,
             effective_from AS "effectiveFrom", effective_to AS "effectiveTo", reason
-           FROM organization_incumbencies WHERE change_set_id = $1`, [id]),
-        this.db.query<BindingRow>(
+           FROM organization_incumbencies WHERE change_set_id = $1`, [id]);
+    const bindings = await this.db.query<BindingRow>(
           `SELECT id, subject_kind AS "subjectKind", subject_key AS "subjectKey",
             binding_type AS "bindingType", target_position_key AS "targetPositionKey",
             vacancy_policy AS "vacancyPolicy", effective_from AS "effectiveFrom",
             effective_to AS "effectiveTo"
-           FROM organization_authority_bindings WHERE change_set_id = $1`, [id]),
-        this.db.query<OverrideRow>(
+           FROM organization_authority_bindings WHERE change_set_id = $1`, [id]);
+    const overrides = await this.db.query<OverrideRow>(
           `SELECT id, employee_id AS "employeeId", manager_position_key AS "managerPositionKey",
             manager_employee_id AS "managerEmployeeId", reason,
             effective_from AS "effectiveFrom", effective_to AS "effectiveTo"
-           FROM organization_reporting_overrides WHERE change_set_id = $1`, [id]),
-      ]);
+           FROM organization_reporting_overrides WHERE change_set_id = $1`, [id]);
     return {
       changeSet,
       nodes: nodes.rows.map((row) => mapPeriod(row) as OrganizationNode),

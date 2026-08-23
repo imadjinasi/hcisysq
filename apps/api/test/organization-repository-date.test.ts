@@ -59,4 +59,51 @@ describe("PostgresOrganizationRepository calendar dates", () => {
     expect(snapshot?.changeSet.effectiveOn).toBe("2026-08-23");
     expect(snapshot?.nodes[0]?.effectiveFrom).toBe("2026-08-23");
   });
+
+  it("locks the change-set row before loading any editable snapshot rows", async () => {
+    const calls: string[] = [];
+    const query = vi.fn(async (sql: string) => {
+      calls.push(sql.replace(/\s+/g, " ").trim());
+      if (sql.includes("SELECT id FROM organization_change_sets") && sql.includes("FOR UPDATE")) {
+        return result([{ id: "00000000-0000-4000-8000-000000000001" }]);
+      }
+      if (sql.includes("FROM organization_change_sets")) {
+        return result([{
+          id: "00000000-0000-4000-8000-000000000001",
+          name: "Locked draft",
+          effectiveOn: "2026-08-23",
+          status: "DRAFT",
+          baseChangeSetId: null,
+          validationReport: {},
+          createdByAccountId: "00000000-0000-4000-8000-000000000002",
+          createdAt: new Date("2026-08-23T00:00:00.000Z"),
+          validatedAt: null,
+          publishedAt: null,
+        }]);
+      }
+      return result([]);
+    });
+    const repository = new PostgresOrganizationRepository({ query } as OrganizationQueryable);
+
+    await repository.loadEditableSnapshotForUpdate("00000000-0000-4000-8000-000000000001");
+
+    expect(calls[0]).toContain("FOR UPDATE");
+    expect(calls[1]).toContain("FROM organization_change_sets");
+    expect(calls.slice(2).some((sql) => sql.includes("organization_nodes"))).toBe(true);
+  });
+
+  it("uses deterministic same-day published revision ordering", async () => {
+    let effectiveQuery = "";
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes("status = 'PUBLISHED'")) effectiveQuery = sql.replace(/\s+/g, " ");
+      return result([]);
+    });
+    const repository = new PostgresOrganizationRepository({ query } as OrganizationQueryable);
+
+    await repository.loadEffectiveSnapshot("2026-08-23");
+
+    expect(effectiveQuery).toContain(
+      "ORDER BY effective_on DESC, published_at DESC, created_at DESC, id DESC",
+    );
+  });
 });

@@ -10,7 +10,7 @@ import { AuthError, AuthService, type AuthPrincipal } from "../auth/service.js";
 import type {
   AuthorityBindingType,
 } from "./domain.js";
-import { OrganizationDraftService } from "./draft-service.js";
+import { deleteOrganizationSubtree, OrganizationDraftService } from "./draft-service.js";
 import { OrganizationAuthorityResolver } from "./resolver.js";
 import { PostgresOrganizationRepository, type OrganizationQueryable } from "./repository.js";
 import { assertIsoDate, jakartaBusinessDate } from "./jakarta-date.js";
@@ -40,6 +40,7 @@ const positionInput = z.object({
   singleIncumbent: z.boolean().default(true),
   vacancyPolicy: vacancyPolicy.default("CLIMB_TO_PARENT"),
   visualRankOffset: z.number().int().min(0).max(10).default(0),
+  holderSource: z.enum(["EMPLOYEE", "ACCOUNT"]).default("EMPLOYEE"),
 });
 const positionPatch = positionInput.partial().extend({ active: z.boolean().optional() });
 const membershipInput = z.object({
@@ -51,6 +52,7 @@ const membershipInput = z.object({
 const incumbencyInput = z.object({
   positionKey: uuid,
   primaryEmployeeId: uuid.nullable().optional(),
+  primaryAccountId: uuid.nullable().optional(),
   actingEmployeeId: uuid.nullable().optional(),
   actingFrom: date.nullable().optional(),
   actingTo: date.nullable().optional(),
@@ -185,16 +187,9 @@ export async function registerOrganizationAdminRoutes(
     reply: FastifyReply,
     activeRepository: PostgresOrganizationRepository = repository,
   ) {
-    const snapshot = await activeRepository.loadChangeSetSnapshot(draftId);
+    const snapshot = await activeRepository.loadEditableSnapshotForUpdate(draftId);
     if (!snapshot) {
       await reply.status(404).send({ code: "ORGANIZATION_DRAFT_NOT_FOUND", message: "Draft not found." });
-      return null;
-    }
-    if (snapshot.changeSet.status !== "DRAFT") {
-      await reply.status(409).send({
-        code: "ORGANIZATION_DRAFT_NOT_EDITABLE",
-        message: "Only a draft that has not been validated or published can be edited.",
-      });
       return null;
     }
     return snapshot;
@@ -221,19 +216,32 @@ export async function registerOrganizationAdminRoutes(
     }
     const employeeIds = [...new Set([
       ...snapshot.memberships.map((item) => item.employeeId),
-      ...snapshot.incumbencies.map((item) => item.employeeId),
+      ...snapshot.incumbencies.flatMap((item) => item.employeeId ? [item.employeeId] : []),
     ])];
     const employees = employeeIds.length === 0 ? { rows: [] as Array<{ id: string; employeeNumber: string; fullName: string }> }
       : await pool.query<{ id: string; employeeNumber: string; fullName: string }>(
         `SELECT id, employee_number AS "employeeNumber", full_name AS "fullName"
          FROM employees WHERE id = ANY($1::uuid[])`, [employeeIds]);
     const employeeById = new Map(employees.rows.map((item) => [item.id, item]));
+    const accountIds = [...new Set(snapshot.incumbencies.flatMap((item) => item.accountId ? [item.accountId] : []))];
+    const accounts = accountIds.length === 0 ? { rows: [] as Array<{ id: string; email: string; status: string }> }
+      : await pool.query<{ id: string; email: string; status: string }>(
+        `SELECT id, email, status FROM accounts
+         WHERE id = ANY($1::uuid[]) AND principal_type = 'FOUNDATION_BOARD'`, [accountIds]);
+    const accountById = new Map(accounts.rows.map((item) => [item.id, item]));
+    const baseSnapshot = snapshot.changeSet.baseChangeSetId
+      ? await repository.loadChangeSetSnapshot(snapshot.changeSet.baseChangeSetId)
+      : null;
     const assignments = snapshot.incumbencies.map((item) => ({
       assignmentId: item.id,
       positionKey: item.positionKey,
       employeeId: item.employeeId,
-      employeeNumber: employeeById.get(item.employeeId)?.employeeNumber,
-      employeeName: employeeById.get(item.employeeId)?.fullName ?? "Unknown employee",
+      accountId: item.accountId ?? null,
+      employeeNumber: item.employeeId ? employeeById.get(item.employeeId)?.employeeNumber : undefined,
+      employeeName: item.employeeId
+        ? employeeById.get(item.employeeId)?.fullName ?? "Unknown employee"
+        : accountById.get(item.accountId ?? "")?.email ?? "Unknown governance account",
+      accountStatus: item.accountId ? accountById.get(item.accountId)?.status ?? "unknown" : null,
       effectiveFrom: item.effectiveFrom,
       effectiveTo: item.effectiveTo,
       assignmentType: item.kind,
@@ -244,6 +252,8 @@ export async function registerOrganizationAdminRoutes(
         ? viewDate < jakartaBusinessDate() ? "HISTORICAL" : viewDate > jakartaBusinessDate() ? "FUTURE" : "CURRENT"
         : "DRAFT",
       draft: snapshot.changeSet,
+      isSameDayRevision: baseSnapshot?.changeSet.status === "PUBLISHED"
+        && baseSnapshot.changeSet.effectiveOn === snapshot.changeSet.effectiveOn,
       nodes: snapshot.nodes.map((item) => ({
         ...item,
         memberCount: snapshot.memberships.filter((member) => member.nodeKey === item.stableKey).length,
@@ -356,6 +366,33 @@ export async function registerOrganizationAdminRoutes(
       leaderPositionKey: snapshot.authorityBindings.find((binding) => binding.subjectKind === "NODE" && binding.subjectKey === item.stableKey && binding.bindingType === "LEADER")?.targetPositionKey ?? null });
   });
 
+  app.get("/admin/organization/designer/foundation-board-accounts", async (request, reply) => {
+    if (!(await authenticate(request, reply))) return;
+    const result = await pool.query(
+      `SELECT id, email, status FROM accounts
+       WHERE principal_type = 'FOUNDATION_BOARD'
+       ORDER BY (status = 'active') DESC, email`,
+    );
+    return reply.send({ items: result.rows });
+  });
+
+  app.delete("/admin/organization/designer/drafts/:draftId/nodes/:itemId", async (request, reply) => {
+    const principal = await authenticate(request, reply); if (!principal) return;
+    const params = itemParams.safeParse(request.params);
+    if (!params.success) return invalid(reply, "INVALID_ORGANIZATION_NODE", "Invalid organization group.");
+    const counts = await atomicOrganizationMutation(pool, principal, async (transaction) => {
+      const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return null;
+      const deletion = deleteOrganizationSubtree(snapshot, params.data.itemId);
+      if (!deletion) { await reply.status(404).send({ code: "ORGANIZATION_NODE_NOT_FOUND" }); return null; }
+      await transaction.repository.replaceDraftSnapshot(snapshot);
+      await transaction.audit("organization.node.subtree_deleted", "organization_node", params.data.itemId,
+        snapshot.changeSet.id, { stableKey: deletion.stableKey, ...deletion.counts });
+      return deletion.counts;
+    });
+    if (!counts) return;
+    return reply.send(counts);
+  });
+
   app.post("/admin/organization/designer/drafts/:draftId/positions", async (request, reply) => {
     const principal = await authenticate(request, reply); if (!principal) return;
     const params = draftParams.safeParse(request.params); const body = positionInput.safeParse(request.body);
@@ -416,16 +453,28 @@ export async function registerOrganizationAdminRoutes(
       return invalid(reply, "INVALID_ORGANIZATION_INCUMBENCY", "Invalid primary or acting assignment.");
     const mutated = await atomicOrganizationMutation(pool, principal, async (transaction) => {
       const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return false;
+      const position = snapshot.positions.find((item) => item.stableKey === body.data.positionKey);
+      if (!position) { await reply.status(404).send({ code: "ORGANIZATION_POSITION_NOT_FOUND" }); return false; }
+      const accountHolder = (position.holderSource ?? "EMPLOYEE") === "ACCOUNT";
+      if ((!accountHolder && Boolean(body.data.primaryAccountId))
+        || (accountHolder && Boolean(body.data.primaryEmployeeId || body.data.actingEmployeeId))) {
+        await reply.status(400).send({ code: "INVALID_HOLDER_SOURCE", message: "Incumbent must match the position holder source." });
+        return false;
+      }
       snapshot.incumbencies = snapshot.incumbencies.filter((item) => item.positionKey !== body.data.positionKey);
       if (body.data.primaryEmployeeId) snapshot.incumbencies.push({ id: randomUUID(), positionKey: body.data.positionKey,
-        employeeId: body.data.primaryEmployeeId, kind: "PRIMARY", effectiveFrom: body.data.effectiveFrom,
+        employeeId: body.data.primaryEmployeeId, accountId: null, kind: "PRIMARY", effectiveFrom: body.data.effectiveFrom,
+        effectiveTo: null, reason: null });
+      if (body.data.primaryAccountId) snapshot.incumbencies.push({ id: randomUUID(), positionKey: body.data.positionKey,
+        employeeId: null, accountId: body.data.primaryAccountId, kind: "PRIMARY", effectiveFrom: body.data.effectiveFrom,
         effectiveTo: null, reason: null });
       if (body.data.actingEmployeeId) snapshot.incumbencies.push({ id: randomUUID(), positionKey: body.data.positionKey,
-        employeeId: body.data.actingEmployeeId, kind: "ACTING", effectiveFrom: body.data.actingFrom!,
+        employeeId: body.data.actingEmployeeId, accountId: null, kind: "ACTING", effectiveFrom: body.data.actingFrom!,
         effectiveTo: body.data.actingTo!, reason: "Explicit acting mandate" });
       await transaction.repository.replaceDraftSnapshot(snapshot);
       await transaction.audit("organization.incumbencies.replaced", "organization_position", null, snapshot.changeSet.id,
-        { positionKey: body.data.positionKey, vacant: !body.data.primaryEmployeeId, hasActing: Boolean(body.data.actingEmployeeId) });
+        { positionKey: body.data.positionKey, vacant: !body.data.primaryEmployeeId && !body.data.primaryAccountId,
+          holderSource: accountHolder ? "ACCOUNT" : "EMPLOYEE", hasActing: Boolean(body.data.actingEmployeeId) });
       return true;
     });
     if (!mutated) return;
@@ -545,6 +594,27 @@ export async function registerOrganizationAdminRoutes(
     });
     if (!changeSet) return;
     return reply.send(changeSet);
+  });
+
+  app.delete("/admin/organization/designer/drafts/:draftId", async (request, reply) => {
+    const principal = await authenticate(request, reply); if (!principal) return;
+    const params = draftParams.safeParse(request.params);
+    if (!params.success) return invalid(reply, "INVALID_DRAFT_ID", "Invalid draft identifier.");
+    const deleted = await atomicOrganizationMutation(pool, principal, async (transaction) => {
+      const snapshot = await transaction.repository.loadChangeSetSnapshotForUpdate(params.data.draftId);
+      if (!snapshot) { await reply.status(404).send({ code: "ORGANIZATION_DRAFT_NOT_FOUND" }); return false; }
+      if (snapshot.changeSet.status === "PUBLISHED") {
+        await reply.status(409).send({ code: "ORGANIZATION_PUBLISHED_IMMUTABLE", message: "Published organization history cannot be deleted." });
+        return false;
+      }
+      await transaction.audit("organization.draft.discarded", "organization_change_set", snapshot.changeSet.id,
+        snapshot.changeSet.id, { status: snapshot.changeSet.status, effectiveOn: snapshot.changeSet.effectiveOn,
+          nodes: snapshot.nodes.length, positions: snapshot.positions.length });
+      await transaction.client.query("DELETE FROM organization_change_sets WHERE id = $1", [snapshot.changeSet.id]);
+      return true;
+    });
+    if (!deleted) return;
+    return reply.status(204).send();
   });
 
   app.get("/admin/organization/rollout", async (request, reply) => {

@@ -104,7 +104,7 @@ export class OrganizationDraftService {
   }
 
   async publish(changeSetId: string, actorAccountId: string): Promise<void> {
-    const snapshot = await this.repository.loadChangeSetSnapshot(changeSetId);
+    const snapshot = await this.repository.loadChangeSetSnapshotForUpdate(changeSetId);
     if (!snapshot) throw new OrganizationDraftError("CHANGE_SET_NOT_FOUND", "Organization draft was not found.");
     if (snapshot.changeSet.status !== "VALIDATED" || !snapshot.changeSet.validationReport.valid) {
       throw new OrganizationDraftError(
@@ -123,7 +123,7 @@ export class OrganizationDraftService {
   }
 
   private async requireMutable(changeSetId: string): Promise<OrganizationSnapshot> {
-    const snapshot = await this.repository.loadChangeSetSnapshot(changeSetId);
+    const snapshot = await this.repository.loadChangeSetSnapshotForUpdate(changeSetId);
     if (!snapshot) throw new OrganizationDraftError("CHANGE_SET_NOT_FOUND", "Organization draft was not found.");
     if (snapshot.changeSet.status === "PUBLISHED") {
       throw new OrganizationDraftError("CHANGE_SET_PUBLISHED", "Published organization history is immutable.");
@@ -216,7 +216,21 @@ export class OrganizationDraftService {
     for (const incumbency of snapshot.incumbencies.filter(
       (item) => isEffective(item.effectiveFrom, item.effectiveTo, snapshot.changeSet.effectiveOn),
     )) {
-      const eligibility = await this.repository.validateStructuralIncumbent(incumbency.employeeId);
+      const position = snapshot.positions.find((item) => item.stableKey === incumbency.positionKey);
+      if ((position?.holderSource ?? "EMPLOYEE") === "ACCOUNT") {
+        if (!incumbency.accountId || !(await this.repository.validateStructuralAccount(incumbency.accountId))) {
+          issues.push(issue(
+            "INVALID_ACCOUNT_INCUMBENT",
+            "Account holder must reference a FOUNDATION_BOARD account.",
+            "incumbency",
+            incumbency.id,
+          ));
+        }
+        continue;
+      }
+      const eligibility = incumbency.employeeId
+        ? await this.repository.validateStructuralIncumbent(incumbency.employeeId)
+        : { eligible: false, reason: "EMPLOYEE_NOT_ACTIVE" as const };
       if (!eligibility.eligible) {
         issues.push(issue(
           "INACTIVE_INCUMBENT",
@@ -227,6 +241,58 @@ export class OrganizationDraftService {
       }
     }
   }
+}
+
+export interface OrganizationSubtreeDeletionCounts {
+  childGroups: number;
+  positions: number;
+  memberships: number;
+  incumbencies: number;
+  authorityBindings: number;
+  reportingOverrides: number;
+}
+
+export function deleteOrganizationSubtree(
+  snapshot: OrganizationSnapshot,
+  selectedNodeId: string,
+): { stableKey: string; counts: OrganizationSubtreeDeletionCounts } | null {
+  const selected = snapshot.nodes.find((item) => item.id === selectedNodeId);
+  if (!selected) return null;
+  const nodeKeys = new Set([selected.stableKey]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const node of snapshot.nodes) {
+      if (node.parentNodeKey && nodeKeys.has(node.parentNodeKey) && !nodeKeys.has(node.stableKey)) {
+        nodeKeys.add(node.stableKey);
+        changed = true;
+      }
+    }
+  }
+  const positionKeys = new Set(
+    snapshot.positions.filter((item) => nodeKeys.has(item.nodeKey)).map((item) => item.stableKey),
+  );
+  const counts = {
+    childGroups: nodeKeys.size - 1,
+    positions: positionKeys.size,
+    memberships: snapshot.memberships.filter((item) => nodeKeys.has(item.nodeKey)).length,
+    incumbencies: snapshot.incumbencies.filter((item) => positionKeys.has(item.positionKey)).length,
+    authorityBindings: snapshot.authorityBindings.filter((item) =>
+      positionKeys.has(item.targetPositionKey)
+      || (item.subjectKind === "NODE" ? nodeKeys.has(item.subjectKey) : positionKeys.has(item.subjectKey))).length,
+    reportingOverrides: snapshot.reportingOverrides.filter((item) =>
+      item.managerPositionKey !== null && positionKeys.has(item.managerPositionKey)).length,
+  };
+  snapshot.nodes = snapshot.nodes.filter((item) => !nodeKeys.has(item.stableKey));
+  snapshot.positions = snapshot.positions.filter((item) => !positionKeys.has(item.stableKey));
+  snapshot.memberships = snapshot.memberships.filter((item) => !nodeKeys.has(item.nodeKey));
+  snapshot.incumbencies = snapshot.incumbencies.filter((item) => !positionKeys.has(item.positionKey));
+  snapshot.authorityBindings = snapshot.authorityBindings.filter((item) =>
+    !positionKeys.has(item.targetPositionKey)
+    && !(item.subjectKind === "NODE" ? nodeKeys.has(item.subjectKey) : positionKeys.has(item.subjectKey)));
+  snapshot.reportingOverrides = snapshot.reportingOverrides.filter((item) =>
+    item.managerPositionKey === null || !positionKeys.has(item.managerPositionKey));
+  return { stableKey: selected.stableKey, counts };
 }
 
 async function safelyResolve<T>(operation: () => Promise<T>): Promise<T | null> {
@@ -301,7 +367,7 @@ function routingFingerprint(snapshot: OrganizationSnapshot): string {
       item.effectiveFrom, item.effectiveTo]),
     memberships: order(snapshot.memberships, (item) => [item.employeeId, item.nodeKey,
       item.jobProfileKey, item.isPrimary, item.effectiveFrom, item.effectiveTo]),
-    incumbencies: order(snapshot.incumbencies, (item) => [item.positionKey, item.employeeId,
+    incumbencies: order(snapshot.incumbencies, (item) => [item.positionKey, item.employeeId, item.accountId,
       item.kind, item.effectiveFrom, item.effectiveTo]),
     authorityBindings: order(snapshot.authorityBindings, (item) => [item.subjectKind,
       item.subjectKey, item.bindingType, item.targetPositionKey, item.vacancyPolicy,

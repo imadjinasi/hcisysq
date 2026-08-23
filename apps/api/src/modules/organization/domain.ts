@@ -61,6 +61,8 @@ export interface OrganizationPosition extends EffectivePeriod {
   vacancyPolicy: VacancyPolicy;
   active: boolean;
   visualRankOffset: number;
+  /** Defaults to EMPLOYEE for snapshots created before migration 0020. */
+  holderSource?: "EMPLOYEE" | "ACCOUNT";
 }
 
 export interface OrganizationMembership extends EffectivePeriod {
@@ -74,7 +76,8 @@ export interface OrganizationMembership extends EffectivePeriod {
 export interface OrganizationIncumbency extends EffectivePeriod {
   id: string;
   positionKey: string;
-  employeeId: string;
+  employeeId: string | null;
+  accountId?: string | null;
   kind: IncumbencyKind;
   reason: string | null;
 }
@@ -227,6 +230,7 @@ export type OrganizationResolutionErrorCode =
   | "AUTHORITY_VACANT"
   | "ACTING_AUTHORITY_REQUIRED"
   | "AUTHORITY_INELIGIBLE"
+  | "ACCOUNT_HOLDER_NOT_ACTIONABLE"
   | "AUTHORITY_SELF_RESOLUTION"
   | "AUTHORITY_CYCLE"
   | "AUTHORITY_TRAVERSAL_LIMIT";

@@ -314,6 +314,20 @@ export class OrganizationAuthorityResolver {
         }
         const candidate = candidates[0];
         if (!candidate) continue;
+        if ((position.holderSource ?? "EMPLOYEE") === "ACCOUNT" || candidate.accountId) {
+          throw new OrganizationResolutionError(
+            "ACCOUNT_HOLDER_NOT_ACTIONABLE",
+            "This authority is held by a governance account and cannot act as an employee workflow approver.",
+            { positionKey, accountId: candidate.accountId ?? null },
+          );
+        }
+        if (!candidate.employeeId) {
+          throw new OrganizationResolutionError(
+            "AUTHORITY_NOT_CONFIGURED",
+            "Employee-held position has no employee incumbent.",
+            { positionKey },
+          );
+        }
         const eligibility = await this.eligibilityValidator.validate(candidate.employeeId, {
           effectiveDate: context.effectiveDate,
           workflowKey: context.workflowKey,
