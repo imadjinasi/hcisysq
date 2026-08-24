@@ -347,7 +347,8 @@ export function replaceOrganizationMemberships(
   draftId: string,
   input: {
     nodeKey: string;
-    employeeIds: string[];
+    memberships: Array<{ employeeId: string; isPrimary: boolean }>;
+    confirmPrimarySwitchEmployeeIds?: string[];
     effectiveFrom: string;
     effectiveTo?: string | null;
   },

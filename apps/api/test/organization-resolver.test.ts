@@ -22,6 +22,7 @@ const employeeIds = {
   acting: "employee-acting",
   secretary: "employee-secretary",
   chair: "employee-chair",
+  nanda: "employee-nanda",
 };
 
 function snapshot(
@@ -103,13 +104,13 @@ function position(
   };
 }
 
-function membership(id: string, employeeId: string) {
+function membership(id: string, employeeId: string, nodeKey = "node-team", isPrimary = true) {
   return {
     id,
     employeeId,
-    nodeKey: "node-team",
+    nodeKey,
     jobProfileKey: null,
-    isPrimary: true,
+    isPrimary,
     effectiveFrom,
     effectiveTo: null,
   };
@@ -170,6 +171,66 @@ function resolver(
 }
 
 describe("ORG-004 authority resolver", () => {
+  it("keeps Nanda's SMPIT primary while allowing a concurrent SDIT secondary membership", async () => {
+    const structure = snapshot({
+      nodes: [node("node-smpit", null, 0), node("node-sdit", null, 0)],
+      positions: [
+        position("position-smpit-head", "node-smpit", null),
+        position("position-sdit-head", "node-sdit", null),
+      ],
+      memberships: [
+        membership("nanda-smpit", employeeIds.nanda, "node-smpit", true),
+        membership("nanda-sdit", employeeIds.nanda, "node-sdit", false),
+      ],
+      incumbencies: [
+        incumbency("smpit-head", "position-smpit-head", employeeIds.head, "PRIMARY"),
+        incumbency("sdit-head", "position-sdit-head", employeeIds.director, "PRIMARY"),
+      ],
+      authorityBindings: [
+        binding("smpit-leader", "NODE", "node-smpit", "LEADER", "position-smpit-head"),
+        binding("sdit-leader", "NODE", "node-sdit", "LEADER", "position-sdit-head"),
+      ],
+    });
+
+    await expect(resolver(structure).resolveDirectManager({
+      requesterEmployeeId: employeeIds.nanda,
+      effectiveDate: "2026-08-22",
+    })).resolves.toMatchObject({ employeeId: employeeIds.head });
+    expect(structure.memberships.filter((item) => item.employeeId === employeeIds.nanda && item.isPrimary))
+      .toHaveLength(1);
+  });
+
+  it("switches Nanda's primary membership deliberately and rejects two concurrent primaries", async () => {
+    const structure = snapshot({
+      nodes: [node("node-smpit", null, 0), node("node-sdit", null, 0)],
+      positions: [
+        position("position-smpit-head", "node-smpit", null),
+        position("position-sdit-head", "node-sdit", null),
+      ],
+      memberships: [
+        membership("nanda-smpit", employeeIds.nanda, "node-smpit", false),
+        membership("nanda-sdit", employeeIds.nanda, "node-sdit", true),
+      ],
+      incumbencies: [
+        incumbency("smpit-head", "position-smpit-head", employeeIds.head, "PRIMARY"),
+        incumbency("sdit-head", "position-sdit-head", employeeIds.director, "PRIMARY"),
+      ],
+      authorityBindings: [
+        binding("smpit-leader", "NODE", "node-smpit", "LEADER", "position-smpit-head"),
+        binding("sdit-leader", "NODE", "node-sdit", "LEADER", "position-sdit-head"),
+      ],
+    });
+    await expect(resolver(structure).resolveDirectManager({
+      requesterEmployeeId: employeeIds.nanda,
+      effectiveDate: "2026-08-22",
+    })).resolves.toMatchObject({ employeeId: employeeIds.director });
+
+    structure.memberships[0] = { ...structure.memberships[0]!, isPrimary: true };
+    await expect(resolver(structure).resolveDirectManager({
+      requesterEmployeeId: employeeIds.nanda,
+      effectiveDate: "2026-08-22",
+    })).rejects.toMatchObject({ code: "AMBIGUOUS_MEMBERSHIP" });
+  });
   it("uses the explicit primary structural position for requester reporting while retaining rangkap positions", async () => {
     const structure = snapshot({
       positions: [

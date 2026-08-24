@@ -380,6 +380,7 @@ function positionDeletionImpact(
 
 function MembershipEditor({
   node,
+  nodes,
   employees,
   memberships,
   saving,
@@ -387,6 +388,7 @@ function MembershipEditor({
   onSubmit,
 }: {
   node: OrganizationNode;
+  nodes: OrganizationNode[];
   employees: OrganizationEmployeeOption[];
   memberships: OrganizationDesignerView["memberships"];
   saving: boolean;
@@ -401,6 +403,11 @@ function MembershipEditor({
           .map((item) => item.employeeId),
       ),
   );
+  const [primaryByEmployeeId, setPrimaryByEmployeeId] = useState(() => new Map(
+    memberships
+      .filter((item) => item.nodeKey === node.stableKey)
+      .map((item) => [item.employeeId, item.isPrimary ?? false]),
+  ));
   const [legacyUnit, setLegacyUnit] = useState("");
   const [manualUnit, setManualUnit] = useState("");
   const [search, setSearch] = useState("");
@@ -432,6 +439,29 @@ function MembershipEditor({
       else next.delete(employeeId);
       return next;
     });
+    if (checked && !primaryByEmployeeId.has(employeeId)) {
+      setPrimaryByEmployeeId((current) => {
+        const next = new Map(current);
+        next.set(employeeId, !memberships.some((item) => item.employeeId === employeeId && item.nodeKey !== node.stableKey && item.isPrimary));
+        return next;
+      });
+    }
+  };
+  const primaryMembershipByEmployeeId = new Map(
+    memberships
+      .filter((item) => item.nodeKey !== node.stableKey && item.isPrimary)
+      .map((item) => [item.employeeId, item]),
+  );
+  const nodePath = (nodeKey: string) => {
+    const parts: string[] = [];
+    let current = nodes.find((item) => item.stableKey === nodeKey);
+    while (current) {
+      parts.unshift(current.name);
+      current = current.parentNodeKey
+        ? nodes.find((item) => item.stableKey === current!.parentNodeKey)
+        : undefined;
+    }
+    return parts.join(" / ") || nodeKey;
   };
 
   return (
@@ -542,6 +572,29 @@ function MembershipEditor({
           value={employeeId}
         />
       ))}
+      {[...selected].filter((employeeId) => primaryByEmployeeId.get(employeeId) ?? !primaryMembershipByEmployeeId.has(employeeId)).map((employeeId) => (
+        <input key={`primary-${employeeId}`} type="hidden" name="primaryEmployeeIds" value={employeeId} />
+      ))}
+      <section className="mt-3 space-y-3 rounded-xl border border-border bg-surface/60 p-3" aria-label="Jenis keanggotaan">
+        <p className="text-xs font-bold text-brand-heading">Status keanggotaan</p>
+        {[...selected].map((employeeId) => {
+          const employee = employees.find((item) => item.id === employeeId);
+          const existingPrimary = primaryMembershipByEmployeeId.get(employeeId);
+          const isPrimary = primaryByEmployeeId.get(employeeId) ?? !existingPrimary;
+          return (
+            <div key={`membership-mode-${employeeId}`} className="rounded-lg border border-border bg-white p-3">
+              <p className="text-sm font-semibold text-brand-heading">{employee?.fullName ?? employeeId}</p>
+              {existingPrimary ? <p className="mt-1 text-[11px] text-muted-foreground">Unit utama saat ini: {nodePath(existingPrimary.nodeKey)}</p> : null}
+              <p className="mt-1 text-[11px] text-muted-foreground">Menambahkan ke: {nodePath(node.stableKey)}</p>
+              <div className="mt-2 flex flex-wrap gap-3 text-xs">
+                <label className="flex items-center gap-1.5"><input type="radio" name={`membershipMode-${employeeId}`} checked={isPrimary} onChange={() => setPrimaryByEmployeeId((current) => new Map(current).set(employeeId, true))} /> Jadikan keanggotaan utama</label>
+                <label className="flex items-center gap-1.5"><input type="radio" name={`membershipMode-${employeeId}`} checked={!isPrimary} onChange={() => setPrimaryByEmployeeId((current) => new Map(current).set(employeeId, false))} /> Keanggotaan tambahan / rangkap unit</label>
+              </div>
+              {existingPrimary && isPrimary ? <label className="mt-3 flex items-start gap-2 text-[11px] text-amber-900"><input type="checkbox" name="confirmPrimarySwitchEmployeeIds" value={employeeId} className="mt-0.5" /> Saya konfirmasi unit utama sebelumnya tetap disimpan sebagai keanggotaan tambahan.</label> : null}
+            </div>
+          );
+        })}
+      </section>
       <div
         className="mt-2 max-h-[18rem] space-y-1 overflow-y-auto overscroll-contain rounded-xl border border-border p-2"
         aria-live="polite"
@@ -1123,7 +1176,11 @@ export function AdminOrganizationPage() {
       () =>
         replaceOrganizationMemberships(data.draft!.id, {
           nodeKey: editor.node.stableKey,
-          employeeIds: form.getAll("employeeIds").map(String),
+          memberships: form.getAll("employeeIds").map(String).map((employeeId) => ({
+            employeeId,
+            isPrimary: form.getAll("primaryEmployeeIds").map(String).includes(employeeId),
+          })),
+          confirmPrimarySwitchEmployeeIds: form.getAll("confirmPrimarySwitchEmployeeIds").map(String),
           effectiveFrom: data.draft!.effectiveOn,
         }),
       "Keanggotaan kelompok diperbarui.",
@@ -2531,6 +2588,7 @@ export function AdminOrganizationPage() {
         >
           <MembershipEditor
             node={action.node}
+            nodes={data?.nodes ?? []}
             employees={employees}
             memberships={data?.memberships ?? []}
             saving={saving}

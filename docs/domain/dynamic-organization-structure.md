@@ -258,6 +258,14 @@ A seat belongs to the structure and may have a structural parent. It may exist w
 
 Connects an employee to a team/node for an effective period.
 
+An employee may hold multiple concurrent ordinary memberships. Exactly one
+effective membership is `PRIMARY`; zero or more are `SECONDARY`. Only the
+primary membership is used for requester reporting and Leave routing. A
+secondary membership never promotes itself or changes resolver input. Changing
+the primary membership is an explicit, confirmed draft-only transaction that
+demotes the overlapping previous primary to secondary; it never deletes the
+other-node membership.
+
 Example:
 
 ```text

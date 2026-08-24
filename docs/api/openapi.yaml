@@ -510,14 +510,28 @@ paths:
           application/json:
             schema:
               type: object
-              required: [nodeKey, employeeIds, effectiveFrom]
+              required: [nodeKey, memberships, effectiveFrom]
               properties:
                 nodeKey: { type: string, format: uuid }
-                employeeIds: { type: array, maxItems: 500, items: { type: string, format: uuid } }
+                memberships:
+                  type: array
+                  maxItems: 500
+                  items:
+                    type: object
+                    required: [employeeId, isPrimary]
+                    properties:
+                      employeeId: { type: string, format: uuid }
+                      isPrimary: { type: boolean, description: Exactly one effective primary membership is permitted per employee; false denotes an additional unit membership. }
+                confirmPrimarySwitchEmployeeIds:
+                  type: array
+                  maxItems: 500
+                  description: Required for each employee whose overlapping primary membership on another node is atomically demoted to secondary.
+                  items: { type: string, format: uuid }
                 effectiveFrom: { type: string, format: date }
                 effectiveTo: { type: [string, 'null'], format: date }
       responses:
-        '204': { description: Effective memberships replaced for the selected group }
+        '204': { description: Effective memberships replaced only for the selected group; other-node memberships are preserved. }
+        '409': { description: An overlapping primary switch needs confirmation or a primary-membership invariant would be violated. }
         '403': { $ref: '#/components/responses/Forbidden' }
 
   /admin/organization/designer/drafts/{draftId}/incumbencies:

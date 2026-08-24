@@ -318,8 +318,33 @@ describe("Organization Designer chart", () => {
     expect(parent.visualDepth).toBe(2);
     expect(child.requestedVisualDepth).toBe(2);
     expect(child.visualDepth).toBeGreaterThan(parent.visualDepth);
-    expect(offsetChild.visualDepth).toBeGreaterThan(parent.visualDepth);
+    expect(offsetChild.visualDepth).toBe(child.visualDepth + 1);
     expect(byKey.get(parent.stableKey)?.y).toBeLessThan(byKey.get(child.stableKey)?.y ?? 0);
+  });
+
+  it("keeps Normal, +1, +2, and +3 in distinct visual rows after an offset parent", () => {
+    const offsetParent = childNode("offset-parent", "Offset parent", 2);
+    const variants = [0, 1, 2, 3].map((visualRankOffset) => ({
+      ...childNode(`child-${visualRankOffset}`, `Child ${visualRankOffset}`, visualRankOffset),
+      parentNodeKey: offsetParent.stableKey,
+    }));
+    const roots = buildOrganizationTree([baseNode, offsetParent, ...variants], []);
+    const children = roots[0]!.children[0]!.children.sort((a, b) => a.visualRankOffset - b.visualRankOffset);
+    const layout = layoutOrganizationChart({
+      roots,
+      expandedKeys: new Set(["foundation", "offset-parent"]),
+      cardWidth: 280,
+      columnGap: 32,
+      rowGap: 52,
+      defaultCardHeight: 132,
+    });
+    const byKey = new Map(layout.items.map((item) => [item.item.stableKey, item]));
+
+    expect(children.map((item) => item.visualDepth)).toEqual([4, 5, 6, 7]);
+    expect(children[1]!.visualDepth - children[0]!.visualDepth).toBe(1);
+    expect(children[2]!.visualDepth - children[0]!.visualDepth).toBe(2);
+    expect(children[3]!.visualDepth - children[0]!.visualDepth).toBe(3);
+    expect(byKey.get("child-1")!.y).toBeGreaterThan(byKey.get("child-0")!.y);
   });
 
   it("does not allow a normal child to rise above a parent offset by two bands", () => {

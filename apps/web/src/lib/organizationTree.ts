@@ -57,13 +57,15 @@ function resolvedPositionVisualDepths(
     const known = resolved.get(key);
     if (known !== undefined) return known;
     const position = byKey.get(key);
-    const requested = (structuralDepths.get(key) ?? 0) + (position?.visualRankOffset ?? 0);
+    const structuralDepth = structuralDepths.get(key) ?? 0;
     if (!position?.parentPositionKey || !byKey.has(position.parentPositionKey) || visiting.has(key)) {
-      resolved.set(key, requested);
-      return requested;
+      const resolvedDepth = structuralDepth + (position?.visualRankOffset ?? 0);
+      resolved.set(key, resolvedDepth);
+      return resolvedDepth;
     }
     const parentDepth = visit(position.parentPositionKey, new Set(visiting).add(key));
-    const depth = Math.max(requested, parentDepth + 1);
+    const normalVisualDepth = Math.max(structuralDepth, parentDepth + 1);
+    const depth = normalVisualDepth + (position.visualRankOffset ?? 0);
     resolved.set(key, depth);
     return depth;
   };
@@ -119,10 +121,11 @@ export function buildOrganizationTree(
   ) => {
     for (const item of items) {
       item.structuralDepth = structuralDepth;
+      const normalVisualDepth = parentVisualDepth === null
+        ? structuralDepth
+        : Math.max(structuralDepth, parentVisualDepth + 1);
       item.requestedVisualDepth = structuralDepth + item.visualRankOffset;
-      item.visualDepth = parentVisualDepth === null
-        ? item.requestedVisualDepth
-        : Math.max(item.requestedVisualDepth, parentVisualDepth + 1);
+      item.visualDepth = normalVisualDepth + item.visualRankOffset;
       assignDepth(item.children, structuralDepth + 1, item.visualDepth);
     }
   };

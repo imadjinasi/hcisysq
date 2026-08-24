@@ -106,7 +106,8 @@ The implementation may use an internal concept such as `visual_offset`, `display
 The exact physical field name is an implementation decision, but the semantics must remain:
 
 ```text
-render depth = structural depth + visual offset
+normal visual depth = max(structural depth, parent resolved visual depth + 1)
+resolved visual depth = normal visual depth + visual offset
 ```
 
 Illustrative values:
@@ -254,10 +255,12 @@ Canvas cards do not show `+1` / `+2` / `+3` badges, so the presentation
 metadata does not compete with structural content. The selected-item inspector
 retains the complete placement explanation.
 
-The renderer lays out `structuralDepth + visualRankOffset` as an actual visual
-band using a fixed complete row pitch for each rendered item type, rather than
-a fractional card-height spacer. Normal siblings retain their structural row;
-each `+N` advances exactly N discrete pitches. Connectors are explicit and keep
+The renderer first determines the normal row from the structural depth and the
+resolved parent row, then applies `visualRankOffset` as an actual visual band
+using a fixed complete row pitch for each rendered item type, rather than a
+fractional card-height spacer. This means a child of an offset parent still has
+a normal row below that parent, and its `+N` advances exactly N additional
+discrete pitches. Connectors are explicit and keep
 the real parent: center-aware sibling segments span only the first and last real
 child centers even when a child subtree is wider, and a single child has no
 horizontal extension.

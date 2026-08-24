@@ -45,7 +45,8 @@ const positionInput = z.object({
 const positionPatch = positionInput.partial().extend({ active: z.boolean().optional() });
 const membershipInput = z.object({
   nodeKey: uuid,
-  employeeIds: z.array(uuid).max(500),
+  memberships: z.array(z.object({ employeeId: uuid, isPrimary: z.boolean() })).max(500),
+  confirmPrimarySwitchEmployeeIds: z.array(uuid).max(500).default([]),
   effectiveFrom: date,
   effectiveTo: date.nullable().optional(),
 });
@@ -99,6 +100,14 @@ const rolloutInput = z.object({
 
 function invalid(reply: FastifyReply, code: string, message: string) {
   return reply.status(400).send({ code, message });
+}
+
+function periodsOverlap(
+  first: { effectiveFrom: string; effectiveTo: string | null },
+  second: { effectiveFrom: string; effectiveTo: string | null },
+) {
+  return first.effectiveFrom <= (second.effectiveTo ?? "9999-12-31")
+    && second.effectiveFrom <= (first.effectiveTo ?? "9999-12-31");
 }
 
 async function insertAuditEvent(
@@ -492,13 +501,40 @@ export async function registerOrganizationAdminRoutes(
       return invalid(reply, "INVALID_ORGANIZATION_MEMBERSHIP", "Invalid membership assignment.");
     const mutated = await atomicOrganizationMutation(pool, principal, async (transaction) => {
       const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return false;
-      snapshot.memberships = snapshot.memberships.filter((item) => item.nodeKey !== body.data.nodeKey);
-      snapshot.memberships.push(...body.data.employeeIds.map((employeeId) => ({ id: randomUUID(), employeeId,
-        nodeKey: body.data.nodeKey, jobProfileKey: null, isPrimary: true,
+      const submitted = new Map(body.data.memberships.map((item) => [item.employeeId, item]));
+      if (submitted.size !== body.data.memberships.length) {
+        await reply.status(400).send({ code: "DUPLICATE_ORGANIZATION_MEMBERSHIP", message: "Each employee can be submitted once per team." });
+        return false;
+      }
+      const submittedPeriod = { effectiveFrom: body.data.effectiveFrom, effectiveTo: body.data.effectiveTo ?? null };
+      const primarySwitches = body.data.memberships.filter((item) => item.isPrimary).flatMap((item) => {
+        const existing = snapshot.memberships.filter((membership) => membership.employeeId === item.employeeId
+          && membership.nodeKey !== body.data.nodeKey && membership.isPrimary
+          && periodsOverlap(membership, submittedPeriod));
+        return existing.length > 0 ? [item.employeeId] : [];
+      });
+      const confirmed = new Set(body.data.confirmPrimarySwitchEmployeeIds);
+      const unconfirmed = primarySwitches.filter((employeeId) => !confirmed.has(employeeId));
+      if (unconfirmed.length > 0) {
+        await reply.status(409).send({
+          code: "PRIMARY_MEMBERSHIP_SWITCH_CONFIRMATION_REQUIRED",
+          message: "Confirm the primary membership switch before replacing the existing primary membership.",
+          employeeIds: unconfirmed,
+        });
+        return false;
+      }
+      const switching = new Set(primarySwitches);
+      snapshot.memberships = snapshot.memberships
+        .filter((item) => item.nodeKey !== body.data.nodeKey)
+        .map((item) => switching.has(item.employeeId) && item.isPrimary && periodsOverlap(item, submittedPeriod)
+          ? { ...item, isPrimary: false }
+          : item);
+      snapshot.memberships.push(...body.data.memberships.map((item) => ({ id: randomUUID(), employeeId: item.employeeId,
+        nodeKey: body.data.nodeKey, jobProfileKey: null, isPrimary: item.isPrimary,
         effectiveFrom: body.data.effectiveFrom, effectiveTo: body.data.effectiveTo ?? null })));
       await transaction.repository.replaceDraftSnapshot(snapshot);
       await transaction.audit("organization.memberships.replaced", "organization_node", null, snapshot.changeSet.id,
-        { nodeKey: body.data.nodeKey, memberCount: body.data.employeeIds.length });
+        { nodeKey: body.data.nodeKey, memberCount: body.data.memberships.length, primarySwitches });
       return true;
     });
     if (!mutated) return;
