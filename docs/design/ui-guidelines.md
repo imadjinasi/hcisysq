@@ -1,6 +1,6 @@
 # UI and Design Guidelines
 
-**Status:** ACTIVE FOUNDATION
+**Status:** ACTIVE PRODUCTION UI SYSTEM
 
 ## Canonical ownership
 
@@ -38,6 +38,53 @@ Define and reuse:
 - density for table/form layouts.
 
 Do not hardcode status meaning per page. Status needs label/icon/text and may use semantic color as secondary reinforcement.
+
+## Production interface system
+
+This section is the authoritative UI system for production HCIS. It extends the foundation; it does not replace the YSQ semantic colors in the brand guideline.
+
+### Typography
+
+Use the following target scale in production surfaces:
+
+| Role | Size | Use |
+|---|---:|---|
+| Metadata / compact | 12px | supporting metadata, badges, table headers, sidebar group labels |
+| Body | 14px | navigation, fields, controls, tables, and ordinary copy |
+| Section heading | 16px | card and section titles |
+| Mobile page heading | 20px | employee page title at narrow widths |
+| Desktop page heading | 28px | desktop/admin page title |
+
+Avoid arbitrary 9px, 10px, 11px, and 13px text for primary production UI. Existing untouched exceptions may remain while their owning component is normalized. The heading stack is `"LT Museum", "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`; LT Museum is a licensed optional font and must not be bundled or fetched until supplied. Body uses Inter followed by the same system fallbacks.
+
+Employee surfaces are mobile-first and readable with generous line-height; administration may use a denser desktop layout without reducing ordinary text below 14px. Metadata may be 12px only when it is clearly subordinate.
+
+### Spacing, shape, and elevation
+
+- Use a 4px spacing rhythm: 4, 8, 12, 16, 20, 24, 32, 40, 48px. Prefer a gap or padding from this scale rather than one-off values.
+- Fields and standard controls use 12px (`rounded-xl`) corners; cards use 16–24px, with 32px reserved for prominent employee cards and sheets.
+- Use no elevation for ordinary grouped content, `--shadow-soft` for cards/fields, and `--shadow-raised` only for floating navigation, sheets, and prominent containers. Never use decorative glow.
+- Content is centered at `max-w-7xl`; employee desktop content reserves the persistent sidebar, and admin layout uses a fixed ~232px sidebar plus a `minmax(0, 1fr)` content column. Every table parent inside a grid/flex column must have `min-w-0`.
+
+### Navigation and layout
+
+- Sidebar groups use sentence case or restrained uppercase at 12px semibold with modest tracking. Navigation items are 14px semibold and use a clear semantic-color active surface.
+- Employee mobile navigation has four equal slots, 12px labels, visible focus, safe-area-aware placement, and an at-least-44px target. It is capability-aware: normal employees receive Beranda, Hadir, Cuti, and Lainnya; employees with live approval work receive Beranda, Hadir, Persetujuan, and Lainnya. Do not infer this from title.
+- `Lainnya` contains only real, authorized routes. It includes Slip Gaji and relevant secondary leave routes; placeholders must not be presented as navigation.
+
+### Canonical primitives
+
+Use the smallest appropriate shared primitive when a touched surface repeats it: Button (primary, secondary, destructive), IconButton, Field, PageHeader, StatusBadge, and Alert/feedback state. Add SearchInput, FilterBar, Dialog, MobileSheet, DataTable, or EmptyState only once there is immediate reuse; do not introduce a component framework or convert unrelated screens opportunistically.
+
+Buttons use 14px semibold/bold text, an obvious primary action, visible focus, disabled state, and a 44px target on employee mobile actions. IconButton is square and labelled with `aria-label`. Fields have persistent labels, nearby validation, and 14px input text. Search and filters preserve submitted/query state and do not hide active filters.
+
+### Content states and components
+
+- Tables retain readable column widths and scroll within their own container; they must never widen the document. On small employee views, use a detail/card pattern when a table would not be comprehensible.
+- Cards contain one clear purpose and use semantic status badges with text; color is secondary reinforcement.
+- Loading, empty, error, offline/slow, forbidden, and read-only states state what happened and a legitimate next action when one exists. Never show fabricated zeroes, facts, or disabled fake workflow actions.
+- Dialogs confirm destructive or consequential actions, preserve focus, label their outcome, and offer a safe cancel path. On mobile, use a sheet only when it improves reachability and preserve safe-area spacing.
+- Destructive actions use the destructive token, an explicit consequence, and confirmation appropriate to risk; they do not rely on color alone.
 
 ## Interaction principles
 

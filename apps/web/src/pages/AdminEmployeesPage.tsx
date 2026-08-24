@@ -145,14 +145,14 @@ export function AdminEmployeesPage() {
         </form>
       </section>
 
-      <section className="mt-4 overflow-hidden rounded-2xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
+      <section className="mt-4 min-w-0 overflow-hidden rounded-2xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
         {error ? (
           <div className="p-6 text-sm text-destructive">{error}</div>
         ) : loading ? (
           <div className="p-8 text-center text-sm text-muted-foreground">Memuat data pegawai...</div>
         ) : data?.items.length ? (
           <>
-            <div className="overflow-x-auto">
+            <div className="max-w-full overflow-x-auto overscroll-x-contain">
               <table className="w-full min-w-[900px] border-collapse text-left text-sm">
                 <thead className="bg-surface text-xs text-muted-foreground">
                   <tr>

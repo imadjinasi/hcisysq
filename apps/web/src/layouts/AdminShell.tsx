@@ -132,7 +132,7 @@ export function AdminShell({
                 aria-expanded={!collapsed}
                 aria-controls={`admin-nav-${group.key}`}
                 onClick={() => toggleGroup(group.key)}
-                className="hidden h-8 w-full min-w-0 items-center justify-between gap-2 rounded-lg px-3 text-left text-[10px] font-bold uppercase tracking-[0.13em] text-muted-foreground hover:bg-muted/70 lg:flex"
+                className="hidden h-8 w-full min-w-0 items-center justify-between gap-2 rounded-lg px-3 text-left text-xs font-semibold tracking-wide text-muted-foreground hover:bg-muted/70 lg:flex"
               >
                 <span className="min-w-0 truncate" title={group.label}>{group.label}</span>
                 <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 transition-transform", collapsed && "-rotate-90")} aria-hidden="true" />
@@ -148,7 +148,7 @@ export function AdminShell({
                     aria-current={selected ? "page" : undefined}
                     title={item.label}
                     className={cn(
-                      "flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-xl px-3 py-2 text-[13px] font-semibold transition-colors lg:mb-0.5 lg:w-full lg:min-w-0 lg:shrink",
+                      "flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold transition-colors lg:mb-0.5 lg:w-full lg:min-w-0 lg:shrink",
                       selected ? "bg-brand-primary-pale text-brand-primary-deep" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
                     )}
                   >

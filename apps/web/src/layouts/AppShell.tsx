@@ -4,11 +4,9 @@ import {
   CalendarDays,
   ClipboardCheck,
   Clock3,
-  FolderOpen,
-  GraduationCap,
   Home,
+  MoreHorizontal,
   ShieldCheck,
-  UsersRound,
   WalletCards,
 } from "lucide-react";
 
@@ -29,6 +27,7 @@ interface AppShellProps {
   activeItem?: string;
   capabilities?: {
     humanCapitalOrganization?: boolean;
+    approvalResponsibility?: boolean;
   };
 }
 
@@ -37,21 +36,16 @@ const employeeNavigation = [
   { label: "Kehadiran", href: "/app/attendance", icon: Clock3 },
   { label: "Cuti & Izin", href: "/app/leave", icon: CalendarDays },
   { label: "Slip Gaji", href: "/app/payslips", icon: WalletCards },
-  { label: "Dokumen", href: "#", icon: FolderOpen },
-  { label: "Pengembangan", href: "#", icon: GraduationCap },
 ];
 
 const managementNavigation = [
   { label: "Persetujuan", href: "/app/approvals", icon: ClipboardCheck },
-  { label: "Tim Saya", href: "#", icon: UsersRound },
 ];
 
 const mobileNavigation = [
   { label: "Beranda", activeLabel: "Beranda", href: "/app", icon: Home },
   { label: "Hadir", activeLabel: "Kehadiran", href: "/app/attendance", icon: Clock3 },
   { label: "Cuti", activeLabel: "Cuti & Izin", href: "/app/leave", icon: CalendarDays },
-  { label: "Approval", activeLabel: "Persetujuan", href: "/app/approvals", icon: ClipboardCheck },
-  { label: "Slip", activeLabel: "Slip Gaji", href: "/app/payslips", icon: WalletCards },
 ];
 
 function NavigationLink({
@@ -98,7 +92,12 @@ export function AppShell({
   capabilities,
 }: AppShellProps) {
   const hasOrganizationHcAccess = capabilities?.humanCapitalOrganization === true;
+  const hasApprovalResponsibility = capabilities?.approvalResponsibility === true;
   const managementLabel = hasOrganizationHcAccess ? "Human Capital" : user.additionalRole;
+  const mobilePrimaryNavigation = hasApprovalResponsibility
+    ? [mobileNavigation[0], mobileNavigation[1], { label: "Persetujuan", activeLabel: "Persetujuan", href: "/app/approvals", icon: ClipboardCheck }]
+    : mobileNavigation;
+  const moreIsActive = activeItem === "Slip Gaji" || (!hasApprovalResponsibility && activeItem === "Persetujuan");
 
   return (
     <div className="min-h-screen bg-surface text-foreground">
@@ -216,8 +215,8 @@ export function AppShell({
         <main className="mx-auto max-w-7xl px-4 pb-28 pt-6 sm:px-6 sm:pt-8 lg:px-8 lg:pb-10">{children}</main>
       </div>
 
-      <nav className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-5 rounded-[1.75rem] border border-border/80 bg-white/96 p-1.5 shadow-[var(--shadow-raised)] backdrop-blur lg:hidden" aria-label="Navigasi mobile pegawai">
-        {mobileNavigation.map((item) => {
+      <nav className="fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-40 grid grid-cols-4 rounded-[1.75rem] border border-border/80 bg-white/96 p-1.5 shadow-[var(--shadow-raised)] backdrop-blur lg:hidden" aria-label="Navigasi mobile pegawai">
+        {mobilePrimaryNavigation.map((item) => {
           const Icon = item.icon;
           const active = item.activeLabel === activeItem;
           return (
@@ -226,7 +225,7 @@ export function AppShell({
               key={item.label}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "flex min-h-14 flex-col items-center justify-center gap-1 rounded-2xl px-1 text-[10px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "flex min-h-11 flex-col items-center justify-center gap-1 rounded-2xl px-1 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 active ? "bg-brand-primary-pale text-brand-primary-deep" : "text-muted-foreground",
               )}
             >
@@ -235,6 +234,33 @@ export function AppShell({
             </a>
           );
         })}
+        <details className="group relative min-w-0">
+          <summary
+            className={cn(
+              "flex min-h-11 cursor-pointer list-none flex-col items-center justify-center gap-1 rounded-2xl px-1 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              moreIsActive ? "bg-brand-primary-pale text-brand-primary-deep" : "text-muted-foreground",
+            )}
+          >
+            <MoreHorizontal className="h-[19px] w-[19px]" aria-hidden="true" />
+            <span>Lainnya</span>
+          </summary>
+          <div className="absolute bottom-[calc(100%+0.5rem)] right-0 w-56 rounded-2xl border border-border/80 bg-white p-2 shadow-[var(--shadow-raised)]">
+            {hasApprovalResponsibility ? (
+              <a href="/app/leave" className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-semibold text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <CalendarDays className="h-[18px] w-[18px] text-brand-primary-deep" aria-hidden="true" /> Cuti &amp; Izin
+              </a>
+            ) : null}
+            <a href="/app/payslips" className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-semibold text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <WalletCards className="h-[18px] w-[18px] text-brand-primary-deep" aria-hidden="true" /> Slip Gaji
+            </a>
+            <a href="/app/leave/special" className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-semibold text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <CalendarDays className="h-[18px] w-[18px] text-brand-primary-deep" aria-hidden="true" /> Cuti khusus
+            </a>
+            <a href="/app/leave/planned" className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-semibold text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <CalendarDays className="h-[18px] w-[18px] text-brand-primary-deep" aria-hidden="true" /> Cuti terencana
+            </a>
+          </div>
+        </details>
       </nav>
     </div>
   );

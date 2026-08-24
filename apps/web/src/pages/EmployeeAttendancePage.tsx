@@ -108,7 +108,7 @@ export function EmployeeAttendancePage() {
   const today = attendance?.items.find((item) => item.attendanceDate === referenceDate) ?? null;
 
   return (
-    <AppShell user={user} activeItem="Kehadiran">
+    <AppShell user={user} activeItem="Kehadiran" capabilities={{ approvalResponsibility: (summary?.pendingApprovalCount ?? 0) > 0 }}>
       <section>
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Kehadiran saya</p>
         <h1 className="mt-1 text-2xl font-bold tracking-[-0.02em] text-brand-heading sm:text-3xl">Rekaman Kehadiran</h1>

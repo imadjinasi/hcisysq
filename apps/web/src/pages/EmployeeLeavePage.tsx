@@ -147,7 +147,7 @@ export function EmployeeLeavePage() {
   const group = summary?.employee.leaveEntitlementGroup;
 
   return (
-    <AppShell user={user} activeItem="Cuti & Izin">
+    <AppShell user={user} activeItem="Cuti & Izin" capabilities={{ approvalResponsibility: (summary?.pendingApprovalCount ?? 0) > 0 }}>
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">

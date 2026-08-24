@@ -145,7 +145,7 @@ export function EmployeeDashboardPage() {
     <AppShell
       user={user}
       activeItem="Beranda"
-      capabilities={{ humanCapitalOrganization: hasOrganizationHcAccess }}
+      capabilities={{ humanCapitalOrganization: hasOrganizationHcAccess, approvalResponsibility: pendingApprovals > 0 }}
     >
       <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>

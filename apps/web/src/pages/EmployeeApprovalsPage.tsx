@@ -101,7 +101,7 @@ export function EmployeeApprovalsPage() {
   };
 
   return (
-    <AppShell user={user} activeItem="Persetujuan">
+    <AppShell user={user} activeItem="Persetujuan" capabilities={{ approvalResponsibility: true }}>
       <section>
         <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
           Manajemen

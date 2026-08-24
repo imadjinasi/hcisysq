@@ -25,7 +25,7 @@ function formatPeriod(value: string) {
 export function EmployeePayslipsPage() {
   const [items, setItems] = useState<PayslipSummary[] | null>(null);
   const [selected, setSelected] = useState<PayslipDetail | null>(null);
-  const [employee, setEmployee] = useState<EmployeeLeaveSummary["employee"] | null>(null);
+  const [leaveSummary, setLeaveSummary] = useState<EmployeeLeaveSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
 
@@ -44,7 +44,7 @@ export function EmployeePayslipsPage() {
 
     void getEmployeeLeaveSummary()
       .then((summary) => {
-        if (mounted) setEmployee(summary.employee);
+        if (mounted) setLeaveSummary(summary);
       })
       .catch(() => {
         // Payslip content remains usable with the generic employee shell fallback.
@@ -55,7 +55,7 @@ export function EmployeePayslipsPage() {
     };
   }, []);
 
-  const user = useMemo(() => employeeShellUser(employee), [employee]);
+  const user = useMemo(() => employeeShellUser(leaveSummary?.employee ?? null), [leaveSummary]);
 
   const openPayslip = async (id: string) => {
     setLoadingDetail(true);
@@ -70,7 +70,7 @@ export function EmployeePayslipsPage() {
   };
 
   return (
-    <AppShell user={user} activeItem="Slip Gaji">
+    <AppShell user={user} activeItem="Slip Gaji" capabilities={{ approvalResponsibility: (leaveSummary?.pendingApprovalCount ?? 0) > 0 }}>
       <div className="space-y-6">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-primary">Dokumen pribadi</p>
