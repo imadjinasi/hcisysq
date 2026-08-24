@@ -120,6 +120,11 @@ function PositionCard({
               {accountHolder ? "ACCOUNT" : "PEGAWAI"}
             </span>
           ) : null}
+          {primary?.isPrimaryStructural ? (
+            <span className="inline-flex rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-800">Utama</span>
+          ) : primary && !accountHolder ? (
+            <span className="inline-flex rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-700">Rangkap</span>
+          ) : null}
           {isLeader ? (
             <span className="inline-flex rounded-full bg-brand-primary-pale px-2 py-0.5 text-[10px] font-semibold text-brand-primary-deep">
               Leader

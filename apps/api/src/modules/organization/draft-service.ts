@@ -197,6 +197,11 @@ export class OrganizationDraftService {
       "PRIMARY_INCUMBENCY_OVERLAP", issues,
     );
     findOverlaps(
+      snapshot.incumbencies.filter((item) => item.kind === "PRIMARY" && item.isPrimaryStructural),
+      (item) => item.employeeId ?? `account:${item.accountId ?? item.id}`,
+      "PRIMARY_STRUCTURAL_POSITION_OVERLAP", issues,
+    );
+    findOverlaps(
       snapshot.memberships.filter((item) => item.isPrimary),
       (item) => item.employeeId,
       "PRIMARY_MEMBERSHIP_OVERLAP", issues,

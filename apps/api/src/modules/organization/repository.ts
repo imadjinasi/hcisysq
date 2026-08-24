@@ -290,10 +290,10 @@ export class PostgresOrganizationRepository {
     for (const item of snapshot.incumbencies) {
       await this.db.query(
         `INSERT INTO organization_incumbencies
-          (id, change_set_id, position_key, employee_id, account_id, kind, effective_from, effective_to, reason)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          (id, change_set_id, position_key, employee_id, account_id, kind, is_primary_structural, effective_from, effective_to, reason)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
         [item.id, snapshot.changeSet.id, item.positionKey, item.employeeId, item.accountId ?? null,
-          item.kind, item.effectiveFrom, item.effectiveTo, item.reason],
+          item.kind, item.isPrimaryStructural ?? false, item.effectiveFrom, item.effectiveTo, item.reason],
       );
     }
     for (const item of snapshot.authorityBindings) {
@@ -511,7 +511,7 @@ export class PostgresOrganizationRepository {
            FROM organization_memberships WHERE change_set_id = $1`, [id]);
     const incumbencies = await this.db.query<IncumbencyRow>(
           `SELECT id, position_key AS "positionKey", employee_id AS "employeeId",
-            account_id AS "accountId", kind,
+            account_id AS "accountId", kind, is_primary_structural AS "isPrimaryStructural",
             effective_from AS "effectiveFrom", effective_to AS "effectiveTo", reason
            FROM organization_incumbencies WHERE change_set_id = $1`, [id]);
     const bindings = await this.db.query<BindingRow>(

@@ -31,6 +31,7 @@ export interface OrganizationIncumbent {
   effectiveFrom: string;
   effectiveTo: string | null;
   assignmentType?: "PRIMARY" | "ACTING";
+  isPrimaryStructural?: boolean;
 }
 
 export interface OrganizationNode {
@@ -293,6 +294,14 @@ export function deleteOrganizationNode(draftId: string, nodeId: string): Promise
   return request<Record<string, number>>(`/drafts/${draftId}/nodes/${nodeId}`, { method: "DELETE" });
 }
 
+export function deleteOrganizationGroup(draftId: string, nodeId: string): Promise<void> {
+  return request<void>(`/drafts/${draftId}/nodes/${nodeId}/group`, { method: "DELETE" });
+}
+
+export function deleteOrganizationPosition(draftId: string, positionId: string): Promise<void> {
+  return request<void>(`/drafts/${draftId}/positions/${positionId}`, { method: "DELETE" });
+}
+
 export function createOrganizationPosition(
   draftId: string,
   input: {
@@ -360,6 +369,7 @@ export function replaceOrganizationIncumbencies(
     actingFrom?: string | null;
     actingTo?: string | null;
     effectiveFrom: string;
+    assignmentType?: "PRIMARY_STRUCTURAL" | "SECONDARY";
   },
 ): Promise<void> {
   return request<void>(`/drafts/${draftId}/incumbencies`, {

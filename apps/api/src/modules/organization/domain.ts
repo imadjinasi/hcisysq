@@ -79,6 +79,7 @@ export interface OrganizationIncumbency extends EffectivePeriod {
   employeeId: string | null;
   accountId?: string | null;
   kind: IncumbencyKind;
+  isPrimaryStructural?: boolean;
   reason: string | null;
 }
 
@@ -227,6 +228,7 @@ export type OrganizationResolutionErrorCode =
   | "AMBIGUOUS_MEMBERSHIP"
   | "POSITION_NOT_CONFIGURED"
   | "AUTHORITY_NOT_CONFIGURED"
+  | "PRIMARY_STRUCTURAL_POSITION_NOT_CONFIGURED"
   | "AUTHORITY_VACANT"
   | "ACTING_AUTHORITY_REQUIRED"
   | "AUTHORITY_INELIGIBLE"

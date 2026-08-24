@@ -58,6 +58,7 @@ const incumbencyInput = z.object({
   actingFrom: date.nullable().optional(),
   actingTo: date.nullable().optional(),
   effectiveFrom: date,
+  assignmentType: z.enum(["PRIMARY_STRUCTURAL", "SECONDARY"]).optional(),
 });
 const bindingType = z.enum([
   "SUPERVISORY_PARENT",
@@ -247,6 +248,7 @@ export async function registerOrganizationAdminRoutes(
       effectiveFrom: item.effectiveFrom,
       effectiveTo: item.effectiveTo,
       assignmentType: item.kind,
+      isPrimaryStructural: item.isPrimaryStructural ?? false,
     }));
     return reply.send({
       viewDate,
@@ -305,7 +307,8 @@ export async function registerOrganizationAdminRoutes(
        FROM employees e
        LEFT JOIN organizational_units u ON u.id = e.organizational_unit_id
        LEFT JOIN positions p ON p.id = e.position_id
-       ORDER BY (e.status = 'active') DESC, e.full_name`,
+       WHERE e.status = 'active'
+       ORDER BY e.full_name`,
     );
     return reply.send({ items: result.rows });
   });
@@ -395,6 +398,32 @@ export async function registerOrganizationAdminRoutes(
     return reply.send(counts);
   });
 
+  // Deliberately separate from Delete Subtree: this cannot remove descendants
+  // or dangling references on behalf of the administrator.
+  app.delete("/admin/organization/designer/drafts/:draftId/nodes/:itemId/group", async (request, reply) => {
+    const principal = await authenticate(request, reply); if (!principal) return;
+    const params = itemParams.safeParse(request.params);
+    if (!params.success) return invalid(reply, "INVALID_ORGANIZATION_NODE", "Invalid organization group.");
+    const deleted = await atomicOrganizationMutation(pool, principal, async (transaction) => {
+      const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return false;
+      const node = snapshot.nodes.find((item) => item.id === params.data.itemId);
+      if (!node) { await reply.status(404).send({ code: "ORGANIZATION_NODE_NOT_FOUND" }); return false; }
+      if (snapshot.nodes.some((item) => item.parentNodeKey === node.stableKey)) {
+        await reply.status(409).send({ code: "ORGANIZATION_GROUP_HAS_CHILDREN", message: "Move child groups first. Delete Subtree is a separate destructive action." }); return false;
+      }
+      if (snapshot.positions.some((item) => item.nodeKey === node.stableKey) || snapshot.memberships.some((item) => item.nodeKey === node.stableKey)
+        || snapshot.authorityBindings.some((item) => item.subjectKey === node.stableKey)) {
+        await reply.status(409).send({ code: "ORGANIZATION_GROUP_HAS_DEPENDENCIES", message: "Move or remove group dependencies before deleting." }); return false;
+      }
+      snapshot.nodes = snapshot.nodes.filter((item) => item.id !== node.id);
+      await transaction.repository.replaceDraftSnapshot(snapshot);
+      await transaction.audit("organization.node.deleted", "organization_node", node.id, snapshot.changeSet.id, { stableKey: node.stableKey });
+      return true;
+    });
+    if (!deleted) return;
+    return reply.status(204).send();
+  });
+
   app.post("/admin/organization/designer/drafts/:draftId/positions", async (request, reply) => {
     const principal = await authenticate(request, reply); if (!principal) return;
     const params = draftParams.safeParse(request.params); const body = positionInput.safeParse(request.body);
@@ -425,6 +454,35 @@ export async function registerOrganizationAdminRoutes(
     });
     if (!item) return;
     return reply.send({ ...item, primaryIncumbent: null, actingIncumbent: null });
+  });
+
+  app.delete("/admin/organization/designer/drafts/:draftId/positions/:itemId", async (request, reply) => {
+    const principal = await authenticate(request, reply); if (!principal) return;
+    const params = itemParams.safeParse(request.params);
+    if (!params.success) return invalid(reply, "INVALID_ORGANIZATION_POSITION", "Invalid organization position.");
+    const deleted = await atomicOrganizationMutation(pool, principal, async (transaction) => {
+      const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return false;
+      const position = snapshot.positions.find((item) => item.id === params.data.itemId);
+      if (!position) { await reply.status(404).send({ code: "ORGANIZATION_POSITION_NOT_FOUND" }); return false; }
+      if (snapshot.positions.some((item) => item.parentPositionKey === position.stableKey)) {
+        await reply.status(409).send({ code: "ORGANIZATION_POSITION_HAS_CHILDREN", message: "Move child positions before deleting this position." }); return false;
+      }
+      const impact = {
+        primaryIncumbent: snapshot.incumbencies.some((item) => item.positionKey === position.stableKey && item.kind === "PRIMARY"),
+        actingIncumbent: snapshot.incumbencies.some((item) => item.positionKey === position.stableKey && item.kind === "ACTING"),
+        authorityBindings: snapshot.authorityBindings.filter((item) => item.subjectKey === position.stableKey || item.targetPositionKey === position.stableKey).length,
+        reportingOverrides: snapshot.reportingOverrides.filter((item) => item.managerPositionKey === position.stableKey).length,
+      };
+      if (impact.primaryIncumbent || impact.actingIncumbent || impact.authorityBindings || impact.reportingOverrides) {
+        await reply.status(409).send({ code: "ORGANIZATION_POSITION_HAS_DEPENDENCIES", message: "Remove or move position dependencies before deleting.", impact }); return false;
+      }
+      snapshot.positions = snapshot.positions.filter((item) => item.id !== position.id);
+      await transaction.repository.replaceDraftSnapshot(snapshot);
+      await transaction.audit("organization.position.deleted", "organization_position", position.id, snapshot.changeSet.id, { stableKey: position.stableKey });
+      return true;
+    });
+    if (!deleted) return;
+    return reply.status(204).send();
   });
 
   app.put("/admin/organization/designer/drafts/:draftId/memberships", async (request, reply) => {
@@ -468,10 +526,10 @@ export async function registerOrganizationAdminRoutes(
       snapshot.incumbencies = snapshot.incumbencies.filter((item) => item.positionKey !== body.data.positionKey);
       if (body.data.primaryEmployeeId) snapshot.incumbencies.push({ id: randomUUID(), positionKey: body.data.positionKey,
         employeeId: body.data.primaryEmployeeId, accountId: null, kind: "PRIMARY", effectiveFrom: body.data.effectiveFrom,
-        effectiveTo: null, reason: null });
+        effectiveTo: null, isPrimaryStructural: body.data.assignmentType === "PRIMARY_STRUCTURAL", reason: null });
       if (body.data.primaryAccountId) snapshot.incumbencies.push({ id: randomUUID(), positionKey: body.data.positionKey,
         employeeId: null, accountId: body.data.primaryAccountId, kind: "PRIMARY", effectiveFrom: body.data.effectiveFrom,
-        effectiveTo: null, reason: null });
+        effectiveTo: null, isPrimaryStructural: false, reason: null });
       if (body.data.actingEmployeeId) snapshot.incumbencies.push({ id: randomUUID(), positionKey: body.data.positionKey,
         employeeId: body.data.actingEmployeeId, accountId: null, kind: "ACTING", effectiveFrom: body.data.actingFrom!,
         effectiveTo: body.data.actingTo!, reason: "Explicit acting mandate" });

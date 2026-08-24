@@ -486,6 +486,18 @@ paths:
         '400': { $ref: '#/components/responses/ValidationError' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { description: Draft is not editable }
+    delete:
+      tags: [Organization]
+      operationId: deleteOrganizationPosition
+      parameters:
+        - { $ref: '#/components/parameters/DraftId' }
+        - name: itemId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Draft position deleted only when it has no child positions or dependencies }
+        '409': { description: Position has child positions/dependencies or draft is immutable }
 
   /admin/organization/designer/drafts/{draftId}/memberships:
     put:
@@ -529,6 +541,7 @@ paths:
                 actingFrom: { type: [string, 'null'], format: date }
                 actingTo: { type: [string, 'null'], format: date }
                 effectiveFrom: { type: string, format: date }
+                assignmentType: { type: string, enum: [PRIMARY_STRUCTURAL, SECONDARY], description: Explicit reporting anchor for an employee with multiple effective positions. }
       responses:
         '204': { description: Primary, vacant, and explicit acting state replaced }
         '400': { $ref: '#/components/responses/ValidationError' }

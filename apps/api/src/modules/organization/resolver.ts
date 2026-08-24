@@ -184,7 +184,7 @@ export class OrganizationAuthorityResolver {
     }
 
     const incumbentPositions = this.employeePositions(context, context.requesterEmployeeId);
-    const supervisedPositions = incumbentPositions.filter((position) =>
+    const supervisedPositions = this.reportingPositions(context, incumbentPositions).filter((position) =>
       position.parentPositionKey !== null
       || this.binding(context, "POSITION", position.stableKey, "SUPERVISORY_PARENT") !== null,
     );
@@ -473,6 +473,25 @@ export class OrganizationAuthorityResolver {
       (item) => keys.has(item.stableKey) && item.active
         && isEffective(item.effectiveFrom, item.effectiveTo, context.effectiveDate),
     );
+  }
+
+  // All active positions may carry authority. Reporting is deliberately anchored
+  // to one explicit position when a person has rangkap jabatan.
+  private reportingPositions(context: ResolutionContext, positions: OrganizationPosition[]): OrganizationPosition[] {
+    if (positions.length <= 1) return positions;
+    const primaryKeys = new Set(context.snapshot.incumbencies
+      .filter((item) => item.employeeId === context.requesterEmployeeId
+        && item.kind === "PRIMARY" && item.isPrimaryStructural
+        && isEffective(item.effectiveFrom, item.effectiveTo, context.effectiveDate))
+      .map((item) => item.positionKey));
+    if (primaryKeys.size !== 1) {
+      throw new OrganizationResolutionError(
+        "PRIMARY_STRUCTURAL_POSITION_NOT_CONFIGURED",
+        "Employee has multiple effective structural positions but no single primary structural position is configured.",
+        { employeeId: context.requesterEmployeeId, positionKeys: positions.map((item) => item.stableKey) },
+      );
+    }
+    return positions.filter((item) => primaryKeys.has(item.stableKey));
   }
 
   private position(context: ResolutionContext, positionKey: string): OrganizationPosition {

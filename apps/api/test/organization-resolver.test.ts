@@ -170,6 +170,36 @@ function resolver(
 }
 
 describe("ORG-004 authority resolver", () => {
+  it("uses the explicit primary structural position for requester reporting while retaining rangkap positions", async () => {
+    const structure = snapshot({
+      positions: [
+        position("position-director", "node-root", null),
+        position("position-head", "node-team", "position-director"),
+        position("position-coordinator", "node-team", "position-director"),
+      ],
+      incumbencies: [
+        { ...incumbency("head", "position-head", employeeIds.head, "PRIMARY"), isPrimaryStructural: true },
+        incumbency("coordinator", "position-coordinator", employeeIds.head, "PRIMARY"),
+        incumbency("director", "position-director", employeeIds.director, "PRIMARY"),
+      ],
+    });
+    await expect(resolver(structure).resolveDirectManager({ requesterEmployeeId: employeeIds.head, effectiveDate: "2026-08-22" }))
+      .resolves.toMatchObject({ employeeId: employeeIds.director, path: ["position-head", "position-director"] });
+  });
+
+  it("fails closed when multiple effective structural positions have no explicit primary", async () => {
+    const structure = snapshot({
+      positions: [position("position-director", "node-root", null), position("position-head", "node-team", "position-director"), position("position-coordinator", "node-team", "position-director")],
+      incumbencies: [
+        incumbency("head", "position-head", employeeIds.head, "PRIMARY"),
+        incumbency("coordinator", "position-coordinator", employeeIds.head, "PRIMARY"),
+        incumbency("director", "position-director", employeeIds.director, "PRIMARY"),
+      ],
+    });
+    await expect(resolver(structure).resolveDirectManager({ requesterEmployeeId: employeeIds.head, effectiveDate: "2026-08-22" }))
+      .rejects.toMatchObject({ code: "PRIMARY_STRUCTURAL_POSITION_NOT_CONFIGURED" });
+  });
+
   it("resolves one structural team leader for many members", async () => {
     const subject = resolver(snapshot());
     await expect(subject.resolveDirectManager({ requesterEmployeeId: employeeIds.staff, effectiveDate: "2026-08-22" }))

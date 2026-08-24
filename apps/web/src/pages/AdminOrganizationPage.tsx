@@ -431,6 +431,15 @@ export function HolderAssignmentEditor({
         </Field>
       )}
 
+      {!acting && holderSource === "EMPLOYEE" ? (
+        <Field label="Jenis penugasan" hint="Jabatan utama menjadi jangkar reporting pemohon; rangkap tetap dapat membawa kewenangan.">
+          <select name="assignmentType" defaultValue={position.primaryIncumbent?.isPrimaryStructural ? "PRIMARY_STRUCTURAL" : "SECONDARY"} className={inputClass}>
+            <option value="PRIMARY_STRUCTURAL">Jabatan utama</option>
+            <option value="SECONDARY">Rangkap jabatan</option>
+          </select>
+        </Field>
+      ) : null}
+
       {acting ? (
         <>
           <Field label="Mulai acting"><input type="date" name="actingFrom" required defaultValue={position.actingIncumbent?.effectiveFrom ?? effectiveOn} className={inputClass} /></Field>
@@ -638,6 +647,7 @@ export function AdminOrganizationPage() {
         actingTo: holderSource === "ACCOUNT" ? null
           : editor.acting ? String(form.get("actingTo")) : editor.position.actingIncumbent?.effectiveTo ?? null,
         effectiveFrom: String(form.get("effectiveFrom") || data.draft!.effectiveOn),
+        assignmentType: editor.acting ? undefined : String(form.get("assignmentType") || "SECONDARY") as "PRIMARY_STRUCTURAL" | "SECONDARY",
       }),
       editor.acting ? "Pelaksana tugas diperbarui." : "Pejabat utama diperbarui.",
     );
