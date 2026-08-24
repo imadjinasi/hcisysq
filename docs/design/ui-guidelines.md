@@ -74,6 +74,7 @@ Employee surfaces are mobile-first and readable with generous line-height; admin
 - Administration page headers use a compact desktop rhythm so the title and task workspace remain visible together at common laptop heights. This density applies through the shared admin shell, not employee/mobile page headers.
 - Organization Designer keeps publication state, effective date, human revision context, editor actions, and chart controls in a compact workspace shell. Primary UI uses revision names and dates rather than UUIDs, abbreviated hashes, stable keys, or raw authority enums.
 - Dense chart navigation controls are local to the Organization Designer toolbar. They do not redefine shared application button sizing or workflow call-to-action sizing.
+- The Organization Designer is a **viewport workspace**: its compact single control bar remains outside a bounded, internally scrollable diagram viewport. On narrow screens, date/state context plus zoom and Fit remain visible, while secondary canvas navigation is disclosed through a labelled overflow control. This pattern does not apply to ordinary admin pages.
 
 ### Canonical primitives
 

@@ -67,11 +67,13 @@ export function AdminShell({
   active,
   title,
   description,
+  workspace = false,
 }: {
   children: ReactNode;
   active: AdminNavKey;
   title: string;
   description?: string;
+  workspace?: boolean;
 }) {
   const navigate = useNavigate();
   const [session, setSession] = useState<AuthSession | null>(null);
@@ -183,7 +185,7 @@ export function AdminShell({
         </div>
       </aside>
 
-      <div className="min-w-0">
+      <div className={cn("min-w-0", workspace && "lg:flex lg:h-screen lg:min-h-0 lg:flex-col")}>
         <header
           className="border-b border-border/70 bg-white/90 px-5 py-3 sm:px-7 lg:px-10"
           data-admin-page-header
@@ -194,7 +196,7 @@ export function AdminShell({
             {description ? <p className="mt-0.5 max-w-3xl text-sm leading-5 text-muted-foreground">{description}</p> : null}
           </div>
         </header>
-        <main className="mx-auto max-w-7xl px-5 py-4 sm:px-7 lg:px-10 lg:py-5">{children}</main>
+        <main className={cn("mx-auto max-w-7xl px-5 py-4 sm:px-7 lg:px-10 lg:py-5", workspace && "flex min-h-0 w-full max-w-none flex-1 flex-col")}>{children}</main>
       </div>
     </div>
   );

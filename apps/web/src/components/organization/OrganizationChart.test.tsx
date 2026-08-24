@@ -137,6 +137,18 @@ describe("Organization Designer chart", () => {
     expect(html).toContain('data-canvas-zoom="1.00"');
   });
 
+  it("uses one compact control bar and keeps secondary canvas controls reachable on narrow screens", () => {
+    const html = renderChart([baseNode], [vacantPosition]);
+
+    expect(html).toContain('data-organization-control-bar="true"');
+    expect(html).toContain('data-canvas-control-group="true"');
+    expect(html).toContain('data-canvas-overflow-menu="true"');
+    expect(html).toContain("Lainnya");
+    expect(html).toContain("Pusatkan akar");
+    expect(html).toContain("Buka struktur");
+    expect(html).toContain("min-h-0 flex-1 cursor-grab overflow-auto");
+  });
+
   it("calculates fit-to-view and center-selected offsets for a laptop viewport", () => {
     expect(
       fitZoomForViewport({

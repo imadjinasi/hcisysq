@@ -282,6 +282,8 @@ export function OrganizationChart({
   onSelect,
   canEdit,
   onStart,
+  toolbarContext,
+  toolbarActions,
 }: {
   nodes: OrganizationNode[];
   positions: OrganizationPosition[];
@@ -289,6 +291,8 @@ export function OrganizationChart({
   onSelect: (selection: Exclude<OrganizationSelection, null>) => void;
   canEdit: boolean;
   onStart: () => void;
+  toolbarContext?: ReactNode;
+  toolbarActions?: ReactNode;
 }) {
   const roots = useMemo(
       () => buildOrganizationTree(nodes, positions),
@@ -432,70 +436,44 @@ export function OrganizationChart({
       </div>
     );
   return (
-    <div className="flex min-h-[34rem] flex-col" data-organization-canvas>
+    <div className="flex min-h-0 flex-1 flex-col" data-organization-canvas>
       <div
-        className="flex flex-wrap items-center gap-1 border-b border-border/70 bg-white px-3 py-1.5"
+        className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-border/70 bg-white px-2.5 py-1.5"
         data-canvas-toolbar
+        data-organization-control-bar
       >
-        <Tool
-          label="Zoom out"
-          disabled={zoom <= MIN_CANVAS_ZOOM}
-          onClick={() => setZoom((v) => clampCanvasZoom(v - ZOOM_STEP))}
-        >
-          <Minus />
-        </Tool>
-        <output
-          aria-label="Zoom saat ini"
-          className="inline-flex h-8 min-w-12 items-center justify-center rounded-lg bg-surface px-2 text-xs font-bold text-brand-heading"
-        >
-          {Math.round(zoom * 100)}%
-        </output>
-        <Tool
-          label="Zoom in"
-          disabled={zoom >= MAX_CANVAS_ZOOM}
-          onClick={() => setZoom((v) => clampCanvasZoom(v + ZOOM_STEP))}
-        >
-          <Plus />
-        </Tool>
-        <Tool
-          label="Fit structure to viewport"
-          onClick={() => {
+        {toolbarContext ? (
+          <div className="flex min-w-0 items-center" data-organization-version-context>
+            {toolbarContext}
+          </div>
+        ) : null}
+        {toolbarContext ? <span className="hidden h-5 w-px bg-border/80 sm:block" aria-hidden="true" data-toolbar-separator="context-controls" /> : null}
+        <div className="flex min-w-0 items-center gap-1" aria-label="Kontrol kanvas" data-canvas-control-group>
+          <Tool label="Zoom out" disabled={zoom <= MIN_CANVAS_ZOOM} onClick={() => setZoom((v) => clampCanvasZoom(v - ZOOM_STEP))}><Minus /></Tool>
+          <output aria-label="Zoom saat ini" className="inline-flex h-8 min-w-11 items-center justify-center rounded-lg bg-surface px-1.5 text-xs font-bold text-brand-heading">{Math.round(zoom * 100)}%</output>
+          <Tool label="Zoom in" disabled={zoom >= MAX_CANVAS_ZOOM} onClick={() => setZoom((v) => clampCanvasZoom(v + ZOOM_STEP))}><Plus /></Tool>
+          <Tool label="Fit structure to viewport" onClick={() => {
             const v = viewportRef.current;
-            if (v)
-              setZoom(
-                fitZoomForViewport({
-                  contentWidth: layout.width,
-                  contentHeight: layout.height,
-                  viewportWidth: v.clientWidth,
-                  viewportHeight: v.clientHeight,
-                }),
-              );
-          }}
-        >
-          <Maximize2 /> Fit struktur
-        </Tool>
-        <Tool
-          label="Center root"
-          onClick={() => roots[0] && center("node", roots[0].stableKey)}
-        >
-          <LocateFixed /> Pusatkan akar
-        </Tool>
-        <Tool
-          label="Center selected"
-          disabled={!selection}
-          onClick={() => selection && center(selection.kind, selection.key)}
-        >
-          <Focus /> Pusatkan pilihan
-        </Tool>
-        <Tool label="Collapse all" onClick={() => setExpandedKeys(new Set())}>
-          <ChevronsDownUp /> Ciutkan semua
-        </Tool>
-        <Tool
-          label="Expand useful scope"
-          onClick={() => setExpandedKeys(new Set(allKeys))}
-        >
-          <ChevronsUpDown /> Buka struktur
-        </Tool>
+            if (v) setZoom(fitZoomForViewport({ contentWidth: layout.width, contentHeight: layout.height, viewportWidth: v.clientWidth, viewportHeight: v.clientHeight }));
+          }}><Maximize2 /> Fit</Tool>
+          <span className="hidden items-center gap-1 sm:flex">
+            <Tool label="Center root" onClick={() => roots[0] && center("node", roots[0].stableKey)}><LocateFixed /> Akar</Tool>
+            <Tool label="Center selected" disabled={!selection} onClick={() => selection && center(selection.kind, selection.key)}><Focus /> Pilihan</Tool>
+            <Tool label="Collapse all" onClick={() => setExpandedKeys(new Set())}><ChevronsDownUp /> Ciutkan</Tool>
+            <Tool label="Expand useful scope" onClick={() => setExpandedKeys(new Set(allKeys))}><ChevronsUpDown /> Buka</Tool>
+          </span>
+          <details className="relative sm:hidden" data-canvas-overflow-menu>
+            <summary className="inline-flex h-8 cursor-pointer list-none items-center rounded-lg border border-border bg-white px-2 text-xs font-semibold text-brand-heading hover:bg-muted">Lainnya</summary>
+            <div className="absolute left-0 top-9 z-20 grid w-48 gap-1 rounded-xl border border-border bg-white p-1.5 shadow-[var(--shadow-raised)]">
+              <Tool label="Center root" onClick={() => roots[0] && center("node", roots[0].stableKey)}><LocateFixed /> Pusatkan akar</Tool>
+              <Tool label="Center selected" disabled={!selection} onClick={() => selection && center(selection.kind, selection.key)}><Focus /> Pusatkan pilihan</Tool>
+              <Tool label="Collapse all" onClick={() => setExpandedKeys(new Set())}><ChevronsDownUp /> Ciutkan semua</Tool>
+              <Tool label="Expand useful scope" onClick={() => setExpandedKeys(new Set(allKeys))}><ChevronsUpDown /> Buka struktur</Tool>
+            </div>
+          </details>
+        </div>
+        {toolbarActions ? <span className="hidden h-5 w-px bg-border/80 lg:block" aria-hidden="true" data-toolbar-separator="controls-actions" /> : null}
+        {toolbarActions ? <div className="ml-auto flex items-center gap-1" data-organization-workflow-actions>{toolbarActions}</div> : null}
       </div>
       <div
         ref={viewportRef}
@@ -507,7 +485,7 @@ export function OrganizationChart({
         onPointerCancel={() => {
           drag.current = null;
         }}
-        className="min-h-[30rem] flex-1 cursor-grab overflow-auto bg-[#f8fbfa] active:cursor-grabbing"
+        className="min-h-0 flex-1 cursor-grab overflow-auto bg-[#f8fbfa] active:cursor-grabbing"
         data-canvas-viewport
       >
         <div

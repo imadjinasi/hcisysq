@@ -152,4 +152,14 @@ describe("Admin navigation compaction", () => {
     expect(organizationSource).not.toContain("baseChangeSetId.slice");
     expect(organizationSource).not.toContain("{step.authorityType}");
   });
+
+  it("uses a bounded viewport workspace with one organization control bar", () => {
+    expect(organizationSource).toContain("data-organization-workspace");
+    expect(organizationSource).toContain("workspace");
+    expect(adminShellSource).toContain("workspace && \"lg:flex lg:h-screen lg:min-h-0 lg:flex-col\"");
+    expect(organizationSource).toContain("toolbarContext=");
+    expect(organizationSource).toContain("toolbarActions=");
+    expect(organizationSource).toContain('htmlFor="organization-effective-date"');
+    expect(organizationSource).not.toContain('<Field label="Lihat struktur pada tanggal">');
+  });
 });

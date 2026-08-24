@@ -1994,6 +1994,7 @@ export function AdminOrganizationPage() {
       active="organization"
       title="Organization Designer"
       description="Gambar struktur, posisi, dan kewenangan berdasarkan tanggal efektif. Hubungan approval tetap dihitung dan divalidasi oleh server."
+      workspace
     >
       {error ? (
         <div
@@ -2012,120 +2013,13 @@ export function AdminOrganizationPage() {
       ) : null}
       <section
         className={cn(
-          "overflow-hidden rounded-2xl border bg-white shadow-[var(--shadow-soft)]",
+          "flex min-h-[34rem] flex-col overflow-hidden rounded-2xl border bg-white shadow-[var(--shadow-soft)] lg:h-full lg:min-h-0",
           canEdit
             ? "border-amber-300 ring-4 ring-amber-100/60"
             : "border-border/70",
         )}
+        data-organization-workspace
       >
-        <div
-          className={cn(
-            "flex flex-col gap-3 border-b px-4 py-3 lg:flex-row lg:items-center lg:justify-between",
-            canEdit ? "border-amber-200 bg-amber-50/60" : "border-border/70",
-          )}
-        >
-          <div className="flex min-w-0 flex-wrap items-end gap-2.5">
-            <Field label="Lihat struktur pada tanggal">
-              <span className="relative block">
-                <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  type="date"
-                  value={effectiveDate}
-                  onChange={(event) => {
-                    setDraftId(null);
-                    setEffectiveDate(event.target.value);
-                    setSelection(null);
-                  }}
-                  className={`${inputClass} w-48 pl-9`}
-                />
-              </span>
-            </Field>
-            <span
-              className={cn(
-                "mb-0.5 self-end rounded-full px-2.5 py-1.5 text-xs font-bold",
-                status.className,
-              )}
-            >
-              {data?.draft?.status === "PUBLISHED"
-                ? data.mode === "FUTURE"
-                  ? "Diterbitkan · belum aktif"
-                  : "Diterbitkan · hanya baca"
-                : status.label}
-            </span>
-            {data?.draft ? (
-              <div className="mb-0.5 min-w-0 self-end" data-organization-version-summary>
-                <p
-                  className={cn(
-                    "truncate text-xs font-bold",
-                    canEdit ? "text-amber-900" : "text-brand-heading",
-                  )}
-                >
-                  {data.draft.name}
-                </p>
-                <p className={cn("text-xs", canEdit ? "text-amber-800" : "text-muted-foreground")}>
-                  Efektif {displayDate(data.draft.effectiveOn)}
-                  {data.isSameDayRevision ? " · Koreksi tanggal yang sama" : ""}
-                </p>
-                {data.draft.status !== "PUBLISHED" ? (
-                  <p className="text-xs text-amber-800">
-                    {data.draft.baseChangeSetId
-                      ? "Berdasarkan versi terbit sebelumnya"
-                      : "Dimulai dari struktur kosong"}
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {!hasActiveDraft ? (
-              <button
-                type="button"
-                onClick={() => setAction({ type: "draft" })}
-                className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-white px-3 text-xs font-bold hover:bg-muted"
-              >
-                <CalendarClock className="h-4 w-4" /> {data?.draft?.status === "PUBLISHED" ? "Buat draft koreksi" : "Jadwalkan perubahan"}
-              </button>
-            ) : (
-              <>
-                {canEdit ? (
-                  <button
-                    type="button"
-                    disabled={saving}
-                    onClick={() => void runValidation()}
-                    className="inline-flex h-10 items-center gap-2 rounded-xl border border-amber-300 bg-white px-3 text-xs font-bold text-amber-900 hover:bg-amber-50 disabled:opacity-60"
-                  >
-                    <ShieldCheck className="h-4 w-4" /> Validasi
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  disabled={saving}
-                  onClick={() => void runImpact()}
-                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-white px-3 text-xs font-bold hover:bg-muted disabled:opacity-60"
-                >
-                  <Eye className="h-4 w-4" /> Preview dampak
-                </button>
-                <button
-                  type="button"
-                  disabled={saving || data?.draft?.status !== "VALIDATED"}
-                  onClick={() => void runPublish()}
-                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-3 text-xs font-bold text-white hover:bg-brand-primary-deep disabled:opacity-50"
-                >
-                  <Rocket className="h-4 w-4" /> Publikasikan
-                </button>
-                <button
-                  type="button"
-                  disabled={saving}
-                  onClick={() => setAction({ type: "discard-draft" })}
-                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-red-300 bg-white px-3 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-50"
-                >
-                  <Trash2 className="h-4 w-4" /> Buang draft
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-
         {selectedPath.length > 0 ? (
           <nav
             aria-label="Jalur struktural terpilih"
@@ -2160,7 +2054,7 @@ export function AdminOrganizationPage() {
 
         <div
           className={cn(
-            "relative grid min-h-[32rem] bg-[#f8fbfa]",
+            "relative grid min-h-0 flex-1 bg-[#f8fbfa]",
             selectedNode || selectedPosition
               ? "xl:grid-cols-[minmax(0,1fr)_20rem]"
               : "grid-cols-1",
@@ -2179,12 +2073,26 @@ export function AdminOrganizationPage() {
             onSelect={setSelection}
             canEdit={Boolean(canEdit)}
             onStart={startFromEmpty}
+            toolbarContext={
+              <>
+                <label className="sr-only" htmlFor="organization-effective-date">Lihat struktur pada tanggal</label>
+                <span className="relative block">
+                  <CalendarDays className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <input id="organization-effective-date" type="date" value={effectiveDate} onChange={(event) => { setDraftId(null); setEffectiveDate(event.target.value); setSelection(null); }} className="h-8 w-[8.7rem] rounded-lg border border-border bg-white pl-7 pr-1.5 text-xs font-semibold outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/10" />
+                </span>
+                <span className={cn("ml-1 rounded-full px-2 py-1 text-xs font-bold", status.className)}>{data?.draft?.status === "PUBLISHED" ? data.mode === "FUTURE" ? "Diterbitkan · belum aktif" : "Diterbitkan · hanya baca" : status.label}</span>
+                {data?.draft ? <div className="ml-1 hidden min-w-0 sm:block" data-organization-version-summary><p className={cn("max-w-40 truncate text-xs font-bold", canEdit ? "text-amber-900" : "text-brand-heading")}>{data.draft.name}</p><p className={cn("text-xs", canEdit ? "text-amber-800" : "text-muted-foreground")}>Efektif {displayDate(data.draft.effectiveOn)}{data.isSameDayRevision ? " · Koreksi tanggal yang sama" : ""}</p>{data.draft.status !== "PUBLISHED" ? <p className="text-xs text-amber-800">{data.draft.baseChangeSetId ? "Berdasarkan versi terbit sebelumnya" : "Dimulai dari struktur kosong"}</p> : null}</div> : null}
+              </>
+            }
+            toolbarActions={
+              !hasActiveDraft ? <button type="button" onClick={() => setAction({ type: "draft" })} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-white px-2 text-xs font-bold hover:bg-muted"><CalendarClock className="h-3.5 w-3.5" /> {data?.draft?.status === "PUBLISHED" ? "Buat draft koreksi" : "Jadwalkan perubahan"}</button> : <>{canEdit ? <button type="button" disabled={saving} onClick={() => void runValidation()} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-2 text-xs font-bold text-amber-900 hover:bg-amber-50 disabled:opacity-60"><ShieldCheck className="h-3.5 w-3.5" /> Validasi</button> : null}<button type="button" disabled={saving} onClick={() => void runImpact()} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-white px-2 text-xs font-bold hover:bg-muted disabled:opacity-60"><Eye className="h-3.5 w-3.5" /> Preview dampak</button><button type="button" disabled={saving || data?.draft?.status !== "VALIDATED"} onClick={() => void runPublish()} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-brand-primary px-2 text-xs font-bold text-white hover:bg-brand-primary-deep disabled:opacity-50"><Rocket className="h-3.5 w-3.5" /> Publikasikan</button><button type="button" disabled={saving} onClick={() => setAction({ type: "discard-draft" })} className="hidden h-8 items-center gap-1.5 rounded-lg border border-red-300 bg-white px-2 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-50 xl:inline-flex"><Trash2 className="h-3.5 w-3.5" /> Buang draft</button></>
+            }
           />
 
           {selectedNode || selectedPosition ? (
             <aside
               aria-label="Inspector pilihan struktur"
-              className="border-t border-border/70 bg-white p-4 xl:border-t-0 xl:border-l"
+              className="min-h-0 overflow-y-auto border-t border-border/70 bg-white p-4 xl:border-t-0 xl:border-l"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
