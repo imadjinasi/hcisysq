@@ -48,6 +48,9 @@ describe("Organization Designer administration UX contracts", () => {
     expect(organizationSource).toContain("Tambahkan anggota dari unit lama");
     expect(organizationSource).toContain("Preview: {legacyCandidates.length} pegawai aktif");
     expect(organizationSource).toContain("Posisi, leader, hierarchy, dan kewenangan tidak dibuat otomatis");
+    expect(organizationSource).toContain('aria-label="Cari nama atau nomor pegawai"');
+    expect(organizationSource).toContain('aria-label="Filter unit pegawai"');
+    expect(organizationSource).toContain("Gunakan pencarian atau filter unit untuk menampilkan pegawai");
   });
 });
 
@@ -88,6 +91,8 @@ describe("Admin navigation compaction", () => {
     expect(adminShellSource).toContain('item.key === active');
     expect(adminShellSource).toContain('aria-current={selected ? "page" : undefined}');
     expect(adminShellSource).toContain('lg:grid-cols-[14.5rem_minmax(0,1fr)]');
+    expect(adminShellSource).toContain('aria-expanded={!collapsed}');
+    expect(adminShellSource).toContain('data-admin-nav-group={group.key}');
     expect(adminShellSource).toContain('lg:overflow-y-auto');
     expect(adminShellSource).toContain('whitespace-nowrap');
     expect(adminShellSource).toContain('className="min-w-0 truncate"');

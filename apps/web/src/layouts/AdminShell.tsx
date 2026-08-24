@@ -12,6 +12,7 @@ import {
   Upload,
   UsersRound,
   WalletCards,
+  ChevronDown,
 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
@@ -33,22 +34,32 @@ export type AdminNavKey =
   | "payslips"
   | "access";
 
-const navItems: Array<{
+interface AdminNavItem {
   key: AdminNavKey;
   label: string;
   href: string;
   icon: typeof LayoutDashboard;
-}> = [
-  { key: "overview", label: "Ringkasan", href: "/admin", icon: LayoutDashboard },
-  { key: "employees", label: "Daftar Pegawai", href: "/admin/employees", icon: UsersRound },
-  { key: "import", label: "Impor Pegawai", href: "/admin/employees/import", icon: Upload },
-  { key: "history", label: "Riwayat Impor", href: "/admin/employees/imports", icon: History },
-  { key: "organization", label: "Struktur Organisasi", href: "/admin/organization", icon: Building2 },
-  { key: "attendance", label: "Kehadiran", href: "/admin/attendance", icon: Clock3 },
-  { key: "leave", label: "Konfigurasi Cuti", href: "/admin/leave", icon: CalendarDays },
-  { key: "leave-calendar", label: "Kalender Kerja", href: "/admin/leave/calendar", icon: CalendarRange },
-  { key: "payslips", label: "Payslip", href: "/admin/payslips", icon: WalletCards },
-  { key: "access", label: "Account & Akses", href: "/admin/access", icon: KeyRound },
+}
+
+const navGroups: Array<{ key: string; label: string; items: AdminNavItem[] }> = [
+  { key: "overview", label: "Umum", items: [
+    { key: "overview", label: "Ringkasan", href: "/admin", icon: LayoutDashboard },
+  ] },
+  { key: "people", label: "Data pegawai", items: [
+    { key: "employees", label: "Daftar Pegawai", href: "/admin/employees", icon: UsersRound },
+    { key: "import", label: "Impor Pegawai", href: "/admin/employees/import", icon: Upload },
+    { key: "history", label: "Riwayat Impor", href: "/admin/employees/imports", icon: History },
+  ] },
+  { key: "operations", label: "Organisasi & layanan", items: [
+    { key: "organization", label: "Struktur Organisasi", href: "/admin/organization", icon: Building2 },
+    { key: "attendance", label: "Kehadiran", href: "/admin/attendance", icon: Clock3 },
+    { key: "leave", label: "Konfigurasi Cuti", href: "/admin/leave", icon: CalendarDays },
+    { key: "leave-calendar", label: "Kalender Kerja", href: "/admin/leave/calendar", icon: CalendarRange },
+    { key: "payslips", label: "Payslip", href: "/admin/payslips", icon: WalletCards },
+  ] },
+  { key: "security", label: "Keamanan", items: [
+    { key: "access", label: "Account & Akses", href: "/admin/access", icon: KeyRound },
+  ] },
 ];
 
 export function AdminShell({
@@ -65,6 +76,7 @@ export function AdminShell({
   const navigate = useNavigate();
   const [session, setSession] = useState<AuthSession | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     let mounted = true;
@@ -91,6 +103,15 @@ export function AdminShell({
     }
   };
 
+  const toggleGroup = (key: string) => {
+    setCollapsedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
   return (
     <div className="min-h-screen bg-[#f5f8f7] text-foreground lg:grid lg:grid-cols-[14.5rem_minmax(0,1fr)]">
       <aside className="border-b border-border/70 bg-white lg:sticky lg:top-0 lg:flex lg:h-screen lg:min-h-0 lg:flex-col lg:border-b-0 lg:border-r">
@@ -102,26 +123,41 @@ export function AdminShell({
           </div>
         </div>
 
-        <nav className="flex gap-2 overflow-x-auto px-4 pb-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overflow-x-hidden lg:px-3 lg:pb-2" aria-label="Navigasi Super Admin">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const selected = item.key === active;
-            return (
-              <a
-                key={item.key}
-                href={item.href}
-                aria-current={selected ? "page" : undefined}
-                className={cn(
-                  "flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-xl px-3 py-2 text-[13px] font-semibold transition-colors lg:mb-0.5 lg:w-full lg:min-w-0 lg:shrink",
-                  selected
-                    ? "bg-brand-primary-pale text-brand-primary-deep"
-                    : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
-                )}
+        <nav className="flex gap-3 overflow-x-auto px-4 pb-4 lg:min-h-0 lg:flex-1 lg:flex-col lg:gap-1 lg:overflow-y-auto lg:overflow-x-hidden lg:px-3 lg:pb-2" aria-label="Navigasi Super Admin">
+          {navGroups.map((group) => {
+            const collapsed = collapsedGroups.has(group.key);
+            return <section key={group.key} className="shrink-0 lg:w-full" data-admin-nav-group={group.key}>
+              <button
+                type="button"
+                aria-expanded={!collapsed}
+                aria-controls={`admin-nav-${group.key}`}
+                onClick={() => toggleGroup(group.key)}
+                className="hidden h-8 w-full min-w-0 items-center justify-between gap-2 rounded-lg px-3 text-left text-[10px] font-bold uppercase tracking-[0.13em] text-muted-foreground hover:bg-muted/70 lg:flex"
               >
-                <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
-                <span title={item.label} className="min-w-0 truncate">{item.label}</span>
-              </a>
-            );
+                <span className="min-w-0 truncate" title={group.label}>{group.label}</span>
+                <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 transition-transform", collapsed && "-rotate-90")} aria-hidden="true" />
+              </button>
+              <p className="mb-1 px-1 text-[10px] font-bold uppercase tracking-wide text-muted-foreground lg:hidden">{group.label}</p>
+              <div id={`admin-nav-${group.key}`} hidden={collapsed} className="flex gap-1 lg:block">
+                {group.items.map((item) => {
+                  const Icon = item.icon;
+                  const selected = item.key === active;
+                  return <a
+                    key={item.key}
+                    href={item.href}
+                    aria-current={selected ? "page" : undefined}
+                    title={item.label}
+                    className={cn(
+                      "flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-xl px-3 py-2 text-[13px] font-semibold transition-colors lg:mb-0.5 lg:w-full lg:min-w-0 lg:shrink",
+                      selected ? "bg-brand-primary-pale text-brand-primary-deep" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
+                    )}
+                  >
+                    <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
+                    <span className="min-w-0 truncate">{item.label}</span>
+                  </a>;
+                })}
+              </div>
+            </section>;
           })}
         </nav>
 
@@ -131,7 +167,7 @@ export function AdminShell({
               <ShieldCheck className="h-4 w-4" aria-hidden="true" />
               Super Admin
             </div>
-            <p className="mt-2 break-all text-xs leading-5 text-muted-foreground">
+            <p title={session?.principal.email} className="mt-2 truncate text-xs leading-5 text-muted-foreground">
               {session?.principal.email ?? "Memuat sesi..."}
             </p>
             <button

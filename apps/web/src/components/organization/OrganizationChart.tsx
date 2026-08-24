@@ -40,7 +40,7 @@ import {
   ORGANIZATION_NODE_VISUAL_BAND_HEIGHT,
   ORGANIZATION_POSITION_VISUAL_BAND_HEIGHT,
   organizationNodeTypeLabel,
-  visualBandOffset,
+  visualBandGap,
 } from "@/lib/organizationCanvas";
 import { cn } from "@/lib/utils";
 
@@ -50,18 +50,6 @@ export type OrganizationSelection =
   | null;
 
 const ZOOM_STEP = 0.1;
-function DisplayOffsetBadge({ offset }: { offset: number }) {
-  if (offset <= 0) return null;
-  return (
-    <span
-      title={`Tampilkan ${offset} tingkat lebih rendah. Hubungan struktural, reporting, dan approval tetap mengikuti induk sebenarnya.`}
-      aria-label={`Tampilan +${offset}`}
-      className="inline-flex min-w-6 justify-center rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-blue-800"
-    >
-      +{offset}
-    </span>
-  );
-}
 
 function PositionCard({
   position,
@@ -125,9 +113,8 @@ function PositionCard({
           <BriefcaseBusiness className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-primary-deep" aria-hidden="true" />
         )}
       </span>
-      {position.visualRankOffset > 0 || isLeader || acting || primary ? (
+      {isLeader || acting || primary ? (
         <span className="mt-2 flex flex-wrap gap-1">
-          <DisplayOffsetBadge offset={position.visualRankOffset} />
           {primary ? (
             <span className="inline-flex rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-700">
               {accountHolder ? "ACCOUNT" : "PEGAWAI"}
@@ -151,17 +138,20 @@ function PositionCard({
 
 function PositionLane({
   position,
+  parentVisualDepth,
   isLeader,
   selected,
   onSelect,
 }: {
   position: OrganizationLayoutPosition;
+  parentVisualDepth: number | null;
   isLeader: boolean;
   selected: boolean;
   onSelect: () => void;
 }) {
-  const offsetHeight = visualBandOffset(
-    position.visualRankOffset,
+  const offsetHeight = visualBandGap(
+    parentVisualDepth,
+    position.visualDepth,
     ORGANIZATION_POSITION_VISUAL_BAND_HEIGHT,
   );
   const connectorHeight = (position.parentPositionKey ? 16 : 0) + offsetHeight;
@@ -203,6 +193,7 @@ function TreeBranch({
   selection,
   onSelect,
   parentKey,
+  parentVisualDepth = null,
   siblingIndex = 0,
   siblingCount = 1,
   expandAll,
@@ -212,6 +203,7 @@ function TreeBranch({
   selection: OrganizationSelection;
   onSelect: (selection: Exclude<OrganizationSelection, null>) => void;
   parentKey?: string;
+  parentVisualDepth?: number | null;
   siblingIndex?: number;
   siblingCount?: number;
   expandAll: boolean;
@@ -222,7 +214,7 @@ function TreeBranch({
   const selected = selection?.kind === "node" && selection.key === item.stableKey;
   const hasDetails = item.positions.length > 0 || item.children.length > 0;
   const connectorHeight = (parentKey ? 28 : 0)
-    + visualBandOffset(item.visualRankOffset, ORGANIZATION_NODE_VISUAL_BAND_HEIGHT);
+    + visualBandGap(parentVisualDepth, item.visualDepth, ORGANIZATION_NODE_VISUAL_BAND_HEIGHT);
   const siblingSegment = siblingCount <= 1
     ? null
     : siblingIndex === 0
@@ -307,18 +299,15 @@ function TreeBranch({
           ) : null}
         </div>
 
-        {item.visualRankOffset > 0 ? (
-          <div className="mt-2">
-            <DisplayOffsetBadge offset={item.visualRankOffset} />
-          </div>
-        ) : null}
-
         {expanded && item.positions.length > 0 ? (
           <div className="mt-2.5 space-y-1.5 border-t border-border/60 pt-2.5">
             {item.positions.map((position) => (
               <PositionLane
                 key={position.stableKey}
                 position={position}
+                parentVisualDepth={position.parentPositionKey
+                  ? item.positions.find((candidate) => candidate.stableKey === position.parentPositionKey)?.visualDepth ?? null
+                  : null}
                 isLeader={item.leaderPositionKey === position.stableKey}
                 selected={selection?.kind === "position" && selection.key === position.stableKey}
                 onSelect={() => onSelect({ kind: "position", key: position.stableKey })}
@@ -343,6 +332,7 @@ function TreeBranch({
                 selection={selection}
                 onSelect={onSelect}
                 parentKey={item.stableKey}
+                parentVisualDepth={item.visualDepth}
                 siblingIndex={index}
                 siblingCount={item.children.length}
                 expandAll={expandAll}

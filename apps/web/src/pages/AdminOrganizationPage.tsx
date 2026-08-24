@@ -60,6 +60,11 @@ import {
 } from "@/lib/organizationDesigner";
 import { cn } from "@/lib/utils";
 import { organizationNodeTypeLabel } from "@/lib/organizationCanvas";
+import {
+  activeOrganizationEmployees,
+  filterOrganizationEmployees,
+  organizationEmployeeUnits,
+} from "@/lib/organizationMemberPicker";
 import { selectableOrganizationParents } from "@/lib/organizationTree";
 
 type EditorAction =
@@ -234,14 +239,19 @@ function MembershipEditor({
     () => new Set(memberships.filter((item) => item.nodeKey === node.stableKey).map((item) => item.employeeId)),
   );
   const [legacyUnit, setLegacyUnit] = useState("");
-  const legacyUnits = useMemo(
-    () => [...new Set(employees.map((employee) => employee.unitName).filter((value): value is string => Boolean(value)))].sort(),
-    [employees],
-  );
+  const [manualUnit, setManualUnit] = useState("");
+  const [search, setSearch] = useState("");
+  const activeEmployees = useMemo(() => activeOrganizationEmployees(employees), [employees]);
+  const legacyUnits = useMemo(() => organizationEmployeeUnits(employees), [employees]);
   const legacyCandidates = useMemo(
-    () => legacyUnit ? employees.filter((employee) => employee.unitName === legacyUnit && employee.status !== "inactive" && employee.status !== "resigned") : [],
-    [employees, legacyUnit],
+    () => legacyUnit ? activeEmployees.filter((employee) => employee.unitName === legacyUnit) : [],
+    [activeEmployees, legacyUnit],
   );
+  const filteredEmployees = useMemo(
+    () => filterOrganizationEmployees(employees, { search, unit: manualUnit }),
+    [employees, manualUnit, search],
+  );
+  const filtersApplied = Boolean(search.trim() || manualUnit);
 
   const toggle = (employeeId: string, checked: boolean) => {
     setSelected((current) => {
@@ -290,13 +300,30 @@ function MembershipEditor({
         <p className="text-xs font-bold text-brand-heading">Anggota terpilih: {selected.size}</p>
         <button type="button" onClick={() => setSelected(new Set())} className="text-[11px] font-semibold text-muted-foreground hover:text-brand-heading">Kosongkan pilihan</button>
       </div>
-      <div className="mt-2 max-h-[22rem] space-y-1 overflow-y-auto rounded-xl border border-border p-2">
-        {employees.map((employee) => (
+      <section className="mt-3 rounded-xl border border-border bg-surface/60 p-3" aria-label="Filter pegawai aktif">
+        <p className="text-xs font-bold text-brand-heading">Cari pegawai aktif</p>
+        <p className="mt-1 text-[11px] text-muted-foreground">Pilih unit atau masukkan nama/nomor pegawai, lalu tinjau hasil sebelum memilih.</p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <input
+            type="search"
+            aria-label="Cari nama atau nomor pegawai"
+            placeholder="Nama atau nomor pegawai"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            className={inputClass}
+          />
+          <select aria-label="Filter unit pegawai" value={manualUnit} onChange={(event) => setManualUnit(event.target.value)} className={inputClass}>
+            <option value="">Semua unit</option>
+            {legacyUnits.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
+          </select>
+        </div>
+      </section>
+      {[...selected].map((employeeId) => <input key={employeeId} type="hidden" name="employeeIds" value={employeeId} />)}
+      <div className="mt-2 max-h-[18rem] space-y-1 overflow-y-auto overscroll-contain rounded-xl border border-border p-2" aria-live="polite">
+        {filteredEmployees.map((employee) => (
           <label key={employee.id} className="flex cursor-pointer items-start gap-3 rounded-lg px-3 py-2.5 hover:bg-muted">
             <input
               type="checkbox"
-              name="employeeIds"
-              value={employee.id}
               checked={selected.has(employee.id)}
               onChange={(event) => toggle(employee.id, event.target.checked)}
               className="mt-1 h-4 w-4 accent-[var(--color-brand-primary)]"
@@ -307,7 +334,9 @@ function MembershipEditor({
             </span>
           </label>
         ))}
-        {employees.length === 0 ? <p className="p-4 text-center text-sm text-muted-foreground">Daftar pegawai aktif belum tersedia.</p> : null}
+        {activeEmployees.length === 0 ? <p className="p-4 text-center text-sm text-muted-foreground">Daftar pegawai aktif belum tersedia.</p> : null}
+        {activeEmployees.length > 0 && !filtersApplied ? <p className="p-4 text-center text-sm text-muted-foreground">Gunakan pencarian atau filter unit untuk menampilkan pegawai.</p> : null}
+        {filtersApplied && filteredEmployees.length === 0 ? <p className="p-4 text-center text-sm text-muted-foreground">Tidak ada pegawai aktif yang cocok.</p> : null}
       </div>
       <SubmitRow saving={saving} onCancel={onCancel} label="Simpan anggota" />
     </form>

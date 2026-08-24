@@ -9,6 +9,7 @@ import {
   ORGANIZATION_NODE_VISUAL_BAND_HEIGHT,
   ORGANIZATION_POSITION_VISUAL_BAND_HEIGHT,
   organizationNodeTypeLabel,
+  visualBandGap,
   visualBandOffset,
 } from "@/lib/organizationCanvas";
 import { buildOrganizationTree, selectableOrganizationParents } from "@/lib/organizationTree";
@@ -174,6 +175,7 @@ describe("Organization Designer chart", () => {
 
     expect(html).toMatch(/data-node-key="quran-bureau"[^>]*data-structural-depth="1"[^>]*data-visual-band="2"[^>]*data-visual-rank-offset="1"/);
     expect(visualBandOffset(1, ORGANIZATION_NODE_VISUAL_BAND_HEIGHT)).toBe(160);
+    expect(visualBandGap(0, 2, ORGANIZATION_NODE_VISUAL_BAND_HEIGHT)).toBe(160);
     expect(html).toContain('style="height:188px"');
   });
 
@@ -190,6 +192,7 @@ describe("Organization Designer chart", () => {
 
     expect(html).toMatch(/data-position-key="vice-principal"[^>]*data-parent-position-key="director"[^>]*data-structural-depth="1"[^>]*data-visual-band="3"/);
     expect(visualBandOffset(2, ORGANIZATION_POSITION_VISUAL_BAND_HEIGHT)).toBe(128);
+    expect(visualBandGap(0, 3, ORGANIZATION_POSITION_VISUAL_BAND_HEIGHT)).toBe(128);
     expect(html).toContain('style="height:144px"');
     expect(html).toMatch(/data-connector-kind="position"[^>]*data-connector-from="director"[^>]*data-connector-to="vice-principal"/);
   });
@@ -208,7 +211,7 @@ describe("Organization Designer chart", () => {
     expect(html).toMatch(/data-connector-from="foundation"[^>]*data-connector-to="quran-bureau"/);
   });
 
-  it("renders a real vacancy separately from visual-rank presentation", () => {
+  it("renders a real vacancy without showing visual-offset badges on canvas cards", () => {
     const html = renderToStaticMarkup(
       <OrganizationChart
         nodes={[baseNode]}
@@ -221,10 +224,8 @@ describe("Organization Designer chart", () => {
     );
 
     expect(html).toContain("VACANT · Belum ada pejabat");
-    expect(html).toContain('aria-label="Tampilan +2"');
-    expect(html).toContain(">+2</span>");
-    expect(html).not.toContain(">Tampilan +2</span>");
-    expect(html).toContain("Tampilkan 2 tingkat lebih rendah. Hubungan struktural");
+    expect(html).not.toContain('aria-label="Tampilan +2"');
+    expect(html).not.toContain(">+2</span>");
   });
 
   it("aligns equal computed visual depths to the same visual band for offsets 0 through 3", () => {

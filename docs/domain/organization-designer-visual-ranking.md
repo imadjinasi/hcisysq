@@ -250,8 +250,9 @@ Tampilan
 - Tampilkan 3 tingkat lebih rendah
 ```
 
-Cards show only a compact `+1` / `+2` / `+3` badge. The full
-explanation remains available through tooltip and the selection inspector.
+Canvas cards do not show `+1` / `+2` / `+3` badges, so the presentation
+metadata does not compete with structural content. The selected-item inspector
+retains the complete placement explanation.
 
 The renderer lays out `structuralDepth + visualRankOffset` as an actual visual
 band using a fixed complete row pitch for each rendered item type, rather than

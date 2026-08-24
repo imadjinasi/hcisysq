@@ -10,6 +10,17 @@ export function visualBandOffset(offset: number, bandHeight: number): number {
   return Math.max(0, Math.trunc(offset)) * bandHeight;
 }
 
+export function visualBandGap(
+  parentVisualDepth: number | null,
+  visualDepth: number,
+  bandHeight: number,
+): number {
+  const skippedBands = parentVisualDepth === null
+    ? visualDepth
+    : Math.max(0, visualDepth - parentVisualDepth - 1);
+  return visualBandOffset(skippedBands, bandHeight);
+}
+
 const nodeTypeLabels: Record<string, string> = {
   FOUNDATION: "Yayasan / Foundation",
   DIRECTORATE: "Direktorat / Bidang",
