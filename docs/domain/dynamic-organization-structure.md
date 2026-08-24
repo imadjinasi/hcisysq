@@ -609,6 +609,21 @@ Publishing validates at least:
 
 ## Organization Designer UX
 
+The normal YSQ administration flow is intentionally limited to **Struktur**,
+**Pimpinan**, and **Anggota**. Node inspectors therefore prioritize adding a
+part/unit, configuring a leader, and managing members. Technical authority,
+vacancy, visual-placement, integration, and destructive controls remain
+available only under **Pengaturan lanjutan** / **Zona berbahaya**. This is a
+presentation simplification; it neither changes stored node types nor infers
+authority from titles, node type, or visual rank.
+
+Leader configuration is a DRAFT-only atomic operation: it selects or creates
+a position in the selected node, optionally writes its primary employee or
+governance-account holder, replaces that node's explicit `LEADER` binding,
+and optionally saves an explicitly selected `parentPositionKey`. No reporting
+parent, `UNIT_APPROVER`, governance binding, or rollout state is inferred or
+created. A vacant leader is valid configuration.
+
 Target experience is a visual organization designer, not only maintenance tables.
 
 Illustrative chart:

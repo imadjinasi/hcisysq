@@ -22,12 +22,12 @@ export function visualBandGap(
 }
 
 const nodeTypeLabels: Record<string, string> = {
-  FOUNDATION: "Yayasan / Foundation",
-  DIRECTORATE: "Direktorat / Bidang",
-  UNIT: "Unit",
-  SCHOOL: "Sekolah",
-  DIVISION: "Divisi",
-  DEPARTMENT: "Departemen",
+  FOUNDATION: "Yayasan",
+  DIRECTORATE: "Bidang",
+  UNIT: "Unit / Lembaga",
+  SCHOOL: "Unit / Lembaga · Sekolah",
+  DIVISION: "Bagian / Fungsi",
+  DEPARTMENT: "Bagian / Fungsi",
   TEAM: "Tim",
 };
 

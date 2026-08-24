@@ -61,6 +61,19 @@ const incumbencyInput = z.object({
   effectiveFrom: date,
   assignmentType: z.enum(["PRIMARY_STRUCTURAL", "SECONDARY"]).optional(),
 });
+// This is intentionally a focused draft operation.  It does not infer any
+// workflow authority other than the node's explicit LEADER relationship.
+const leaderConfigurationInput = z.object({
+  nodeKey: uuid,
+  positionKey: uuid.nullable().optional(),
+  title: z.string().trim().min(1).max(160).optional(),
+  holderSource: z.enum(["EMPLOYEE", "ACCOUNT"]).default("EMPLOYEE"),
+  primaryEmployeeId: uuid.nullable().optional(),
+  primaryAccountId: uuid.nullable().optional(),
+  assignmentType: z.enum(["PRIMARY_STRUCTURAL", "SECONDARY"]).default("PRIMARY_STRUCTURAL"),
+  parentPositionKey: uuid.nullable().optional(),
+  effectiveFrom: date,
+});
 const bindingType = z.enum([
   "SUPERVISORY_PARENT",
   "LEADER",
@@ -692,6 +705,73 @@ export async function registerOrganizationAdminRoutes(
     });
     if (!changeSet) return;
     return reply.send(changeSet);
+  });
+
+  app.put("/admin/organization/designer/drafts/:draftId/leader", async (request, reply) => {
+    const principal = await authenticate(request, reply); if (!principal) return;
+    const params = draftParams.safeParse(request.params); const body = leaderConfigurationInput.safeParse(request.body);
+    if (!params.success || !body.success) return invalid(reply, "INVALID_ORGANIZATION_LEADER", "Invalid leader configuration.");
+    if (!body.data.positionKey && !body.data.title) {
+      return invalid(reply, "LEADER_POSITION_REQUIRED", "Choose an existing position or provide a leadership position title.");
+    }
+    if (body.data.holderSource === "EMPLOYEE" && body.data.primaryAccountId) {
+      return invalid(reply, "INVALID_HOLDER_SOURCE", "An employee leadership position cannot use an account holder.");
+    }
+    if (body.data.holderSource === "ACCOUNT" && body.data.primaryEmployeeId) {
+      return invalid(reply, "INVALID_HOLDER_SOURCE", "A governance leadership position cannot use an employee holder.");
+    }
+    const configured = await atomicOrganizationMutation(pool, principal, async (transaction) => {
+      const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return null;
+      const node = snapshot.nodes.find((item) => item.stableKey === body.data.nodeKey);
+      if (!node) { await reply.status(404).send({ code: "ORGANIZATION_NODE_NOT_FOUND" }); return null; }
+      let position = body.data.positionKey
+        ? snapshot.positions.find((item) => item.stableKey === body.data.positionKey)
+        : undefined;
+      if (body.data.positionKey && !position) { await reply.status(404).send({ code: "ORGANIZATION_POSITION_NOT_FOUND" }); return null; }
+      if (position && position.nodeKey !== node.stableKey) {
+        await reply.status(409).send({ code: "LEADER_POSITION_NODE_MISMATCH", message: "The selected position must belong to this structure." });
+        return null;
+      }
+      if (!position) {
+        position = { id: randomUUID(), stableKey: randomUUID(), nodeKey: node.stableKey, title: body.data.title!,
+          parentPositionKey: body.data.parentPositionKey ?? null, singleIncumbent: true, vacancyPolicy: "CLIMB_TO_PARENT" as const,
+          active: true, visualRankOffset: 0, holderSource: body.data.holderSource,
+          effectiveFrom: snapshot.changeSet.effectiveOn, effectiveTo: null };
+        snapshot.positions.push(position);
+      } else {
+        // Leaving the holder untouched must also leave its source untouched;
+        // this makes an existing governance-account leader safe to review.
+        if (body.data.primaryEmployeeId !== undefined || body.data.primaryAccountId !== undefined) {
+          position.holderSource = body.data.holderSource;
+        }
+        if (body.data.parentPositionKey !== undefined) position.parentPositionKey = body.data.parentPositionKey;
+      }
+      if (body.data.primaryEmployeeId !== undefined || body.data.primaryAccountId !== undefined) {
+        snapshot.incumbencies = snapshot.incumbencies.filter((item) =>
+          item.positionKey !== position!.stableKey || item.kind !== "PRIMARY");
+        if (body.data.primaryEmployeeId) snapshot.incumbencies.push({ id: randomUUID(), positionKey: position.stableKey,
+          employeeId: body.data.primaryEmployeeId, accountId: null, kind: "PRIMARY", effectiveFrom: body.data.effectiveFrom,
+          effectiveTo: null, isPrimaryStructural: body.data.assignmentType === "PRIMARY_STRUCTURAL", reason: null });
+        if (body.data.primaryAccountId) snapshot.incumbencies.push({ id: randomUUID(), positionKey: position.stableKey,
+          employeeId: null, accountId: body.data.primaryAccountId, kind: "PRIMARY", effectiveFrom: body.data.effectiveFrom,
+          effectiveTo: null, isPrimaryStructural: false, reason: null });
+      }
+      // A node has one effective leader. Replacing this binding deliberately
+      // leaves the former position and its incumbent intact.
+      snapshot.authorityBindings = snapshot.authorityBindings.filter((item) =>
+        !(item.subjectKind === "NODE" && item.subjectKey === node.stableKey && item.bindingType === "LEADER"));
+      snapshot.authorityBindings.push({ id: randomUUID(), subjectKind: "NODE", subjectKey: node.stableKey,
+        bindingType: "LEADER", targetPositionKey: position.stableKey, vacancyPolicy: "CLIMB_TO_PARENT",
+        effectiveFrom: body.data.effectiveFrom, effectiveTo: null });
+      await transaction.repository.replaceDraftSnapshot(snapshot);
+      await transaction.audit("organization.leader.configured", "organization_node", node.id, snapshot.changeSet.id, {
+        nodeKey: node.stableKey, positionKey: position.stableKey, createdPosition: !body.data.positionKey,
+        reportsToPositionKey: position.parentPositionKey ?? null, holderSource: position.holderSource,
+      });
+      return position;
+    });
+    if (!configured) return;
+    return reply.send({ ...configured, primaryIncumbent: null, actingIncumbent: null });
   });
 
   app.delete("/admin/organization/designer/drafts/:draftId", async (request, reply) => {

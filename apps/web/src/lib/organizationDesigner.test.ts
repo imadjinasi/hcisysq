@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   getOrganizationDesignerView,
+  configureOrganizationLeader,
   replaceOrganizationIncumbencies,
   updateOrganizationPosition,
   validateOrganizationDraft,
@@ -89,6 +90,22 @@ describe("Organization Designer API client", () => {
           effectiveFrom: "2027-01-01",
         }),
       }),
+    );
+  });
+
+  it("uses the focused draft-only leader operation rather than composing technical mutations in the UI", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: "position-1" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await configureOrganizationLeader("draft-1", {
+      nodeKey: "node-1", positionKey: "position-1", holderSource: "EMPLOYEE",
+      primaryEmployeeId: "employee-1", assignmentType: "SECONDARY", parentPositionKey: null,
+      effectiveFrom: "2027-01-01",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/admin/organization/designer/drafts/draft-1/leader",
+      expect.objectContaining({ method: "PUT", body: expect.stringContaining('"assignmentType":"SECONDARY"') }),
     );
   });
 });

@@ -561,6 +561,35 @@ paths:
         '400': { $ref: '#/components/responses/ValidationError' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /admin/organization/designer/drafts/{draftId}/leader:
+    put:
+      tags: [Organization]
+      operationId: configureOrganizationLeader
+      description: Draft-only atomic leader configuration. It may create or select a position, replace the node LEADER binding, update the supplied primary holder, and write an explicitly selected reporting parent. It never infers reporting or creates approval bindings.
+      parameters: [{ $ref: '#/components/parameters/DraftId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nodeKey, holderSource, assignmentType, effectiveFrom]
+              properties:
+                nodeKey: { type: string, format: uuid }
+                positionKey: { type: [string, 'null'], format: uuid, description: Existing position in the selected node. }
+                title: { type: string, description: Required when creating a new leadership position. }
+                holderSource: { type: string, enum: [EMPLOYEE, ACCOUNT] }
+                primaryEmployeeId: { type: [string, 'null'], format: uuid }
+                primaryAccountId: { type: [string, 'null'], format: uuid }
+                assignmentType: { type: string, enum: [PRIMARY_STRUCTURAL, SECONDARY] }
+                parentPositionKey: { type: [string, 'null'], format: uuid, description: Optional explicit reports-to position; null does not infer one. }
+                effectiveFrom: { type: string, format: date }
+      responses:
+        '200': { description: Leader configuration saved atomically in the draft. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: The selected position belongs to another node or the snapshot is immutable. }
+
   /admin/organization/designer/drafts/{draftId}/authority-bindings:
     post:
       tags: [Organization]

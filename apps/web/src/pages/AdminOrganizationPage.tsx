@@ -13,7 +13,6 @@ import {
   LoaderCircle,
   Network,
   PanelRightClose,
-  Plus,
   Rocket,
   ShieldCheck,
   Sparkles,
@@ -38,6 +37,7 @@ import { AdminShell } from "@/layouts/AdminShell";
 import { AdminApiError } from "@/lib/adminEmployees";
 import {
   createOrganizationAuthorityBinding,
+  configureOrganizationLeader,
   createOrganizationDraft,
   createOrganizationNode,
   createOrganizationPosition,
@@ -90,6 +90,7 @@ type EditorAction =
       position?: OrganizationPosition;
     }
   | { type: "incumbency"; position: OrganizationPosition; acting: boolean }
+  | { type: "leader"; node: OrganizationNode }
   | { type: "members"; node: OrganizationNode }
   | {
       type: "visual";
@@ -581,15 +582,17 @@ function MembershipEditor({
           const employee = employees.find((item) => item.id === employeeId);
           const existingPrimary = primaryMembershipByEmployeeId.get(employeeId);
           const isPrimary = primaryByEmployeeId.get(employeeId) ?? !existingPrimary;
+          const existingCurrent = memberships.find((item) => item.nodeKey === node.stableKey && item.employeeId === employeeId);
+          const showTypeChoice = !existingCurrent || Boolean(existingPrimary) || existingCurrent.isPrimary === false;
           return (
             <div key={`membership-mode-${employeeId}`} className="rounded-lg border border-border bg-white p-3">
               <p className="text-sm font-semibold text-brand-heading">{employee?.fullName ?? employeeId}</p>
               {existingPrimary ? <p className="mt-1 text-[11px] text-muted-foreground">Unit utama saat ini: {nodePath(existingPrimary.nodeKey)}</p> : null}
               <p className="mt-1 text-[11px] text-muted-foreground">Menambahkan ke: {nodePath(node.stableKey)}</p>
-              <div className="mt-2 flex flex-wrap gap-3 text-xs">
-                <label className="flex items-center gap-1.5"><input type="radio" name={`membershipMode-${employeeId}`} checked={isPrimary} onChange={() => setPrimaryByEmployeeId((current) => new Map(current).set(employeeId, true))} /> Jadikan keanggotaan utama</label>
-                <label className="flex items-center gap-1.5"><input type="radio" name={`membershipMode-${employeeId}`} checked={!isPrimary} onChange={() => setPrimaryByEmployeeId((current) => new Map(current).set(employeeId, false))} /> Keanggotaan tambahan / rangkap unit</label>
-              </div>
+              {showTypeChoice ? <div className="mt-2 flex flex-wrap gap-3 text-xs">
+                <label className="flex items-center gap-1.5"><input type="radio" name={`membershipMode-${employeeId}`} checked={isPrimary} onChange={() => setPrimaryByEmployeeId((current) => new Map(current).set(employeeId, true))} /> Utama</label>
+                <label className="flex items-center gap-1.5"><input type="radio" name={`membershipMode-${employeeId}`} checked={!isPrimary} onChange={() => setPrimaryByEmployeeId((current) => new Map(current).set(employeeId, false))} /> Tambahan / rangkap unit</label>
+              </div> : <p className="mt-2 text-[11px] text-muted-foreground">Utama</p>}
               {existingPrimary && isPrimary ? <label className="mt-3 flex items-start gap-2 text-[11px] text-amber-900"><input type="checkbox" name="confirmPrimarySwitchEmployeeIds" value={employeeId} className="mt-0.5" /> Saya konfirmasi unit utama sebelumnya tetap disimpan sebagai keanggotaan tambahan.</label> : null}
             </div>
           );
@@ -1019,7 +1022,9 @@ export function AdminOrganizationPage() {
     const input = {
       name: String(form.get("name")),
       nodeType: String(form.get("nodeType")),
-      parentNodeKey: String(form.get("parentNodeKey")) || null,
+      parentNodeKey: editor.mode === "child" && String(form.get("placement")) === "sibling"
+        ? (editor.node?.parentNodeKey ?? null)
+        : String(form.get("parentNodeKey")) || null,
       visualRankOffset: Number(form.get("visualRankOffset")),
       integrationCode: String(form.get("integrationCode")) || null,
     };
@@ -1131,6 +1136,32 @@ export function AdminOrganizationPage() {
       editor.acting
         ? "Pelaksana tugas diperbarui."
         : "Pejabat utama diperbarui.",
+    );
+  };
+
+  const handleLeader = (
+    event: FormEvent<HTMLFormElement>,
+    editor: Extract<EditorAction, { type: "leader" }>,
+  ) => {
+    event.preventDefault();
+    if (!data?.draft) return;
+    const form = new FormData(event.currentTarget);
+    const useExisting = String(form.get("leaderMode")) === "existing";
+    const holderSource = String(form.get("holderSource")) as "EMPLOYEE" | "ACCOUNT";
+    const replaceHolder = !useExisting || form.get("setVacant") === "yes" || Boolean(form.get("employeeId")) || Boolean(form.get("accountId"));
+    void mutate(
+      () => configureOrganizationLeader(data.draft!.id, {
+        nodeKey: editor.node.stableKey,
+        positionKey: useExisting ? String(form.get("positionKey")) || null : null,
+        title: useExisting ? undefined : String(form.get("title")),
+        holderSource,
+        primaryEmployeeId: holderSource === "EMPLOYEE" && replaceHolder ? String(form.get("employeeId")) || null : undefined,
+        primaryAccountId: holderSource === "ACCOUNT" && replaceHolder ? String(form.get("accountId")) || null : undefined,
+        assignmentType: String(form.get("assignmentType") || "PRIMARY_STRUCTURAL") as "PRIMARY_STRUCTURAL" | "SECONDARY",
+        parentPositionKey: String(form.get("parentPositionKey")) || null,
+        effectiveFrom: data.draft!.effectiveOn,
+      }),
+      "Pimpinan struktur diperbarui.",
     );
   };
 
@@ -1381,6 +1412,11 @@ export function AdminOrganizationPage() {
           <span>{notice}</span>
         </div>
       ) : null}
+      {data?.draft?.status === "PUBLISHED" ? (
+        <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold text-blue-950">
+          Versi ini sudah diterbitkan dan hanya dapat dibaca.
+        </div>
+      ) : null}
 
       <section
         className={cn(
@@ -1441,7 +1477,7 @@ export function AdminOrganizationPage() {
                 onClick={() => setAction({ type: "draft" })}
                 className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-white px-3 text-xs font-bold hover:bg-muted"
               >
-                <CalendarClock className="h-4 w-4" /> Jadwalkan perubahan
+                <CalendarClock className="h-4 w-4" /> {data?.draft?.status === "PUBLISHED" ? "Buat draft koreksi" : "Jadwalkan perubahan"}
               </button>
             ) : (
               <>
@@ -1616,7 +1652,7 @@ export function AdminOrganizationPage() {
                     </div>
                     <div className="min-w-0">
                       <dt className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-                        Pemegang utama ·{" "}
+                        Pejabat ·{" "}
                         {selectedPosition?.holderSource === "ACCOUNT"
                           ? "ACCOUNT"
                           : "EMPLOYEE"}
@@ -1655,24 +1691,21 @@ export function AdminOrganizationPage() {
                     ) : null}
                     <div>
                       <dt className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-                        Kebijakan vacancy
+                        Penugasan
                       </dt>
                       <dd className="mt-1 font-semibold text-brand-heading">
-                        {selectedPosition?.vacancyPolicy}
+                        {selectedPosition?.primaryIncumbent?.isPrimaryStructural ? "Utama" : "Rangkap"}
                       </dd>
                     </div>
                   </>
                 )}
                 <div>
-                  <dt className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-                    Kewenangan terkait
-                  </dt>
-                  <dd className="mt-1 font-semibold text-brand-heading">
-                    {selectedBindings.length > 0
-                      ? selectedBindings
-                          .map((binding) => binding.authorityType)
-                          .join(", ")
-                      : "Belum ada binding langsung"}
+                  <dt className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Approval & reporting</dt>
+                  <dd className="mt-1 space-y-1 text-[11px] text-brand-heading">
+                    <span className="block">Pimpinan: {selectedNode ? (data?.positions.find((item) => item.stableKey === selectedNode.leaderPositionKey)?.title ?? "Belum ditetapkan") : "—"}</span>
+                    <span className="block">Melapor kepada: {selectedPosition?.parentPositionKey ? (data?.positions.find((item) => item.stableKey === selectedPosition.parentPositionKey)?.title ?? "Belum ditetapkan") : "Belum ditetapkan"}</span>
+                    <span className="block">Penyetuju unit: {selectedBindings.find((binding) => binding.authorityType === "UNIT_APPROVER") ? "Ditetapkan" : "Belum ditetapkan"}</span>
+                    <span className="block">Rollout: Legacy / Shadow / Structure</span>
                   </dd>
                 </div>
                 <div>
@@ -1710,49 +1743,24 @@ export function AdminOrganizationPage() {
                           onClick={() =>
                             setAction({
                               type: "node",
-                              mode: "edit",
-                              node: selectedNode,
-                            })
-                          }
-                          icon={<ArrowRightLeft />}
-                        >
-                          Edit
-                        </ActionButton>
-                        <ActionButton
-                          onClick={() =>
-                            setAction({
-                              type: "node",
                               mode: "child",
                               node: selectedNode,
                             })
                           }
                           icon={<GitBranchPlus />}
                         >
-                          Tambah di bawah
+                          Tambah bagian / unit
                         </ActionButton>
                         <ActionButton
                           onClick={() =>
                             setAction({
-                              type: "node",
-                              mode: "sibling",
+                              type: "leader",
                               node: selectedNode,
                             })
                           }
-                          icon={<Plus />}
+                          icon={<UserCog />}
                         >
-                          Tambah sejajar
-                        </ActionButton>
-                        <ActionButton
-                          onClick={() =>
-                            setAction({
-                              type: "position",
-                              mode: "create",
-                              nodeKey: selectedNode.stableKey,
-                            })
-                          }
-                          icon={<BriefcaseBusiness />}
-                        >
-                          Tambah posisi
+                          Tetapkan pimpinan
                         </ActionButton>
                         <ActionButton
                           onClick={() =>
@@ -1760,66 +1768,27 @@ export function AdminOrganizationPage() {
                           }
                           icon={<UsersRound />}
                         >
-                          Anggota
+                          Kelola anggota
                         </ActionButton>
-                        <ActionButton
-                          onClick={() =>
-                            setAction({
-                              type: "authority",
-                              item: selectedNode,
-                              kind: "node",
-                            })
-                          }
-                          icon={<Network />}
-                        >
-                          Kewenangan
+                        <ActionButton onClick={() => setAction({ type: "node", mode: "edit", node: selectedNode })} icon={<ArrowRightLeft />}>
+                          Edit struktur
                         </ActionButton>
-                        <ActionButton
-                          onClick={() =>
-                            setAction({
-                              type: "visual",
-                              item: selectedNode,
-                              kind: "node",
-                            })
-                          }
-                          icon={<ArrowDownToLine />}
-                        >
-                          Tampilan
-                        </ActionButton>
-                        <ActionButton
-                          onClick={() =>
-                            setAction({
-                              type: "node",
-                              mode: "move",
-                              node: selectedNode,
-                            })
-                          }
-                          icon={<ArrowRightLeft />}
-                        >
-                          Pindahkan
-                        </ActionButton>
-                        <ActionButton
-                          onClick={() =>
-                            setAction({
-                              type: "delete-group",
-                              node: selectedNode,
-                            })
-                          }
-                          icon={<Trash2 />}
-                        >
-                          Hapus kelompok
-                        </ActionButton>
-                        <ActionButton
-                          onClick={() =>
-                            setAction({
-                              type: "delete-node",
-                              node: selectedNode,
-                            })
-                          }
-                          icon={<Trash2 />}
-                        >
-                          Hapus subtree
-                        </ActionButton>
+                        <details className="col-span-2 mt-2 rounded-lg border border-border bg-surface p-2">
+                          <summary className="cursor-pointer text-xs font-bold text-brand-heading">Pengaturan lanjutan</summary>
+                          <div className="mt-2 grid grid-cols-2 gap-1.5">
+                            <ActionButton onClick={() => setAction({ type: "position", mode: "create", nodeKey: selectedNode.stableKey })} icon={<BriefcaseBusiness />}>Tambah posisi tambahan</ActionButton>
+                            <ActionButton onClick={() => setAction({ type: "authority", item: selectedNode, kind: "node" })} icon={<Network />}>Kewenangan</ActionButton>
+                            <ActionButton onClick={() => setAction({ type: "visual", item: selectedNode, kind: "node" })} icon={<ArrowDownToLine />}>Tampilan</ActionButton>
+                            <ActionButton onClick={() => setAction({ type: "node", mode: "move", node: selectedNode })} icon={<ArrowRightLeft />}>Pindahkan</ActionButton>
+                          </div>
+                        </details>
+                        <div className="col-span-2 mt-2 rounded-lg border border-red-200 bg-red-50 p-2">
+                          <p className="text-[10px] font-bold uppercase tracking-wide text-red-800">Zona berbahaya</p>
+                          <div className="mt-2 grid grid-cols-2 gap-1.5">
+                            <ActionButton onClick={() => setAction({ type: "delete-group", node: selectedNode })} icon={<Trash2 />}>Hapus kelompok</ActionButton>
+                            <ActionButton onClick={() => setAction({ type: "delete-node", node: selectedNode })} icon={<Trash2 />}>Hapus subtree</ActionButton>
+                          </div>
+                        </div>
                       </>
                     ) : selectedPosition ? (
                       <>
@@ -1834,7 +1803,7 @@ export function AdminOrganizationPage() {
                           }
                           icon={<ArrowRightLeft />}
                         >
-                          Edit posisi
+                          Edit jabatan
                         </ActionButton>
                         <ActionButton
                           onClick={() =>
@@ -1847,8 +1816,8 @@ export function AdminOrganizationPage() {
                           icon={<CircleUserRound />}
                         >
                           {selectedPosition.holderSource === "ACCOUNT"
-                            ? "Account holder"
-                            : "Pejabat utama"}
+                            ? "Ubah pejabat"
+                            : "Ubah pejabat"}
                         </ActionButton>
                         {selectedPosition.holderSource !== "ACCOUNT" ? (
                           <ActionButton
@@ -1861,15 +1830,18 @@ export function AdminOrganizationPage() {
                             }
                             icon={<UserCog />}
                           >
-                            Pelaksana tugas
+                            Atur PLT
                           </ActionButton>
                         ) : null}
                         <ActionButton
                           onClick={() => markVacant(selectedPosition)}
                           icon={<PanelRightClose />}
                         >
-                          Tandai vacant
+                          Tandai VACANT
                         </ActionButton>
+                        <details className="col-span-2 mt-2 rounded-lg border border-border bg-surface p-2">
+                          <summary className="cursor-pointer text-xs font-bold text-brand-heading">Pengaturan lanjutan</summary>
+                          <div className="mt-2 grid grid-cols-2 gap-1.5">
                         <ActionButton
                           onClick={() =>
                             setAction({
@@ -1881,7 +1853,7 @@ export function AdminOrganizationPage() {
                           }
                           icon={<ShieldCheck />}
                         >
-                          Aturan vacancy
+                          Kebijakan vacancy
                         </ActionButton>
                         <ActionButton
                           onClick={() =>
@@ -1928,6 +1900,10 @@ export function AdminOrganizationPage() {
                             Hapus acting
                           </ActionButton>
                         ) : null}
+                          </div>
+                        </details>
+                        <div className="col-span-2 mt-2 rounded-lg border border-red-200 bg-red-50 p-2">
+                          <p className="text-[10px] font-bold uppercase tracking-wide text-red-800">Zona berbahaya</p>
                         <ActionButton
                           onClick={() =>
                             setAction({
@@ -1939,6 +1915,7 @@ export function AdminOrganizationPage() {
                         >
                           Hapus posisi
                         </ActionButton>
+                        </div>
                       </>
                     ) : null}
                   </div>
@@ -2271,37 +2248,26 @@ export function AdminOrganizationPage() {
                     defaultValue={action.node?.nodeType ?? "UNIT"}
                     className={inputClass}
                   >
-                    <option value="FOUNDATION">Yayasan / Foundation</option>
-                    <option value="DIRECTORATE">Direktorat / Bidang</option>
-                    <option value="UNIT">Unit</option>
-                    <option value="DIVISION">Divisi</option>
-                    <option value="DEPARTMENT">Departemen</option>
+                    <option value="FOUNDATION">Yayasan</option>
+                    <option value="DIRECTORATE">Bidang</option>
+                    <option value="UNIT">Unit / Lembaga</option>
+                    <option value="DIVISION">Bagian / Fungsi</option>
                     <option value="TEAM">Tim</option>
                   </select>
                 </Field>
-                {action.mode === "child" || action.mode === "sibling" ? (
+                {action.mode === "child" ? (
                   <div className="rounded-xl border border-border bg-surface p-3">
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-                      {action.mode === "child" ? "Di bawah" : "Induk bersama"}
-                    </p>
-                    <p className="mt-1 text-sm font-bold text-brand-heading">
-                      {action.mode === "child"
-                        ? action.node?.name
-                        : (data?.nodes.find(
-                            (node) =>
-                              node.stableKey === action.node?.parentNodeKey,
-                          )?.name ?? "Tingkat paling atas")}
-                    </p>
+                    <p className="text-xs font-bold text-brand-heading">Penempatan</p>
+                    <label className="mt-2 flex items-center gap-2 text-xs"><input type="radio" name="placement" value="child" defaultChecked /> Di bawah {action.node?.name}</label>
+                    <label className="mt-2 flex items-center gap-2 text-xs"><input type="radio" name="placement" value="sibling" /> Sejajar dengan {action.node?.name}</label>
                     <input
                       type="hidden"
                       name="parentNodeKey"
-                      value={
-                        action.mode === "child"
-                          ? (action.node?.stableKey ?? "")
-                          : (action.node?.parentNodeKey ?? "")
-                      }
+                      value={action.node?.stableKey ?? ""}
                     />
                   </div>
+                ) : action.mode === "sibling" ? (
+                  <input type="hidden" name="parentNodeKey" value={action.node?.parentNodeKey ?? ""} />
                 ) : (
                   <input
                     type="hidden"
@@ -2577,6 +2543,54 @@ export function AdminOrganizationPage() {
             onCancel={() => setAction(null)}
             onSubmit={(event) => handleIncumbency(event, action)}
           />
+        </Modal>
+      ) : null}
+
+      {action?.type === "leader" ? (
+        <Modal
+          title={`Tetapkan pimpinan · ${action.node.name}`}
+          description="Pilih jabatan yang sudah ada atau buat jabatan pimpinan. Atasan struktural hanya ditulis bila dipilih secara eksplisit."
+          onClose={() => setAction(null)}
+        >
+          <form onSubmit={(event) => handleLeader(event, action)} className="space-y-4">
+            <Field label="Jabatan">
+              <select name="leaderMode" defaultValue={(data?.positions.filter((item) => item.nodeKey === action.node.stableKey).length ?? 0) > 0 ? "existing" : "new"} className={inputClass}>
+                {(data?.positions.filter((item) => item.nodeKey === action.node.stableKey).length ?? 0) > 0 ? <option value="existing">Gunakan posisi yang ada</option> : null}
+                <option value="new">Buat posisi pimpinan baru</option>
+              </select>
+            </Field>
+            <Field label="Gunakan posisi">
+              <select name="positionKey" className={inputClass} defaultValue={action.node.leaderPositionKey ?? ""}>
+                <option value="">Pilih posisi...</option>
+                {data?.positions.filter((item) => item.nodeKey === action.node.stableKey).map((position) => (
+                  <option key={position.stableKey} value={position.stableKey}>{position.title}{position.primaryIncumbent ? ` · ${position.primaryIncumbent.employeeName}` : " · VACANT"}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Jabatan baru" hint="Isi bila membuat posisi pimpinan baru">
+              <input name="title" placeholder="Contoh: Kepala Unit" className={inputClass} />
+            </Field>
+            <Field label="Pemegang">
+              <select name="holderSource" className={inputClass} defaultValue="EMPLOYEE">
+                <option value="EMPLOYEE">Pegawai</option>
+                <option value="ACCOUNT">Organ Yayasan / Account</option>
+              </select>
+            </Field>
+            <Field label="Pejabat" hint="Kosongkan untuk VACANT">
+              <select name="employeeId" className={inputClass}><option value="">VACANT</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.fullName} — {employee.employeeNumber}</option>)}</select>
+            </Field>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" name="setVacant" value="yes" /> Tetapkan sebagai VACANT</label>
+            <Field label="Account governance" hint="Digunakan bila pemegang adalah Organ Yayasan / Account">
+              <select name="accountId" className={inputClass}><option value="">VACANT</option>{boardAccounts.map((account) => <option key={account.id} value={account.id}>{account.email} · {account.status}</option>)}</select>
+            </Field>
+            <Field label="Jenis penugasan">
+              <select name="assignmentType" className={inputClass}><option value="PRIMARY_STRUCTURAL">Jabatan utama</option><option value="SECONDARY">Rangkap jabatan</option></select>
+            </Field>
+            <Field label="Melapor kepada" hint="Opsional; tidak akan diinferensikan otomatis">
+              <select name="parentPositionKey" className={inputClass}><option value="">Atasan struktural belum ditetapkan</option>{data?.positions.filter((position) => position.nodeKey !== action.node.stableKey || position.stableKey !== action.node.leaderPositionKey).map((position) => <option key={position.stableKey} value={position.stableKey}>{position.title}</option>)}</select>
+            </Field>
+            <SubmitRow saving={saving} onCancel={() => setAction(null)} label="Simpan pimpinan" />
+          </form>
         </Modal>
       ) : null}
 

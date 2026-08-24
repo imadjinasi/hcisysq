@@ -427,6 +427,26 @@ export function publishOrganizationDraft(draftId: string): Promise<OrganizationD
   return request<OrganizationDraft>(`/drafts/${draftId}/publish`, { method: "POST" });
 }
 
+export function configureOrganizationLeader(
+  draftId: string,
+  input: {
+    nodeKey: string;
+    positionKey?: string | null;
+    title?: string;
+    holderSource: "EMPLOYEE" | "ACCOUNT";
+    primaryEmployeeId?: string | null;
+    primaryAccountId?: string | null;
+    assignmentType: "PRIMARY_STRUCTURAL" | "SECONDARY";
+    parentPositionKey?: string | null;
+    effectiveFrom: string;
+  },
+): Promise<OrganizationPosition> {
+  return request<OrganizationPosition>(`/drafts/${draftId}/leader`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
 export function discardOrganizationDraft(draftId: string): Promise<void> {
   return request<void>(`/drafts/${draftId}`, { method: "DELETE" });
 }

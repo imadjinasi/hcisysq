@@ -474,12 +474,12 @@ describe("Organization Designer chart", () => {
     );
 
     expect(organizationNodeTypeLabel("FOUNDATION")).toBe(
-      "Yayasan / Foundation",
+      "Yayasan",
     );
     expect(organizationNodeTypeLabel("DIRECTORATE")).toBe(
-      "Direktorat / Bidang",
+      "Bidang",
     );
-    expect(html).toContain("Yayasan / Foundation");
+    expect(html).toContain("Yayasan");
     expect(html).not.toContain("0 anggota");
     expect(html).toContain("w-[17.5rem]");
     expect(html).not.toContain("w-[22rem]");

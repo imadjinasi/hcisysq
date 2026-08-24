@@ -17,8 +17,9 @@ const adminShellSource = readFileSync(
 );
 
 describe("Organization Designer administration UX contracts", () => {
-  it("keeps add-below parent context fixed and integration code advanced", () => {
-    expect(organizationSource).toContain('action.mode === "child" ? "Di bawah" : "Induk bersama"');
+  it("keeps friendly add placement and integration code advanced", () => {
+    expect(organizationSource).toContain('name="placement" value="child"');
+    expect(organizationSource).toContain('name="placement" value="sibling"');
     expect(organizationSource).toMatch(/type="hidden"\s+name="parentNodeKey"/);
     expect(organizationSource).toContain("Pengaturan lanjutan");
     expect(organizationSource).toContain("Kode integrasi");
@@ -44,10 +45,14 @@ describe("Organization Designer administration UX contracts", () => {
     expect(organizationSource).toContain('const canEdit = data?.draft?.status === "DRAFT"');
   });
 
-  it("provides a selected-item inspector and intentional Move actions", () => {
+  it("provides a simplified selected-item inspector with advanced technical controls", () => {
     expect(organizationSource).toContain('aria-label="Inspector pilihan struktur"');
     expect(organizationSource).toContain("Induk struktural");
-    expect(organizationSource).toContain("Kewenangan terkait");
+    expect(organizationSource).toContain("Approval & reporting");
+    expect(organizationSource).toContain("Tetapkan pimpinan");
+    expect(organizationSource).toContain("Tambah bagian / unit");
+    expect(organizationSource).toContain("Kelola anggota");
+    expect(organizationSource).toContain("Zona berbahaya");
     expect(organizationSource).toContain("Penempatan tampilan");
     expect(organizationSource).toContain('mode: "move"');
     expect(organizationSource).toContain("Pindahkan kelompok");
