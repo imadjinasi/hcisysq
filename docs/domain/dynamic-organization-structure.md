@@ -624,6 +624,11 @@ and optionally saves an explicitly selected `parentPositionKey`. No reporting
 parent, `UNIT_APPROVER`, governance binding, or rollout state is inferred or
 created. A vacant leader is valid configuration.
 
+When a position is selected for authority or reporting, the UI must retain the
+stable position key but disambiguate the human choice with position title, a
+concise structural path, and its current primary holder (or `VACANT`). Search
+may match all three display values; none of them is an authority input.
+
 Target experience is a visual organization designer, not only maintenance tables.
 
 Illustrative chart:

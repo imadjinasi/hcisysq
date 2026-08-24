@@ -14,6 +14,7 @@ import {
   Network,
   PanelRightClose,
   Rocket,
+  Search,
   ShieldCheck,
   Sparkles,
   Trash2,
@@ -2364,28 +2365,13 @@ export function AdminOrganizationPage() {
                   </select>
                 </Field>
                 <Field label="Posisi atasan struktural baru">
-                  <select
+                  <PositionPicker
                     name="parentPositionKey"
-                    defaultValue={action.position?.parentPositionKey ?? ""}
-                    className={inputClass}
-                  >
-                    <option value="">
-                      Tidak ada / mengikuti leader kelompok
-                    </option>
-                    {data?.positions
-                      .filter(
-                        (position) =>
-                          position.stableKey !== action.position?.stableKey,
-                      )
-                      .map((position) => (
-                        <option
-                          key={position.stableKey}
-                          value={position.stableKey}
-                        >
-                          {position.title}
-                        </option>
-                      ))}
-                  </select>
+                    defaultValue={action.position?.parentPositionKey}
+                    positions={(data?.positions ?? []).filter((position) => position.stableKey !== action.position?.stableKey)}
+                    nodes={data?.nodes ?? []}
+                    emptyLabel="Tidak ada / mengikuti pimpinan struktur"
+                  />
                 </Field>
               </>
             ) : (
@@ -2416,23 +2402,13 @@ export function AdminOrganizationPage() {
                       </select>
                     </Field>
                     <Field label="Posisi atasan struktural">
-                      <select
+                      <PositionPicker
                         name="parentPositionKey"
-                        defaultValue={action.parentPositionKey ?? ""}
-                        className={inputClass}
-                      >
-                        <option value="">
-                          Tidak ada / mengikuti leader kelompok
-                        </option>
-                        {data?.positions.map((position) => (
-                          <option
-                            key={position.stableKey}
-                            value={position.stableKey}
-                          >
-                            {position.title}
-                          </option>
-                        ))}
-                      </select>
+                        defaultValue={action.parentPositionKey}
+                        positions={data?.positions ?? []}
+                        nodes={data?.nodes ?? []}
+                        emptyLabel="Tidak ada / mengikuti pimpinan struktur"
+                      />
                     </Field>
                   </>
                 ) : (
@@ -2560,12 +2536,12 @@ export function AdminOrganizationPage() {
               </select>
             </Field>
             <Field label="Gunakan posisi">
-              <select name="positionKey" className={inputClass} defaultValue={action.node.leaderPositionKey ?? ""}>
-                <option value="">Pilih posisi...</option>
-                {data?.positions.filter((item) => item.nodeKey === action.node.stableKey).map((position) => (
-                  <option key={position.stableKey} value={position.stableKey}>{position.title}{position.primaryIncumbent ? ` · ${position.primaryIncumbent.employeeName}` : " · VACANT"}</option>
-                ))}
-              </select>
+              <PositionPicker
+                name="positionKey"
+                defaultValue={action.node.leaderPositionKey}
+                positions={(data?.positions ?? []).filter((item) => item.nodeKey === action.node.stableKey)}
+                nodes={data?.nodes ?? []}
+              />
             </Field>
             <Field label="Jabatan baru" hint="Isi bila membuat posisi pimpinan baru">
               <input name="title" placeholder="Contoh: Kepala Unit" className={inputClass} />
@@ -2587,7 +2563,12 @@ export function AdminOrganizationPage() {
               <select name="assignmentType" className={inputClass}><option value="PRIMARY_STRUCTURAL">Jabatan utama</option><option value="SECONDARY">Rangkap jabatan</option></select>
             </Field>
             <Field label="Melapor kepada" hint="Opsional; tidak akan diinferensikan otomatis">
-              <select name="parentPositionKey" className={inputClass}><option value="">Atasan struktural belum ditetapkan</option>{data?.positions.filter((position) => position.nodeKey !== action.node.stableKey || position.stableKey !== action.node.leaderPositionKey).map((position) => <option key={position.stableKey} value={position.stableKey}>{position.title}</option>)}</select>
+              <PositionPicker
+                name="parentPositionKey"
+                positions={(data?.positions ?? []).filter((position) => position.nodeKey !== action.node.stableKey || position.stableKey !== action.node.leaderPositionKey)}
+                nodes={data?.nodes ?? []}
+                emptyLabel="Atasan struktural belum ditetapkan"
+              />
             </Field>
             <SubmitRow saving={saving} onCancel={() => setAction(null)} label="Simpan pimpinan" />
           </form>
@@ -2881,14 +2862,7 @@ export function AdminOrganizationPage() {
               </select>
             </Field>
             <Field label="Posisi target">
-              <select name="targetPositionKey" required className={inputClass}>
-                <option value="">Pilih posisi...</option>
-                {data?.positions.map((position) => (
-                  <option key={position.stableKey} value={position.stableKey}>
-                    {position.title}
-                  </option>
-                ))}
-              </select>
+              <PositionPicker name="targetPositionKey" positions={data?.positions ?? []} nodes={data?.nodes ?? []} />
             </Field>
             <Field label="Jika posisi target vacant">
               <select
@@ -2912,6 +2886,88 @@ export function AdminOrganizationPage() {
         </Modal>
       ) : null}
     </AdminShell>
+  );
+}
+
+export function PositionPicker({
+  name,
+  positions,
+  nodes,
+  defaultValue = null,
+  placeholder = "Pilih posisi...",
+  emptyLabel,
+}: {
+  name: string;
+  positions: OrganizationPosition[];
+  nodes: OrganizationNode[];
+  defaultValue?: string | null;
+  placeholder?: string;
+  emptyLabel?: string;
+}) {
+  const [selectedKey, setSelectedKey] = useState(defaultValue ?? "");
+  const [query, setQuery] = useState("");
+  const selected = positions.find((position) => position.stableKey === selectedKey);
+  const pathFor = (position: OrganizationPosition) => {
+    const names: string[] = [];
+    let node = nodes.find((item) => item.stableKey === position.nodeKey);
+    while (node) {
+      names.unshift(node.name);
+      node = node.parentNodeKey
+        ? nodes.find((item) => item.stableKey === node!.parentNodeKey)
+        : undefined;
+    }
+    return names.length > 2 ? `… / ${names.slice(-2).join(" / ")}` : names.join(" / ");
+  };
+  const holderFor = (position: OrganizationPosition) =>
+    position.primaryIncumbent?.accountEmail
+    ?? position.primaryIncumbent?.employeeName
+    ?? "VACANT";
+  const filtered = positions.filter((position) => {
+    const needle = query.trim().toLocaleLowerCase("id-ID");
+    if (!needle) return true;
+    return [position.title, pathFor(position), holderFor(position)]
+      .some((value) => value.toLocaleLowerCase("id-ID").includes(needle));
+  });
+
+  return (
+    <div className="rounded-xl border border-border bg-white p-2" data-position-picker={name}>
+      <input type="hidden" name={name} value={selectedKey} />
+      <div className="flex items-center gap-2 border-b border-border/70 px-2 pb-2">
+        <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <input
+          type="search"
+          aria-label={`${placeholder} — cari jabatan, struktur, atau pejabat`}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Cari jabatan, struktur, atau pejabat"
+          className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+        />
+      </div>
+      <div className="max-h-52 space-y-1 overflow-y-auto py-2">
+        {emptyLabel ? (
+          <button type="button" onClick={() => setSelectedKey("")} className={cn("w-full rounded-lg px-2 py-2 text-left text-xs", !selectedKey ? "bg-brand-primary-pale font-bold text-brand-primary-deep" : "hover:bg-muted")}>
+            {emptyLabel}
+          </button>
+        ) : null}
+        {filtered.map((position) => {
+          const path = pathFor(position);
+          return (
+            <button
+              key={position.stableKey}
+              type="button"
+              onClick={() => setSelectedKey(position.stableKey)}
+              className={cn("w-full rounded-lg px-2 py-2 text-left hover:bg-muted", selectedKey === position.stableKey && "bg-brand-primary-pale")}
+            >
+              <span className="block text-sm font-bold text-brand-heading">{position.title}</span>
+              <span className="mt-0.5 block text-[11px] text-muted-foreground">{path || "Struktur belum ditetapkan"}</span>
+              <span className="mt-0.5 block text-[11px] font-semibold text-muted-foreground">{holderFor(position)}</span>
+            </button>
+          );
+        })}
+        {filtered.length === 0 ? <p className="px-2 py-3 text-xs text-muted-foreground">Tidak ada posisi yang cocok.</p> : null}
+      </div>
+      {selected ? <p className="border-t border-border/70 px-2 pt-2 text-xs font-semibold text-brand-heading">Dipilih: {selected.title} — {pathFor(selected)}</p> : null}
+    </div>
   );
 }
 

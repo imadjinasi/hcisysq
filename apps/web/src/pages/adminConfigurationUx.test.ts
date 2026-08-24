@@ -58,6 +58,14 @@ describe("Organization Designer administration UX contracts", () => {
     expect(organizationSource).toContain("Pindahkan kelompok");
   });
 
+  it("uses contextual searchable pickers for ambiguous authority and reporting positions", () => {
+    expect(organizationSource).toContain("export function PositionPicker");
+    expect(organizationSource).toContain('data-position-picker={name}');
+    expect(organizationSource).toContain("Cari jabatan, struktur, atau pejabat");
+    expect(organizationSource).toContain("holderFor(position)");
+    expect(organizationSource).toContain('name="targetPositionKey"');
+  });
+
   it("offers explicit legacy-unit membership preview without authority inference", () => {
     expect(organizationSource).toContain("Tambahkan anggota dari unit lama");
     expect(organizationSource).toContain("Preview: {legacyCandidates.length} pegawai aktif");

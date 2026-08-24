@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { HolderAssignmentEditor } from "@/pages/AdminOrganizationPage";
+import { HolderAssignmentEditor, PositionPicker } from "@/pages/AdminOrganizationPage";
 import type {
   OrganizationAccountOption,
   OrganizationEmployeeOption,
@@ -73,5 +73,26 @@ describe("source-aware organization holder assignment", () => {
     expect(html).toContain('name="employeeId"');
     expect(html).toContain("Pegawai Sintetis — YSQ-SYN-001");
     expect(html).not.toContain('name="accountId"');
+  });
+});
+
+describe("organization position picker", () => {
+  it("keeps stable keys while showing structural and holder context", () => {
+    const html = renderToStaticMarkup(
+      <PositionPicker
+        name="targetPositionKey"
+        positions={[{ ...position, title: "Kepala", holderSource: "EMPLOYEE", primaryIncumbent: {
+          employeeId: "employee-id", employeeName: "Pegawai Sintetis", effectiveFrom: "2027-01-01", effectiveTo: null,
+        } }]}
+        nodes={[
+          { id: "root", stableKey: "root", name: "Bidang Operasional", nodeType: "DIRECTORATE", parentNodeKey: null, active: true, effectiveFrom: "2027-01-01", effectiveTo: null, visualRankOffset: 0, integrationCode: null, memberCount: 0, leaderPositionKey: null },
+          { id: "foundation", stableKey: "foundation", name: "Human Capital", nodeType: "DIVISION", parentNodeKey: "root", active: true, effectiveFrom: "2027-01-01", effectiveTo: null, visualRankOffset: 0, integrationCode: null, memberCount: 0, leaderPositionKey: null },
+        ]}
+      />,
+    );
+    expect(html).toContain('name="targetPositionKey"');
+    expect(html).toContain("Bidang Operasional / Human Capital");
+    expect(html).toContain("Pegawai Sintetis");
+    expect(html).toContain("Cari jabatan, struktur, atau pejabat");
   });
 });
