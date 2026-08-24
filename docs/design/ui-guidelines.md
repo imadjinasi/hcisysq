@@ -71,6 +71,9 @@ Employee surfaces are mobile-first and readable with generous line-height; admin
 - Sidebar groups use sentence case or restrained uppercase at 12px semibold with modest tracking. Navigation items are 14px semibold and use a clear semantic-color active surface.
 - Employee mobile navigation has four equal slots, 12px labels, visible focus, safe-area-aware placement, and an at-least-44px target. It is capability-aware: normal employees receive Beranda, Hadir, Cuti, and Lainnya; employees with live approval work receive Beranda, Hadir, Persetujuan, and Lainnya. Do not infer this from title.
 - `Lainnya` contains only real, authorized routes. It includes Slip Gaji and relevant secondary leave routes; placeholders must not be presented as navigation.
+- Administration page headers use a compact desktop rhythm so the title and task workspace remain visible together at common laptop heights. This density applies through the shared admin shell, not employee/mobile page headers.
+- Organization Designer keeps publication state, effective date, human revision context, editor actions, and chart controls in a compact workspace shell. Primary UI uses revision names and dates rather than UUIDs, abbreviated hashes, stable keys, or raw authority enums.
+- Dense chart navigation controls are local to the Organization Designer toolbar. They do not redefine shared application button sizing or workflow call-to-action sizing.
 
 ### Canonical primitives
 

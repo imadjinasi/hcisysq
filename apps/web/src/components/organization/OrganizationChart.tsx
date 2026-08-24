@@ -268,7 +268,7 @@ function Tool({
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
-      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-white px-2 text-xs font-semibold text-brand-heading hover:bg-muted disabled:opacity-45"
+      className="inline-flex h-8 items-center gap-1 rounded-lg border border-border bg-white px-2 text-xs font-semibold text-brand-heading hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40 disabled:opacity-45 [&_svg]:h-3.5 [&_svg]:w-3.5"
     >
       {children}
     </button>
@@ -434,7 +434,7 @@ export function OrganizationChart({
   return (
     <div className="flex min-h-[34rem] flex-col" data-organization-canvas>
       <div
-        className="flex flex-wrap items-center gap-1.5 border-b border-border/70 bg-white px-3 py-2"
+        className="flex flex-wrap items-center gap-1 border-b border-border/70 bg-white px-3 py-1.5"
         data-canvas-toolbar
       >
         <Tool
@@ -446,7 +446,7 @@ export function OrganizationChart({
         </Tool>
         <output
           aria-label="Zoom saat ini"
-          className="inline-flex h-9 min-w-14 items-center justify-center rounded-lg bg-surface px-2 text-xs font-bold text-brand-heading"
+          className="inline-flex h-8 min-w-12 items-center justify-center rounded-lg bg-surface px-2 text-xs font-bold text-brand-heading"
         >
           {Math.round(zoom * 100)}%
         </output>

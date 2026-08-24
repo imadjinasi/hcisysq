@@ -281,6 +281,16 @@ function statusCopy(mode: OrganizationDesignerView["mode"]) {
   return { label: "Saat ini", className: "bg-emerald-50 text-emerald-800" };
 }
 
+function authorityTypeCopy(value: string) {
+  if (value === "DIRECT_MANAGER") return "Atasan langsung";
+  if (value === "UNIT_APPROVER") return "Penyetuju unit";
+  if (value === "GOVERNANCE_APPROVER") return "Penyetuju governance";
+  if (value === "OVERSIGHT_PARENT") return "Penerima pemberitahuan oversight";
+  if (value === "SUPERVISORY_PARENT") return "Atasan struktural";
+  if (value === "LEADER") return "Pimpinan struktur";
+  return "Kewenangan organisasi";
+}
+
 function validationIssueCopy(code: string) {
   if (code.includes("CYCLE") || code === "AUTHORITY_LOOP") {
     return "Ada hubungan berputar yang harus diputus sebelum draft dapat diterbitkan.";
@@ -2000,15 +2010,9 @@ export function AdminOrganizationPage() {
           <span>{notice}</span>
         </div>
       ) : null}
-      {data?.draft?.status === "PUBLISHED" ? (
-        <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold text-blue-950">
-          Versi ini sudah diterbitkan dan hanya dapat dibaca.
-        </div>
-      ) : null}
-
       <section
         className={cn(
-          "overflow-hidden rounded-3xl border bg-white shadow-[var(--shadow-soft)]",
+          "overflow-hidden rounded-2xl border bg-white shadow-[var(--shadow-soft)]",
           canEdit
             ? "border-amber-300 ring-4 ring-amber-100/60"
             : "border-border/70",
@@ -2016,11 +2020,11 @@ export function AdminOrganizationPage() {
       >
         <div
           className={cn(
-            "flex flex-col gap-4 border-b px-5 py-4 lg:flex-row lg:items-end lg:justify-between",
+            "flex flex-col gap-3 border-b px-4 py-3 lg:flex-row lg:items-center lg:justify-between",
             canEdit ? "border-amber-200 bg-amber-50/60" : "border-border/70",
           )}
         >
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex min-w-0 flex-wrap items-end gap-2.5">
             <Field label="Lihat struktur pada tanggal">
               <span className="relative block">
                 <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -2038,25 +2042,37 @@ export function AdminOrganizationPage() {
             </Field>
             <span
               className={cn(
-                "mb-0.5 self-end rounded-full px-3 py-2 text-xs font-bold",
+                "mb-0.5 self-end rounded-full px-2.5 py-1.5 text-xs font-bold",
                 status.className,
               )}
             >
-              {status.label}
+              {data?.draft?.status === "PUBLISHED"
+                ? data.mode === "FUTURE"
+                  ? "Diterbitkan · belum aktif"
+                  : "Diterbitkan · hanya baca"
+                : status.label}
             </span>
             {data?.draft ? (
-              <div className="mb-0.5 self-end">
-                <p className="text-xs font-bold text-amber-900">
-                  {data.isSameDayRevision
-                    ? `Revisi struktur untuk ${displayDate(data.draft.effectiveOn)}`
-                    : data.draft.name}
+              <div className="mb-0.5 min-w-0 self-end" data-organization-version-summary>
+                <p
+                  className={cn(
+                    "truncate text-xs font-bold",
+                    canEdit ? "text-amber-900" : "text-brand-heading",
+                  )}
+                >
+                  {data.draft.name}
                 </p>
-                <p className="text-xs text-amber-800">
-                  Efektif {displayDate(data.draft.effectiveOn)} · {data.draft.status === "DRAFT" ? "Sedang diedit" : data.draft.status === "VALIDATED" ? "Sudah divalidasi" : "Diterbitkan"}
+                <p className={cn("text-xs", canEdit ? "text-amber-800" : "text-muted-foreground")}>
+                  Efektif {displayDate(data.draft.effectiveOn)}
+                  {data.isSameDayRevision ? " · Koreksi tanggal yang sama" : ""}
                 </p>
-                <p className="mt-1 text-xs text-amber-800">
-                  Sumber: {data.draft.baseChangeSetId ? `versi ${data.draft.baseChangeSetId.slice(0, 8)}` : "struktur kosong"} · Perubahan tersimpan langsung ke draft
-                </p>
+                {data.draft.status !== "PUBLISHED" ? (
+                  <p className="text-xs text-amber-800">
+                    {data.draft.baseChangeSetId
+                      ? "Berdasarkan versi terbit sebelumnya"
+                      : "Dimulai dari struktur kosong"}
+                  </p>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -2144,7 +2160,7 @@ export function AdminOrganizationPage() {
 
         <div
           className={cn(
-            "relative grid min-h-[34rem] bg-[#f8fbfa]",
+            "relative grid min-h-[32rem] bg-[#f8fbfa]",
             selectedNode || selectedPosition
               ? "xl:grid-cols-[minmax(0,1fr)_20rem]"
               : "grid-cols-1",
@@ -2746,7 +2762,7 @@ export function AdminOrganizationPage() {
                         <span className="font-bold">{step.employeeName}</span>
                         {step.authorityType ? (
                           <span className="block text-xs text-muted-foreground">
-                            {step.authorityType}
+                            {authorityTypeCopy(step.authorityType)}
                           </span>
                         ) : null}
                       </span>

@@ -184,14 +184,17 @@ export function AdminShell({
       </aside>
 
       <div className="min-w-0">
-        <header className="border-b border-border/70 bg-white/90 px-5 py-5 sm:px-7 lg:px-10">
+        <header
+          className="border-b border-border/70 bg-white/90 px-5 py-3 sm:px-7 lg:px-10"
+          data-admin-page-header
+        >
           <div className="mx-auto max-w-7xl">
             <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Administrasi sistem</p>
-            <h1 className="mt-1 text-2xl font-bold tracking-[-0.02em] text-brand-heading sm:text-[1.75rem]">{title}</h1>
-            {description ? <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p> : null}
+            <h1 className="mt-0.5 text-2xl font-bold leading-tight tracking-[-0.02em] text-brand-heading sm:text-[1.75rem]">{title}</h1>
+            {description ? <p className="mt-0.5 max-w-3xl text-sm leading-5 text-muted-foreground">{description}</p> : null}
           </div>
         </header>
-        <main className="mx-auto max-w-7xl px-5 py-6 sm:px-7 lg:px-10 lg:py-8">{children}</main>
+        <main className="mx-auto max-w-7xl px-5 py-4 sm:px-7 lg:px-10 lg:py-5">{children}</main>
       </div>
     </div>
   );

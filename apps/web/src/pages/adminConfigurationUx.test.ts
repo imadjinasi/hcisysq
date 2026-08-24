@@ -138,4 +138,18 @@ describe("Admin navigation compaction", () => {
     expect(adminShellSource).toContain('className="min-w-0 truncate"');
     expect(organizationSource).toContain('className="min-w-0 truncate"');
   });
+
+  it("keeps the shared admin header compact without changing global buttons", () => {
+    expect(adminShellSource).toContain("data-admin-page-header");
+    expect(adminShellSource).toContain("px-5 py-3 sm:px-7 lg:px-10");
+    expect(adminShellSource).toContain("mt-0.5 max-w-3xl text-sm leading-5");
+    expect(adminShellSource).toContain("px-5 py-4 sm:px-7 lg:px-10 lg:py-5");
+  });
+
+  it("keeps implementation identifiers out of the primary Organization summary", () => {
+    expect(organizationSource).toContain("Berdasarkan versi terbit sebelumnya");
+    expect(organizationSource).toContain("data-organization-version-summary");
+    expect(organizationSource).not.toContain("baseChangeSetId.slice");
+    expect(organizationSource).not.toContain("{step.authorityType}");
+  });
 });
