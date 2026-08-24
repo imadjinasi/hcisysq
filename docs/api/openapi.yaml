@@ -522,6 +522,7 @@ paths:
               required: [positionKey, effectiveFrom]
               properties:
                 positionKey: { type: string, format: uuid }
+                holderSource: { type: string, enum: [EMPLOYEE, ACCOUNT], description: Atomically selects the position holder source for this replacement. }
                 primaryEmployeeId: { type: [string, 'null'], format: uuid }
                 primaryAccountId: { type: [string, 'null'], format: uuid }
                 actingEmployeeId: { type: [string, 'null'], format: uuid }

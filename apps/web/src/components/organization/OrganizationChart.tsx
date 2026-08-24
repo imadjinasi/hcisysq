@@ -37,7 +37,10 @@ import {
   fitZoomForViewport,
   MAX_CANVAS_ZOOM,
   MIN_CANVAS_ZOOM,
+  ORGANIZATION_NODE_VISUAL_BAND_HEIGHT,
+  ORGANIZATION_POSITION_VISUAL_BAND_HEIGHT,
   organizationNodeTypeLabel,
+  visualBandOffset,
 } from "@/lib/organizationCanvas";
 import { cn } from "@/lib/utils";
 
@@ -47,18 +50,15 @@ export type OrganizationSelection =
   | null;
 
 const ZOOM_STEP = 0.1;
-// A visual level is a real layout band, sized for a normal organization card.
-// Offsets are presentation-only and never alter structural parentage.
-export const ORGANIZATION_VISUAL_BAND_HEIGHT = 112;
-
 function DisplayOffsetBadge({ offset }: { offset: number }) {
   if (offset <= 0) return null;
   return (
     <span
       title={`Tampilkan ${offset} tingkat lebih rendah. Hubungan struktural, reporting, dan approval tetap mengikuti induk sebenarnya.`}
-      className="inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-800"
+      aria-label={`Tampilan +${offset}`}
+      className="inline-flex min-w-6 justify-center rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-blue-800"
     >
-      Tampilan +{offset}
+      +{offset}
     </span>
   );
 }
@@ -77,6 +77,10 @@ function PositionCard({
   const acting = position.actingIncumbent;
   const primary = position.primaryIncumbent;
   const vacant = !primary && !acting;
+  const accountHolder = (position.holderSource ?? "EMPLOYEE") === "ACCOUNT";
+  const primaryLabel = accountHolder
+    ? primary?.accountEmail ?? primary?.employeeName
+    : primary?.employeeName;
 
   return (
     <button
@@ -110,7 +114,7 @@ function PositionCard({
           >
             {acting
               ? `${acting.employeeName} · Pelaksana tugas`
-              : primary?.employeeName ?? "VACANT · Belum ada pejabat"}
+              : primaryLabel ?? "VACANT · Belum ada pejabat"}
           </span>
         </span>
         {vacant ? (
@@ -121,9 +125,14 @@ function PositionCard({
           <BriefcaseBusiness className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-primary-deep" aria-hidden="true" />
         )}
       </span>
-      {position.visualRankOffset > 0 || isLeader || acting ? (
+      {position.visualRankOffset > 0 || isLeader || acting || primary ? (
         <span className="mt-2 flex flex-wrap gap-1">
           <DisplayOffsetBadge offset={position.visualRankOffset} />
+          {primary ? (
+            <span className="inline-flex rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-700">
+              {accountHolder ? "ACCOUNT" : "PEGAWAI"}
+            </span>
+          ) : null}
           {isLeader ? (
             <span className="inline-flex rounded-full bg-brand-primary-pale px-2 py-0.5 text-[10px] font-semibold text-brand-primary-deep">
               Leader
@@ -151,7 +160,10 @@ function PositionLane({
   selected: boolean;
   onSelect: () => void;
 }) {
-  const offsetHeight = position.visualRankOffset * ORGANIZATION_VISUAL_BAND_HEIGHT;
+  const offsetHeight = visualBandOffset(
+    position.visualRankOffset,
+    ORGANIZATION_POSITION_VISUAL_BAND_HEIGHT,
+  );
   const connectorHeight = (position.parentPositionKey ? 16 : 0) + offsetHeight;
 
   return (
@@ -191,7 +203,8 @@ function TreeBranch({
   selection,
   onSelect,
   parentKey,
-  parentVisualDepth,
+  siblingIndex = 0,
+  siblingCount = 1,
   expandAll,
   expansionVersion,
 }: {
@@ -199,7 +212,8 @@ function TreeBranch({
   selection: OrganizationSelection;
   onSelect: (selection: Exclude<OrganizationSelection, null>) => void;
   parentKey?: string;
-  parentVisualDepth?: number;
+  siblingIndex?: number;
+  siblingCount?: number;
   expandAll: boolean;
   expansionVersion: number;
 }) {
@@ -207,11 +221,15 @@ function TreeBranch({
   useEffect(() => setExpanded(expandAll), [expandAll, expansionVersion]);
   const selected = selection?.kind === "node" && selection.key === item.stableKey;
   const hasDetails = item.positions.length > 0 || item.children.length > 0;
-  const skippedVisualBands = parentVisualDepth === undefined
-    ? item.visualDepth
-    : Math.max(0, item.visualDepth - parentVisualDepth - 1);
   const connectorHeight = (parentKey ? 28 : 0)
-    + skippedVisualBands * ORGANIZATION_VISUAL_BAND_HEIGHT;
+    + visualBandOffset(item.visualRankOffset, ORGANIZATION_NODE_VISUAL_BAND_HEIGHT);
+  const siblingSegment = siblingCount <= 1
+    ? null
+    : siblingIndex === 0
+      ? "left-1/2 right-0"
+      : siblingIndex === siblingCount - 1
+        ? "left-0 right-1/2"
+        : "inset-x-0";
 
   return (
     <li
@@ -222,6 +240,15 @@ function TreeBranch({
       data-visual-band={item.visualDepth}
       data-visual-rank-offset={item.visualRankOffset}
     >
+      {siblingSegment ? (
+        <span
+          aria-hidden="true"
+          className={cn("absolute top-0 h-px bg-brand-primary/40", siblingSegment)}
+          data-connector-kind="sibling-segment"
+          data-sibling-index={siblingIndex}
+          data-sibling-count={siblingCount}
+        />
+      ) : null}
       {connectorHeight > 0 ? (
         <span
           aria-hidden="true"
@@ -305,19 +332,19 @@ function TreeBranch({
         <div className="relative mt-6 flex min-w-max flex-col items-center" data-child-level-of={item.stableKey}>
           <span aria-hidden="true" className="h-6 w-px bg-brand-primary/40" />
           <ol
-            className="relative flex min-w-max items-start justify-center gap-3"
+            className="relative flex min-w-max items-start justify-center"
             data-layout-axis="horizontal"
             data-sibling-parent={item.stableKey}
           >
-            {item.children.length > 1 ? <span aria-hidden="true" className="absolute top-0 h-px bg-brand-primary/40" style={{ left: "8.75rem", right: "8.75rem" }} data-connector-kind="sibling-junction" data-connector-from={item.children[0]?.stableKey} data-connector-to={item.children.at(-1)?.stableKey} /> : null}
-            {item.children.map((child) => (
+            {item.children.map((child, index) => (
               <TreeBranch
                 key={child.stableKey}
                 item={child}
                 selection={selection}
                 onSelect={onSelect}
                 parentKey={item.stableKey}
-                parentVisualDepth={item.visualDepth}
+                siblingIndex={index}
+                siblingCount={item.children.length}
                 expandAll={expandAll}
                 expansionVersion={expansionVersion}
               />

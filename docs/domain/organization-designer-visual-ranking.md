@@ -250,14 +250,16 @@ Tampilan
 - Tampilkan 3 tingkat lebih rendah
 ```
 
-Cards show only a compact `Tampilan +1` / `Tampilan +2` / `Tampilan +3` badge. The full
+Cards show only a compact `+1` / `+2` / `+3` badge. The full
 explanation remains available through tooltip and the selection inspector.
 
 The renderer lays out `structuralDepth + visualRankOffset` as an actual visual
-band. Items with the same computed visual depth align to the same vertical band
-within normal card-height tolerance. Connectors are explicit: the horizontal
-junction spans only the centers of the first and last real child, and a single
-child has no horizontal extension.
+band using a fixed complete row pitch for each rendered item type, rather than
+a fractional card-height spacer. Normal siblings retain their structural row;
+each `+N` advances exactly N discrete pitches. Connectors are explicit and keep
+the real parent: center-aware sibling segments span only the first and last real
+child centers even when a child subtree is wider, and a single child has no
+horizontal extension.
 
 ## Add-below and add-sibling actions
 

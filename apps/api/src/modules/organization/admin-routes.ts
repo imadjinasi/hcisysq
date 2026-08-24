@@ -51,6 +51,7 @@ const membershipInput = z.object({
 });
 const incumbencyInput = z.object({
   positionKey: uuid,
+  holderSource: z.enum(["EMPLOYEE", "ACCOUNT"]).optional(),
   primaryEmployeeId: uuid.nullable().optional(),
   primaryAccountId: uuid.nullable().optional(),
   actingEmployeeId: uuid.nullable().optional(),
@@ -237,6 +238,7 @@ export async function registerOrganizationAdminRoutes(
       positionKey: item.positionKey,
       employeeId: item.employeeId,
       accountId: item.accountId ?? null,
+      accountEmail: item.accountId ? accountById.get(item.accountId)?.email ?? null : null,
       employeeNumber: item.employeeId ? employeeById.get(item.employeeId)?.employeeNumber : undefined,
       employeeName: item.employeeId
         ? employeeById.get(item.employeeId)?.fullName ?? "Unknown employee"
@@ -369,7 +371,7 @@ export async function registerOrganizationAdminRoutes(
   app.get("/admin/organization/designer/foundation-board-accounts", async (request, reply) => {
     if (!(await authenticate(request, reply))) return;
     const result = await pool.query(
-      `SELECT id, email, status FROM accounts
+      `SELECT id, email, status, principal_type AS "principalType" FROM accounts
        WHERE principal_type = 'FOUNDATION_BOARD'
        ORDER BY (status = 'active') DESC, email`,
     );
@@ -455,12 +457,14 @@ export async function registerOrganizationAdminRoutes(
       const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return false;
       const position = snapshot.positions.find((item) => item.stableKey === body.data.positionKey);
       if (!position) { await reply.status(404).send({ code: "ORGANIZATION_POSITION_NOT_FOUND" }); return false; }
-      const accountHolder = (position.holderSource ?? "EMPLOYEE") === "ACCOUNT";
+      const holderSource = body.data.holderSource ?? position.holderSource ?? "EMPLOYEE";
+      const accountHolder = holderSource === "ACCOUNT";
       if ((!accountHolder && Boolean(body.data.primaryAccountId))
         || (accountHolder && Boolean(body.data.primaryEmployeeId || body.data.actingEmployeeId))) {
         await reply.status(400).send({ code: "INVALID_HOLDER_SOURCE", message: "Incumbent must match the position holder source." });
         return false;
       }
+      position.holderSource = holderSource;
       snapshot.incumbencies = snapshot.incumbencies.filter((item) => item.positionKey !== body.data.positionKey);
       if (body.data.primaryEmployeeId) snapshot.incumbencies.push({ id: randomUUID(), positionKey: body.data.positionKey,
         employeeId: body.data.primaryEmployeeId, accountId: null, kind: "PRIMARY", effectiveFrom: body.data.effectiveFrom,
@@ -474,7 +478,7 @@ export async function registerOrganizationAdminRoutes(
       await transaction.repository.replaceDraftSnapshot(snapshot);
       await transaction.audit("organization.incumbencies.replaced", "organization_position", null, snapshot.changeSet.id,
         { positionKey: body.data.positionKey, vacant: !body.data.primaryEmployeeId && !body.data.primaryAccountId,
-          holderSource: accountHolder ? "ACCOUNT" : "EMPLOYEE", hasActing: Boolean(body.data.actingEmployeeId) });
+          holderSource, hasActing: Boolean(body.data.actingEmployeeId) });
       return true;
     });
     if (!mutated) return;

@@ -24,6 +24,7 @@ export interface OrganizationIncumbent {
   positionKey?: string;
   employeeId: string | null;
   accountId?: string | null;
+  accountEmail?: string | null;
   accountStatus?: string | null;
   employeeNumber?: string;
   employeeName: string;
@@ -284,6 +285,7 @@ export async function listFoundationBoardAccounts(): Promise<OrganizationAccount
 export interface OrganizationAccountOption {
   id: string;
   email: string;
+  principalType: "FOUNDATION_BOARD";
   status: "invited" | "active" | "suspended" | "inactive";
 }
 
@@ -351,6 +353,7 @@ export function replaceOrganizationIncumbencies(
   draftId: string,
   input: {
     positionKey: string;
+    holderSource?: "EMPLOYEE" | "ACCOUNT";
     primaryEmployeeId?: string | null;
     primaryAccountId?: string | null;
     actingEmployeeId?: string | null;

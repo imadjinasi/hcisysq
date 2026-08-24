@@ -661,7 +661,7 @@ The implemented administration canvas additionally provides:
 - drag-to-pan plus collapse/expand controls, so horizontal scroll is not the
   only navigation mechanism;
 - compact localized node cards, de-emphasized zero-member counts, and compact
-  `Tampilan +N` badges;
+  `+N` badges with an accessible presentation-only explanation;
 - selected structural breadcrumb and a right-side inspector showing parent,
   positions, member count, authority bindings, vacancy/acting state, and
   display-only offset;
@@ -669,6 +669,12 @@ The implemented administration canvas additionally provides:
   distinct intentional operation;
 - integration code under advanced settings;
 - an explicit preview-and-confirm membership copy from a selected legacy unit.
+
+Primary-incumbency assignment is source-aware in the assignment flow itself.
+`EMPLOYEE` shows the active employee selector, while `ACCOUNT` shows existing
+`FOUNDATION_BOARD` accounts by email, principal type, and status. Changing the
+source and replacing the incumbent is one additive draft mutation; it does not
+create or activate an account and does not grant workflow capability.
 
 The legacy-unit aid copies membership only. It never infers hierarchy or
 authority from titles, never creates positions/incumbencies/leaders, and never

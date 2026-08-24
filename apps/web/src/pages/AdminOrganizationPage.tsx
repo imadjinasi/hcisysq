@@ -314,6 +314,107 @@ function MembershipEditor({
   );
 }
 
+export function HolderAssignmentEditor({
+  position,
+  acting,
+  employees,
+  accounts,
+  effectiveOn,
+  saving,
+  onCancel,
+  onSubmit,
+}: {
+  position: OrganizationPosition;
+  acting: boolean;
+  employees: OrganizationEmployeeOption[];
+  accounts: OrganizationAccountOption[];
+  effectiveOn: string;
+  saving: boolean;
+  onCancel: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  const [holderSource, setHolderSource] = useState<"EMPLOYEE" | "ACCOUNT">(
+    acting ? "EMPLOYEE" : position.holderSource ?? "EMPLOYEE",
+  );
+
+  return (
+    <form onSubmit={onSubmit} className="space-y-3" data-holder-source={holderSource}>
+      <div className="rounded-xl bg-surface p-3 text-sm font-bold text-brand-heading">
+        {position.title}
+      </div>
+      {!acting ? (
+        <Field label="Sumber pemegang posisi" hint="identitas struktur, bukan pemberian izin">
+          <select
+            name="holderSource"
+            value={holderSource}
+            onChange={(event) => setHolderSource(event.target.value as "EMPLOYEE" | "ACCOUNT")}
+            className={inputClass}
+          >
+            <option value="EMPLOYEE">Pegawai (EMPLOYEE)</option>
+            <option value="ACCOUNT">Account Organ Yayasan (ACCOUNT)</option>
+          </select>
+        </Field>
+      ) : <input type="hidden" name="holderSource" value="EMPLOYEE" />}
+
+      {holderSource === "ACCOUNT" ? (
+        <>
+          <Field label="Account Organ Yayasan" hint="account FOUNDATION_BOARD yang sudah ada">
+            <select
+              name="accountId"
+              required
+              defaultValue={position.primaryIncumbent?.accountId ?? ""}
+              className={inputClass}
+            >
+              <option value="">Pilih account berdasarkan email...</option>
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.email} — {account.principalType} · {account.status}
+                </option>
+              ))}
+            </select>
+          </Field>
+          {accounts.length === 0 ? (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-[11px] leading-4 text-amber-900">
+              Belum ada account FOUNDATION_BOARD yang dapat dipilih. Account tidak dibuat atau diaktifkan otomatis.
+            </p>
+          ) : null}
+          <a href="/admin/access" className="inline-flex text-xs font-bold text-brand-primary-deep hover:underline">
+            Kelola Account Organ Yayasan
+          </a>
+        </>
+      ) : (
+        <Field label={acting ? "Pegawai pelaksana tugas" : "Pegawai"}>
+          <select
+            name="employeeId"
+            required
+            defaultValue={acting
+              ? position.actingIncumbent?.employeeId ?? ""
+              : position.primaryIncumbent?.employeeId ?? ""}
+            className={inputClass}
+          >
+            <option value="">Pilih pegawai...</option>
+            {employees.map((employee) => (
+              <option key={employee.id} value={employee.id}>
+                {employee.fullName} — {employee.employeeNumber}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
+
+      {acting ? (
+        <>
+          <Field label="Mulai acting"><input type="date" name="actingFrom" required defaultValue={position.actingIncumbent?.effectiveFrom ?? effectiveOn} className={inputClass} /></Field>
+          <Field label="Berakhir acting"><input type="date" name="actingTo" required defaultValue={position.actingIncumbent?.effectiveTo ?? ""} className={inputClass} /></Field>
+        </>
+      ) : (
+        <Field label="Mulai menjabat"><input type="date" name="effectiveFrom" required defaultValue={position.primaryIncumbent?.effectiveFrom ?? effectiveOn} className={inputClass} /></Field>
+      )}
+      <SubmitRow saving={saving} onCancel={onCancel} label="Simpan penetapan" />
+    </form>
+  );
+}
+
 export function AdminOrganizationPage() {
   const [initialState] = useState(initialDesignerState);
   const [effectiveDate, setEffectiveDate] = useState(initialState.effectiveDate);
@@ -493,15 +594,20 @@ export function AdminOrganizationPage() {
     event.preventDefault();
     if (!data?.draft) return;
     const form = new FormData(event.currentTarget);
+    const holderSource = String(form.get("holderSource") || editor.position.holderSource || "EMPLOYEE") as "EMPLOYEE" | "ACCOUNT";
     void mutate(
       () => replaceOrganizationIncumbencies(data.draft!.id, {
         positionKey: editor.position.stableKey,
-        primaryEmployeeId: editor.position.holderSource === "ACCOUNT" ? null
+        holderSource,
+        primaryEmployeeId: holderSource === "ACCOUNT" ? null
           : editor.acting ? editor.position.primaryIncumbent?.employeeId ?? null : String(form.get("employeeId")) || null,
-        primaryAccountId: editor.position.holderSource === "ACCOUNT" ? String(form.get("accountId")) || null : null,
-        actingEmployeeId: editor.acting ? String(form.get("employeeId")) || null : editor.position.actingIncumbent?.employeeId ?? null,
-        actingFrom: editor.acting ? String(form.get("actingFrom")) : editor.position.actingIncumbent?.effectiveFrom ?? null,
-        actingTo: editor.acting ? String(form.get("actingTo")) : editor.position.actingIncumbent?.effectiveTo ?? null,
+        primaryAccountId: holderSource === "ACCOUNT" ? String(form.get("accountId")) || null : null,
+        actingEmployeeId: holderSource === "ACCOUNT" ? null
+          : editor.acting ? String(form.get("employeeId")) || null : editor.position.actingIncumbent?.employeeId ?? null,
+        actingFrom: holderSource === "ACCOUNT" ? null
+          : editor.acting ? String(form.get("actingFrom")) : editor.position.actingIncumbent?.effectiveFrom ?? null,
+        actingTo: holderSource === "ACCOUNT" ? null
+          : editor.acting ? String(form.get("actingTo")) : editor.position.actingIncumbent?.effectiveTo ?? null,
         effectiveFrom: String(form.get("effectiveFrom") || data.draft!.effectiveOn),
       }),
       editor.acting ? "Pelaksana tugas diperbarui." : "Pejabat utama diperbarui.",
@@ -700,7 +806,7 @@ export function AdminOrganizationPage() {
                   <div><dt className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Anggota</dt><dd className="mt-1 font-semibold text-brand-heading">{selectedNode.memberCount} anggota</dd></div>
                 </> : <>
                   <div><dt className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Kelompok</dt><dd className="mt-1 font-semibold text-brand-heading">{selectedPositionNode?.name ?? "—"}</dd></div>
-                  <div><dt className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Pejabat utama</dt><dd className="mt-1 font-semibold text-brand-heading">{selectedPosition?.primaryIncumbent?.employeeName ?? "VACANT"}</dd>{selectedPosition?.holderSource === "ACCOUNT" ? <dd className="mt-0.5 text-[10px] text-muted-foreground">Account Organ Yayasan · {selectedPosition.primaryIncumbent?.accountStatus ?? "belum ditetapkan"}</dd> : null}</div>
+                  <div className="min-w-0"><dt className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Pemegang utama · {selectedPosition?.holderSource === "ACCOUNT" ? "ACCOUNT" : "EMPLOYEE"}</dt><dd title={selectedPosition?.primaryIncumbent?.accountEmail ?? selectedPosition?.primaryIncumbent?.employeeName} className="mt-1 truncate font-semibold text-brand-heading">{selectedPosition?.holderSource === "ACCOUNT" ? selectedPosition.primaryIncumbent?.accountEmail ?? selectedPosition.primaryIncumbent?.employeeName ?? "VACANT" : selectedPosition?.primaryIncumbent?.employeeName ?? "VACANT"}</dd>{selectedPosition?.holderSource === "ACCOUNT" ? <dd className="mt-0.5 truncate text-[10px] text-muted-foreground">FOUNDATION_BOARD · {selectedPosition.primaryIncumbent?.accountStatus ?? "belum ditetapkan"}</dd> : null}</div>
                   {selectedPosition?.actingIncumbent ? <div><dt className="text-[10px] font-bold uppercase tracking-wide text-blue-800">Pelaksana tugas</dt><dd className="mt-1 font-bold text-blue-950">{selectedPosition.actingIncumbent.employeeName}</dd></div> : null}
                   <div><dt className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Kebijakan vacancy</dt><dd className="mt-1 font-semibold text-brand-heading">{selectedPosition?.vacancyPolicy}</dd></div>
                 </>}
@@ -712,7 +818,7 @@ export function AdminOrganizationPage() {
 
               {canEdit ? <div className="mt-4">
                 <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Tindakan</p>
-                <div className="mt-2 grid grid-cols-2 gap-2">
+                <div className="mt-2 grid grid-cols-2 gap-1.5">
                   {selectedNode ? <>
                     <ActionButton onClick={() => setAction({ type: "node", mode: "edit", node: selectedNode })} icon={<ArrowRightLeft />}>Edit</ActionButton>
                     <ActionButton onClick={() => setAction({ type: "node", mode: "child", node: selectedNode })} icon={<GitBranchPlus />}>Tambah di bawah</ActionButton>
@@ -810,7 +916,7 @@ export function AdminOrganizationPage() {
         </Modal>
       ) : null}
 
-      {action?.type === "incumbency" ? <Modal title={action.position.holderSource === "ACCOUNT" ? "Tetapkan Account Organ Yayasan" : action.acting ? "Tetapkan pelaksana tugas" : "Tetapkan pejabat utama"} description={action.position.holderSource === "ACCOUNT" ? "Account holder digunakan untuk identitas struktur. Ini tidak memberikan izin Leave atau employee self-service." : action.acting ? "Acting authority selalu eksplisit dan berbatas tanggal; sistem tidak menginferensikannya dari absensi." : "Penetapan ini tidak otomatis memberikan role atau permission aplikasi."} onClose={() => setAction(null)}><form onSubmit={(event) => handleIncumbency(event, action)} className="space-y-4"><div className="rounded-xl bg-surface p-3 text-sm font-bold text-brand-heading">{action.position.title}</div>{action.position.holderSource === "ACCOUNT" ? <><Field label="Account Organ Yayasan"><select name="accountId" required defaultValue={action.position.primaryIncumbent?.accountId ?? ""} className={inputClass}><option value="">Pilih account...</option>{boardAccounts.map((account) => <option key={account.id} value={account.id}>{account.email} — {account.status}</option>)}</select></Field><a href="/admin/access" className="inline-flex text-xs font-bold text-brand-primary-deep hover:underline">Kelola Account Organ Yayasan</a></> : <Field label="Pegawai"><select name="employeeId" required defaultValue={action.acting ? action.position.actingIncumbent?.employeeId ?? "" : action.position.primaryIncumbent?.employeeId ?? ""} className={inputClass}><option value="">Pilih pegawai...</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.fullName} — {employee.employeeNumber}</option>)}</select></Field>}{action.acting ? <><Field label="Mulai acting"><input type="date" name="actingFrom" required defaultValue={action.position.actingIncumbent?.effectiveFrom ?? data?.draft?.effectiveOn} className={inputClass} /></Field><Field label="Berakhir acting"><input type="date" name="actingTo" required defaultValue={action.position.actingIncumbent?.effectiveTo ?? ""} className={inputClass} /></Field></> : <Field label="Mulai menjabat"><input type="date" name="effectiveFrom" required defaultValue={action.position.primaryIncumbent?.effectiveFrom ?? data?.draft?.effectiveOn} className={inputClass} /></Field>}<SubmitRow saving={saving} onCancel={() => setAction(null)} label="Simpan penetapan" /></form></Modal> : null}
+      {action?.type === "incumbency" ? <Modal title={action.acting ? "Tetapkan pelaksana tugas" : "Tetapkan pemegang posisi"} description={action.acting ? "Acting authority selalu eksplisit dan berbatas tanggal; sistem tidak menginferensikannya dari absensi." : "Pilih pegawai atau account governance yang sudah ada. Penetapan tidak membuat account, mengaktifkan account, atau memberikan permission."} onClose={() => setAction(null)}><HolderAssignmentEditor position={action.position} acting={action.acting} employees={employees} accounts={boardAccounts} effectiveOn={data?.draft?.effectiveOn ?? effectiveDate} saving={saving} onCancel={() => setAction(null)} onSubmit={(event) => handleIncumbency(event, action)} /></Modal> : null}
 
       {action?.type === "members" ? <Modal title={`Kelola anggota · ${action.node.name}`} description="Pilih satu per satu atau gunakan unit lama sebagai bantuan migrasi keanggotaan yang eksplisit." onClose={() => setAction(null)}><MembershipEditor node={action.node} employees={employees} memberships={data?.memberships ?? []} saving={saving} onCancel={() => setAction(null)} onSubmit={(event) => handleMembers(event, action)} /></Modal> : null}
 
@@ -826,5 +932,5 @@ export function AdminOrganizationPage() {
 }
 
 function ActionButton({ onClick, icon, children }: { onClick: () => void; icon: ReactNode; children: ReactNode }) {
-  return <button type="button" onClick={onClick} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-white px-2.5 text-[11px] font-bold hover:border-brand-primary/40 hover:bg-brand-primary-pale/30 [&_svg]:h-3.5 [&_svg]:w-3.5">{icon}{children}</button>;
+  return <button type="button" onClick={onClick} className="inline-flex h-8 min-w-0 items-center gap-1 rounded-lg border border-border bg-white px-2 text-left text-[10px] font-bold leading-3 hover:border-brand-primary/40 hover:bg-brand-primary-pale/30 [&_svg]:h-3 [&_svg]:w-3 [&_svg]:shrink-0"><span className="contents">{icon}</span><span className="min-w-0 truncate" title={typeof children === "string" ? children : undefined}>{children}</span></button>;
 }

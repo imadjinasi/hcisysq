@@ -1,6 +1,15 @@
 export const MIN_CANVAS_ZOOM = 0.4;
 export const MAX_CANVAS_ZOOM = 1.4;
 
+// A visual offset advances by a complete renderer row pitch, not a fraction of
+// a card. Nodes and compact position lanes use distinct fixed pitches.
+export const ORGANIZATION_NODE_VISUAL_BAND_HEIGHT = 160;
+export const ORGANIZATION_POSITION_VISUAL_BAND_HEIGHT = 64;
+
+export function visualBandOffset(offset: number, bandHeight: number): number {
+  return Math.max(0, Math.trunc(offset)) * bandHeight;
+}
+
 const nodeTypeLabels: Record<string, string> = {
   FOUNDATION: "Yayasan / Foundation",
   DIRECTORATE: "Direktorat / Bidang",

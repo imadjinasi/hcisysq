@@ -32,7 +32,7 @@ describe("Organization Designer administration UX contracts", () => {
     expect(organizationSource).toContain("Buang seluruh draft?");
     expect(organizationSource).toContain("Account Organ Yayasan");
     expect(organizationSource).toContain('href="/admin/access"');
-    expect(organizationSource).toContain("tidak memberikan izin Leave atau employee self-service");
+    expect(organizationSource).toContain("tidak membuat account, mengaktifkan account, atau memberikan permission");
   });
 
   it("provides a selected-item inspector and intentional Move actions", () => {
@@ -90,5 +90,7 @@ describe("Admin navigation compaction", () => {
     expect(adminShellSource).toContain('lg:grid-cols-[14.5rem_minmax(0,1fr)]');
     expect(adminShellSource).toContain('lg:overflow-y-auto');
     expect(adminShellSource).toContain('whitespace-nowrap');
+    expect(adminShellSource).toContain('className="min-w-0 truncate"');
+    expect(organizationSource).toContain('className="min-w-0 truncate"');
   });
 });

@@ -6,7 +6,10 @@ import type { OrganizationNode, OrganizationPosition } from "@/lib/organizationD
 import {
   centeredScrollOffset,
   fitZoomForViewport,
+  ORGANIZATION_NODE_VISUAL_BAND_HEIGHT,
+  ORGANIZATION_POSITION_VISUAL_BAND_HEIGHT,
   organizationNodeTypeLabel,
+  visualBandOffset,
 } from "@/lib/organizationCanvas";
 import { buildOrganizationTree, selectableOrganizationParents } from "@/lib/organizationTree";
 
@@ -170,7 +173,8 @@ describe("Organization Designer chart", () => {
     const html = renderChart([baseNode, bureau], [vacantPosition]);
 
     expect(html).toMatch(/data-node-key="quran-bureau"[^>]*data-structural-depth="1"[^>]*data-visual-band="2"[^>]*data-visual-rank-offset="1"/);
-    expect(html).toContain('style="height:140px"');
+    expect(visualBandOffset(1, ORGANIZATION_NODE_VISUAL_BAND_HEIGHT)).toBe(160);
+    expect(html).toContain('style="height:188px"');
   });
 
   it("uses position visual offset as a real lower layout band", () => {
@@ -185,7 +189,8 @@ describe("Organization Designer chart", () => {
     const html = renderChart([baseNode], [vacantPosition, vicePrincipal]);
 
     expect(html).toMatch(/data-position-key="vice-principal"[^>]*data-parent-position-key="director"[^>]*data-structural-depth="1"[^>]*data-visual-band="3"/);
-    expect(html).toContain('style="height:240px"');
+    expect(visualBandOffset(2, ORGANIZATION_POSITION_VISUAL_BAND_HEIGHT)).toBe(128);
+    expect(html).toContain('style="height:144px"');
     expect(html).toMatch(/data-connector-kind="position"[^>]*data-connector-from="director"[^>]*data-connector-to="vice-principal"/);
   });
 
@@ -216,7 +221,9 @@ describe("Organization Designer chart", () => {
     );
 
     expect(html).toContain("VACANT · Belum ada pejabat");
-    expect(html).toContain("Tampilan +2");
+    expect(html).toContain('aria-label="Tampilan +2"');
+    expect(html).toContain(">+2</span>");
+    expect(html).not.toContain(">Tampilan +2</span>");
     expect(html).toContain("Tampilkan 2 tingkat lebih rendah. Hubungan struktural");
   });
 
@@ -252,10 +259,33 @@ describe("Organization Designer chart", () => {
       childNode("last", "Last"),
     ], [vacantPosition]);
 
-    expect(oneChild).not.toContain('data-connector-kind="sibling-junction"');
-    expect(manyChildren).toMatch(/data-connector-kind="sibling-junction"[^>]*data-connector-from="first"[^>]*data-connector-to="middle|last"/);
-    expect(manyChildren).toContain('style="left:8.75rem;right:8.75rem"');
+    expect(oneChild).not.toContain('data-connector-kind="sibling-segment"');
+    expect(manyChildren.match(/data-connector-kind="sibling-segment"/g)).toHaveLength(3);
+    expect(manyChildren).toContain("left-1/2 right-0");
+    expect(manyChildren).toContain("left-0 right-1/2");
+    expect(manyChildren).not.toContain('style="left:8.75rem;right:8.75rem"');
     expect(manyChildren).not.toContain("border-t border-brand-primary/40");
+  });
+
+  it("shows ACCOUNT identity and email on governance position cards", () => {
+    const governancePosition: OrganizationPosition = {
+      ...vacantPosition,
+      holderSource: "ACCOUNT",
+      primaryIncumbent: {
+        employeeId: null,
+        accountId: "board-account-id",
+        accountEmail: "secretary@example.test",
+        accountStatus: "active",
+        employeeName: "secretary@example.test",
+        effectiveFrom: "2027-01-01",
+        effectiveTo: null,
+      },
+    };
+    const html = renderChart([baseNode], [governancePosition]);
+
+    expect(html).toContain("secretary@example.test");
+    expect(html).toContain(">ACCOUNT</span>");
+    expect(html).not.toContain("VACANT · Belum ada pejabat");
   });
 
   it("localizes node types, keeps cards compact, and de-emphasizes zero members", () => {

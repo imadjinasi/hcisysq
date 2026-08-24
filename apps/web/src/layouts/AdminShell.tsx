@@ -97,8 +97,8 @@ export function AdminShell({
         <div className="flex items-center gap-2.5 px-5 py-4">
           <img src={ysqMark} alt="" className="h-10 w-10 object-contain" />
           <div className="min-w-0">
-            <p className="text-xs font-bold leading-4 text-brand-heading">Human Capital Information System</p>
-            <p className="text-[11px] text-muted-foreground">Yayasan Sabilul Qur&apos;an</p>
+            <p title="Human Capital Information System" className="truncate text-xs font-bold leading-4 text-brand-heading">Human Capital Information System</p>
+            <p title="Yayasan Sabilul Qur'an" className="truncate text-[11px] text-muted-foreground">Yayasan Sabilul Qur&apos;an</p>
           </div>
         </div>
 
@@ -112,14 +112,14 @@ export function AdminShell({
                 href={item.href}
                 aria-current={selected ? "page" : undefined}
                 className={cn(
-                  "flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-xl px-3 py-2 text-[13px] font-semibold transition-colors lg:mb-0.5",
+                  "flex shrink-0 items-center gap-2.5 whitespace-nowrap rounded-xl px-3 py-2 text-[13px] font-semibold transition-colors lg:mb-0.5 lg:w-full lg:min-w-0 lg:shrink",
                   selected
                     ? "bg-brand-primary-pale text-brand-primary-deep"
                     : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
                 )}
               >
-                <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
-                {item.label}
+                <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
+                <span title={item.label} className="min-w-0 truncate">{item.label}</span>
               </a>
             );
           })}
