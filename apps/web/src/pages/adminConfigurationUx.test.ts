@@ -48,7 +48,7 @@ describe("Organization Designer administration UX contracts", () => {
   it("provides a simplified selected-item inspector with advanced technical controls", () => {
     expect(organizationSource).toContain('aria-label="Inspector pilihan struktur"');
     expect(organizationSource).toContain("Induk struktural");
-    expect(organizationSource).toContain("Approval & reporting");
+    expect(organizationSource).toContain("Approval & Reporting");
     expect(organizationSource).toContain("Tetapkan pimpinan");
     expect(organizationSource).toContain("Tambah bagian / unit");
     expect(organizationSource).toContain("Kelola anggota");
@@ -67,12 +67,30 @@ describe("Organization Designer administration UX contracts", () => {
   });
 
   it("offers explicit legacy-unit membership preview without authority inference", () => {
-    expect(organizationSource).toContain("Tambahkan anggota dari unit lama");
+    expect(organizationSource).toContain("Bantuan migrasi unit lama");
     expect(organizationSource).toContain("Preview: {legacyCandidates.length} pegawai aktif");
-    expect(organizationSource).toMatch(/Posisi, leader,\s*hierarchy, dan kewenangan tidak dibuat otomatis/);
+    expect(organizationSource).toMatch(/Posisi, pimpinan, hierarchy,\s*dan kewenangan tidak dibuat otomatis/);
     expect(organizationSource).toContain('aria-label="Cari nama atau nomor pegawai"');
     expect(organizationSource).toContain('aria-label="Filter unit pegawai"');
-    expect(organizationSource).toContain("Gunakan pencarian atau filter unit untuk menampilkan pegawai");
+    expect(organizationSource).toContain("Cari nama/NIP atau pilih filter unit");
+  });
+
+  it("keeps current members collapsed and reviews only semantic deltas", () => {
+    expect(organizationSource).toContain("Lihat anggota saat ini");
+    expect(organizationSource).toContain("Pegawai tersedia");
+    expect(organizationSource).toContain("Perubahan ({deltas.length})");
+    expect(organizationSource).toContain("Simpan ${deltas.length} perubahan");
+    expect(organizationSource).toContain("Jadikan ini unit utama");
+    expect(organizationSource).toContain("Unit utama terakhir tidak dapat dihapus");
+  });
+
+  it("places guided Approval & Reporting before the advanced raw authority editor", () => {
+    expect(organizationSource).toContain("Atur Approval & Reporting");
+    expect(organizationSource).toContain("Pimpinan struktur");
+    expect(organizationSource).toContain("Penyetuju unit");
+    expect(organizationSource).toContain("Penyetuju governance");
+    expect(organizationSource).toContain("Editor authority mentah");
+    expect(organizationSource).toContain("tidak membuat authority dari nama jabatan");
   });
 });
 

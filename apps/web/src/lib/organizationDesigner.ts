@@ -136,6 +136,14 @@ export interface OrganizationValidationReport {
 }
 
 export interface OrganizationImpactPreview {
+  structureChanges: {
+    nodes: number;
+    positions: number;
+    memberships: number;
+    incumbencies: number;
+    authorityRelationships: number;
+    reportingRelationships: number;
+  };
   directManagerChanges: Array<Record<string, unknown>>;
   unitApproverChanges: Array<Record<string, unknown>>;
   authorityPathsAffected: Array<Record<string, unknown>>;
@@ -445,6 +453,25 @@ export function configureOrganizationLeader(
     method: "PUT",
     body: JSON.stringify(input),
   });
+}
+
+export function configureOrganizationApprovalReporting(
+  draftId: string,
+  input: {
+    sourceType: "NODE" | "POSITION";
+    sourceKey: string;
+    leaderPositionKey?: string | null;
+    reportsToPositionKey?: string | null;
+    unitApproverPositionKey?: string | null;
+    governanceApproverPositionKey?: string | null;
+    oversightParentPositionKey?: string | null;
+    effectiveFrom: string;
+  },
+): Promise<{ changedRelationships: string[] }> {
+  return request<{ changedRelationships: string[] }>(
+    `/drafts/${draftId}/approval-reporting`,
+    { method: "PUT", body: JSON.stringify(input) },
+  );
 }
 
 export function discardOrganizationDraft(draftId: string): Promise<void> {

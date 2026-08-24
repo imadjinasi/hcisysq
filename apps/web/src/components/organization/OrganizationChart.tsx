@@ -94,7 +94,7 @@ function PositionCard({
           </span>
           <span
             className={cn(
-              "mt-0.5 block break-words text-[11px] leading-4",
+              "mt-0.5 block break-words text-xs leading-4",
               vacant
                 ? "font-bold text-amber-900"
                 : acting
@@ -118,22 +118,22 @@ function PositionCard({
       {isLeader || acting || primary ? (
         <span className="mt-2 flex flex-wrap gap-1">
           {primary ? (
-            <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-700">
-              {account ? "ACCOUNT" : "PEGAWAI"}
+            <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-xs font-bold text-slate-700">
+              {account ? "ORGAN YAYASAN" : "PEGAWAI"}
             </span>
           ) : null}
           {primary?.isPrimaryStructural ? (
-            <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-800">
+            <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-xs font-bold text-emerald-800">
               Utama
             </span>
           ) : null}
           {isLeader ? (
-            <span className="rounded-full bg-brand-primary-pale px-2 py-0.5 text-[10px] font-semibold text-brand-primary-deep">
-              Leader
+            <span className="rounded-full bg-brand-primary-pale px-2 py-0.5 text-xs font-semibold text-brand-primary-deep">
+              Pimpinan
             </span>
           ) : null}
           {acting ? (
-            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-900">
+            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-900">
               PLT
             </span>
           ) : null}
@@ -190,7 +190,7 @@ function NodeCard({
             >
               {item.name}
             </span>
-            <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-muted-foreground">
+            <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
               <span>{organizationNodeTypeLabel(item.nodeType)}</span>
               {item.memberCount > 0 ? (
                 <span>· {item.memberCount} anggota</span>
@@ -268,7 +268,7 @@ function Tool({
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
-      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-white px-2 text-[11px] font-semibold text-brand-heading hover:bg-muted disabled:opacity-45"
+      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-white px-2 text-xs font-semibold text-brand-heading hover:bg-muted disabled:opacity-45"
     >
       {children}
     </button>
@@ -446,7 +446,7 @@ export function OrganizationChart({
         </Tool>
         <output
           aria-label="Zoom saat ini"
-          className="inline-flex h-8 min-w-14 items-center justify-center rounded-lg bg-surface px-2 text-[11px] font-bold text-brand-heading"
+          className="inline-flex h-9 min-w-14 items-center justify-center rounded-lg bg-surface px-2 text-xs font-bold text-brand-heading"
         >
           {Math.round(zoom * 100)}%
         </output>

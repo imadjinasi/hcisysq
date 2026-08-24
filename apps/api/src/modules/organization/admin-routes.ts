@@ -10,6 +10,10 @@ import { AuthError, AuthService, type AuthPrincipal } from "../auth/service.js";
 import type {
   AuthorityBindingType,
 } from "./domain.js";
+import {
+  applyGuidedApprovalReporting,
+  GuidedApprovalReportingError,
+} from "./approval-reporting.js";
 import { deleteOrganizationSubtree, OrganizationDraftService } from "./draft-service.js";
 import { OrganizationAuthorityResolver } from "./resolver.js";
 import { PostgresOrganizationRepository, type OrganizationQueryable } from "./repository.js";
@@ -90,6 +94,16 @@ const bindingInput = z.object({
   effectiveFrom: date,
   effectiveTo: date.nullable().optional(),
 });
+const approvalReportingInput = z.object({
+  sourceType: z.enum(["NODE", "POSITION"]),
+  sourceKey: uuid,
+  leaderPositionKey: uuid.nullable().optional(),
+  reportsToPositionKey: uuid.nullable().optional(),
+  unitApproverPositionKey: uuid.nullable().optional(),
+  governanceApproverPositionKey: uuid.nullable().optional(),
+  oversightParentPositionKey: uuid.nullable().optional(),
+  effectiveFrom: date,
+});
 const overrideInput = z.object({
   employeeId: uuid,
   managerPositionKey: uuid,
@@ -121,6 +135,36 @@ function periodsOverlap(
 ) {
   return first.effectiveFrom <= (second.effectiveTo ?? "9999-12-31")
     && second.effectiveFrom <= (first.effectiveTo ?? "9999-12-31");
+}
+
+export function primaryMembershipRemovalsWithoutReplacement(input: {
+  memberships: Array<{
+    employeeId: string;
+    nodeKey: string;
+    isPrimary: boolean;
+    effectiveFrom: string;
+    effectiveTo: string | null;
+  }>;
+  nodeKey: string;
+  submitted: ReadonlyMap<string, { isPrimary: boolean }>;
+  period: { effectiveFrom: string; effectiveTo: string | null };
+}) {
+  return input.memberships
+    .filter((membership) =>
+      membership.nodeKey === input.nodeKey &&
+      membership.isPrimary &&
+      periodsOverlap(membership, input.period) &&
+      !input.submitted.get(membership.employeeId)?.isPrimary,
+    )
+    .filter((membership) =>
+      !input.memberships.some((candidate) =>
+        candidate.employeeId === membership.employeeId &&
+        candidate.nodeKey !== input.nodeKey &&
+        candidate.isPrimary &&
+        periodsOverlap(candidate, input.period),
+      ),
+    )
+    .map((membership) => membership.employeeId);
 }
 
 async function insertAuditEvent(
@@ -520,6 +564,20 @@ export async function registerOrganizationAdminRoutes(
         return false;
       }
       const submittedPeriod = { effectiveFrom: body.data.effectiveFrom, effectiveTo: body.data.effectiveTo ?? null };
+      const unsafePrimaryRemovals = primaryMembershipRemovalsWithoutReplacement({
+        memberships: snapshot.memberships,
+        nodeKey: body.data.nodeKey,
+        submitted,
+        period: submittedPeriod,
+      });
+      if (unsafePrimaryRemovals.length > 0) {
+        await reply.status(409).send({
+          code: "PRIMARY_MEMBERSHIP_REMOVAL_REQUIRES_REPLACEMENT",
+          message: "Choose another primary organization membership before removing the current primary membership.",
+          employeeIds: unsafePrimaryRemovals,
+        });
+        return false;
+      }
       const primarySwitches = body.data.memberships.filter((item) => item.isPrimary).flatMap((item) => {
         const existing = snapshot.memberships.filter((membership) => membership.employeeId === item.employeeId
           && membership.nodeKey !== body.data.nodeKey && membership.isPrimary
@@ -592,6 +650,40 @@ export async function registerOrganizationAdminRoutes(
     return reply.status(204).send();
   });
 
+  app.put("/admin/organization/designer/drafts/:draftId/approval-reporting", async (request, reply) => {
+    const principal = await authenticate(request, reply); if (!principal) return;
+    const params = draftParams.safeParse(request.params); const body = approvalReportingInput.safeParse(request.body);
+    if (!params.success || !body.success) {
+      return invalid(reply, "INVALID_APPROVAL_REPORTING_CONFIGURATION", "Invalid Approval & Reporting configuration.");
+    }
+    try {
+      const result = await atomicOrganizationMutation(pool, principal, async (transaction) => {
+        const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return null;
+        const applied = applyGuidedApprovalReporting(snapshot, body.data);
+        await transaction.repository.replaceDraftSnapshot(snapshot);
+        await transaction.audit(
+          "organization.approval_reporting.configured",
+          body.data.sourceType === "NODE" ? "organization_node" : "organization_position",
+          null,
+          snapshot.changeSet.id,
+          {
+            sourceType: body.data.sourceType,
+            sourceKey: body.data.sourceKey,
+            changedRelationships: applied.changedRelationships,
+          },
+        );
+        return applied;
+      });
+      if (!result) return;
+      return reply.send(result);
+    } catch (error) {
+      if (error instanceof GuidedApprovalReportingError) {
+        return reply.status(409).send({ code: error.code, message: error.message });
+      }
+      throw error;
+    }
+  });
+
   app.post("/admin/organization/designer/drafts/:draftId/authority-bindings", async (request, reply) => {
     const principal = await authenticate(request, reply); if (!principal) return;
     const params = draftParams.safeParse(request.params); const body = bindingInput.safeParse(request.body);
@@ -654,7 +746,8 @@ export async function registerOrganizationAdminRoutes(
     if (!snapshot) return reply.status(404).send({ code: "ORGANIZATION_DRAFT_NOT_FOUND" });
     const impact = await draftService.previewImpact(snapshot.changeSet.id);
     const pureVisual = impact.visualOnly;
-    return reply.send({ directManagerChanges: impact.directManagerChanges, unitApproverChanges: impact.unitApproverChanges,
+    return reply.send({ structureChanges: impact.structureChanges,
+      directManagerChanges: impact.directManagerChanges, unitApproverChanges: impact.unitApproverChanges,
       authorityPathsAffected: impact.affectedAuthorityPaths.map((path) => ({ path })),
       vacantAuthorities: impact.vacantPositionKeys.map((positionKey) => ({ positionKey })),
       unresolvedEmployees: impact.unresolvedEmployeeIds.map((employeeId) => ({ employeeId })),

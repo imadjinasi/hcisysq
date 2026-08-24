@@ -87,6 +87,7 @@ export class OrganizationDraftService {
     const routingImpact = routingBefore !== routingAfter;
     const visualChanged = before ? visualFingerprint(before) !== visualFingerprint(draft) : false;
     return {
+      structureChanges: structuralChangeCounts(before, draft),
       directManagerChanges,
       unitApproverChanges: [...unitByNode].map(([nodeKey, value]) => ({ nodeKey, ...value })),
       affectedAuthorityPaths: changedAuthorityKeys(before, draft),
@@ -404,4 +405,54 @@ function changedAuthorityKeys(
   ]));
   return [...new Set([...beforeMap.keys(), ...afterMap.keys()])]
     .filter((key) => beforeMap.get(key) !== afterMap.get(key));
+}
+
+function structuralChangeCounts(
+  before: OrganizationSnapshot | null,
+  after: OrganizationSnapshot,
+) {
+  const changed = <T,>(
+    previous: T[],
+    current: T[],
+    key: (item: T) => string,
+    value: (item: T) => unknown,
+  ) => {
+    const previousMap = new Map(previous.map((item) => [key(item), JSON.stringify(value(item))]));
+    const currentMap = new Map(current.map((item) => [key(item), JSON.stringify(value(item))]));
+    return [...new Set([...previousMap.keys(), ...currentMap.keys()])]
+      .filter((itemKey) => previousMap.get(itemKey) !== currentMap.get(itemKey)).length;
+  };
+  const previous = before ?? {
+    nodes: [], positions: [], memberships: [], incumbencies: [], authorityBindings: [], reportingOverrides: [],
+  };
+  return {
+    nodes: changed(previous.nodes, after.nodes, (item) => item.stableKey, (item) => [
+      item.name, item.nodeType, item.parentNodeKey, item.active, item.effectiveFrom, item.effectiveTo,
+    ]),
+    positions: changed(previous.positions, after.positions, (item) => item.stableKey, (item) => [
+      item.nodeKey, item.title, item.parentPositionKey, item.singleIncumbent, item.vacancyPolicy,
+      item.active, item.effectiveFrom, item.effectiveTo, item.holderSource,
+    ]),
+    memberships: changed(previous.memberships, after.memberships, (item) => `${item.employeeId}:${item.nodeKey}`, (item) => [
+      item.jobProfileKey, item.isPrimary, item.effectiveFrom, item.effectiveTo,
+    ]),
+    incumbencies: changed(previous.incumbencies, after.incumbencies, (item) => `${item.positionKey}:${item.kind}:${item.employeeId ?? item.accountId}`, (item) => [
+      item.isPrimaryStructural, item.effectiveFrom, item.effectiveTo,
+    ]),
+    authorityRelationships: changed(previous.authorityBindings, after.authorityBindings, (item) => `${item.subjectKind}:${item.subjectKey}:${item.bindingType}`, (item) => [
+      item.targetPositionKey, item.vacancyPolicy, item.effectiveFrom, item.effectiveTo,
+    ]),
+    reportingRelationships: changed(
+      [
+        ...previous.positions.map((item) => ({ key: `position:${item.stableKey}`, value: item.parentPositionKey })),
+        ...previous.reportingOverrides.map((item) => ({ key: `override:${item.employeeId}`, value: [item.managerPositionKey, item.managerEmployeeId, item.effectiveFrom, item.effectiveTo] })),
+      ],
+      [
+        ...after.positions.map((item) => ({ key: `position:${item.stableKey}`, value: item.parentPositionKey })),
+        ...after.reportingOverrides.map((item) => ({ key: `override:${item.employeeId}`, value: [item.managerPositionKey, item.managerEmployeeId, item.effectiveFrom, item.effectiveTo] })),
+      ],
+      (item) => item.key,
+      (item) => item.value,
+    ),
+  };
 }

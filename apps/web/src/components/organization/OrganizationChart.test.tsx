@@ -446,7 +446,7 @@ describe("Organization Designer chart", () => {
     expect(manyChildren).not.toContain("border-t border-brand-primary/40");
   });
 
-  it("shows ACCOUNT identity and email on governance position cards", () => {
+  it("shows human-facing governance identity and email on position cards", () => {
     const governancePosition: OrganizationPosition = {
       ...vacantPosition,
       holderSource: "ACCOUNT",
@@ -463,7 +463,7 @@ describe("Organization Designer chart", () => {
     const html = renderChart([baseNode], [governancePosition]);
 
     expect(html).toContain("secretary@example.test");
-    expect(html).toContain(">ACCOUNT</span>");
+    expect(html).toContain(">ORGAN YAYASAN</span>");
     expect(html).not.toContain("VACANT · Belum ada pejabat");
   });
 

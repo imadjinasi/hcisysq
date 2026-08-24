@@ -67,5 +67,38 @@ describe("Organization impact preview", () => {
 
     expect(impact.routingImpact).toBe(false);
     expect(impact.visualOnly).toBe(true);
+    expect(impact.structureChanges).toEqual({
+      nodes: 0,
+      positions: 0,
+      memberships: 0,
+      incumbencies: 0,
+      authorityRelationships: 0,
+      reportingRelationships: 0,
+    });
+  });
+
+  it("summarizes stable semantic membership changes without counting cloned row IDs", async () => {
+    const baseId = "00000000-0000-4000-8000-000000000001";
+    const draftId = "00000000-0000-4000-8000-000000000002";
+    const base = snapshot({ id: baseId, baseChangeSetId: null, visualRankOffset: 0, nodeIds: ["ffffffff-0000-4000-8000-000000000001", "00000000-0000-4000-8000-000000000001"] });
+    const draft = snapshot({ id: draftId, baseChangeSetId: baseId, visualRankOffset: 0, nodeIds: ["ffffffff-0000-4000-8000-000000000002", "00000000-0000-4000-8000-000000000002"] });
+    draft.memberships.push({
+      id: "00000000-0000-4000-8000-000000000050",
+      employeeId: "00000000-0000-4000-8000-000000000051",
+      nodeKey: draft.nodes[1]!.stableKey,
+      jobProfileKey: null,
+      isPrimary: false,
+      effectiveFrom: "2026-09-01",
+      effectiveTo: null,
+    });
+    const repository = {
+      loadChangeSetSnapshot: vi.fn(async (id: string) => id === draftId ? draft : base),
+      validate: vi.fn(),
+    } as unknown as PostgresOrganizationRepository;
+
+    const impact = await new OrganizationDraftService(repository).previewImpact(draftId);
+
+    expect(impact.structureChanges.memberships).toBe(1);
+    expect(impact.structureChanges.nodes).toBe(0);
   });
 });

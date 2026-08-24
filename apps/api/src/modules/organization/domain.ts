@@ -204,6 +204,14 @@ export interface OrganizationValidationReport {
 }
 
 export interface OrganizationImpactPreview {
+  structureChanges: {
+    nodes: number;
+    positions: number;
+    memberships: number;
+    incumbencies: number;
+    authorityRelationships: number;
+    reportingRelationships: number;
+  };
   directManagerChanges: Array<{
     employeeId: string;
     beforeEmployeeId: string | null;

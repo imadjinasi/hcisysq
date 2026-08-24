@@ -531,7 +531,7 @@ paths:
                 effectiveTo: { type: [string, 'null'], format: date }
       responses:
         '204': { description: Effective memberships replaced only for the selected group; other-node memberships are preserved. }
-        '409': { description: An overlapping primary switch needs confirmation or a primary-membership invariant would be violated. }
+        '409': { description: An overlapping primary switch needs confirmation, a dual primary would result, or the employee's last effective primary would be removed/demoted without an explicit replacement. }
         '403': { $ref: '#/components/responses/Forbidden' }
 
   /admin/organization/designer/drafts/{draftId}/incumbencies:
@@ -604,6 +604,34 @@ paths:
         '201': { description: Semantic authority relationship created }
         '400': { $ref: '#/components/responses/ValidationError' }
         '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/organization/designer/drafts/{draftId}/approval-reporting:
+    put:
+      tags: [Organization]
+      operationId: configureOrganizationApprovalReporting
+      description: Draft-only atomic guided configuration. Only supplied relationships are replaced or cleared; omitted relationships remain unchanged. No authority is inferred from title, hierarchy, node type, person, or visual rank. Existing binding vacancy policy is preserved, while a new binding uses the selected target position's configured vacancy policy.
+      parameters: [{ $ref: '#/components/parameters/DraftId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sourceType, sourceKey, effectiveFrom]
+              properties:
+                sourceType: { type: string, enum: [NODE, POSITION] }
+                sourceKey: { type: string, format: uuid }
+                leaderPositionKey: { type: [string, 'null'], format: uuid, description: NODE only; explicit structure leader. }
+                reportsToPositionKey: { type: [string, 'null'], format: uuid, description: Explicit supervisory parent for the source position or selected node leader. }
+                unitApproverPositionKey: { type: [string, 'null'], format: uuid, description: NODE only; explicit Unit Approver position. }
+                governanceApproverPositionKey: { type: [string, 'null'], format: uuid, description: POSITION only; explicit governance approver. }
+                oversightParentPositionKey: { type: [string, 'null'], format: uuid, description: POSITION only; explicit governance oversight parent. }
+                effectiveFrom: { type: string, format: date }
+      responses:
+        '200': { description: Supplied Approval & Reporting relationships saved atomically and audited. }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: Source/target is missing, self-referential, belongs to an invalid scope, or the draft is immutable. }
 
   /admin/organization/designer/drafts/{draftId}/reporting-overrides:
     post:
@@ -985,8 +1013,18 @@ components:
 
     OrganizationImpactPreview:
       type: object
-      required: [directManagerChanges, unitApproverChanges, authorityPathsAffected, vacantAuthorities, unresolvedEmployees, visualOnlyChanges, noApprovalRoutingImpact]
+      required: [structureChanges, directManagerChanges, unitApproverChanges, authorityPathsAffected, vacantAuthorities, unresolvedEmployees, visualOnlyChanges, noApprovalRoutingImpact]
       properties:
+        structureChanges:
+          type: object
+          required: [nodes, positions, memberships, incumbencies, authorityRelationships, reportingRelationships]
+          properties:
+            nodes: { type: integer, minimum: 0 }
+            positions: { type: integer, minimum: 0 }
+            memberships: { type: integer, minimum: 0 }
+            incumbencies: { type: integer, minimum: 0 }
+            authorityRelationships: { type: integer, minimum: 0 }
+            reportingRelationships: { type: integer, minimum: 0 }
         directManagerChanges: { type: array, items: { type: object } }
         unitApproverChanges: { type: array, items: { type: object } }
         authorityPathsAffected: { type: array, items: { type: object } }

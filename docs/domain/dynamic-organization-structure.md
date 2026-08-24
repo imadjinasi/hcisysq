@@ -1,7 +1,7 @@
 # Dynamic Organization Structure and Authority Resolution
 
 **Status:** IMPLEMENTED, REVIEWED, BROWSER-UAT TESTED, MERGED, AND DEPLOYED — STRUCTURE ACTIVATION REMAINS CONTROLLED
-**Specification:** ORG-004  
+**Specification:** ORG-004, ORG-005
 **Related:** ORG-001, ORG-002, AUTH-010, APR-001, LEAVE-003, LEAVE-004  
 **Decision date:** 2026-08-22
 
@@ -628,6 +628,85 @@ When a position is selected for authority or reporting, the UI must retain the
 stable position key but disambiguate the human choice with position title, a
 concise structural path, and its current primary holder (or `VACANT`). Search
 may match all three display values; none of them is an authority input.
+
+### ORG-005 administration mental model
+
+Routine Human Capital administration uses four human-facing concepts:
+
+1. **Struktur** — groups, units, and their explicit structural placement;
+2. **Pimpinan** — a leadership position, its employee/governance holder or
+   `VACANT` state, primary/rangkap assignment, and an explicitly selected
+   reports-to position;
+3. **Anggota** — employee membership of the selected group, including one
+   explicit primary membership and any secondary/rangkap memberships;
+4. **Approval & Reporting** — the selected structure leader, reports-to
+   position, Unit Approver, and applicable governance/oversight relationships.
+
+The normal experience uses Indonesian labels and task-oriented forms. Raw
+authority types, vacancy policies, holder-source details, integration metadata,
+visual placement, movement, and destructive operations remain available under
+**Pengaturan lanjutan** or **Zona berbahaya**. This presentation boundary does
+not change the canonical authority-binding model and does not infer authority
+from a title, person, node type, hierarchy depth, visual rank, or creation
+order.
+
+### ORG-005 member delta editing
+
+Member administration is search-first. Existing members are summarized and
+collapsed by default so a large current roster does not push employee search
+out of view. Expanding the roster shows a compact removal control; migration
+assistance is secondary and collapsed.
+
+The review area contains only semantic differences from the loaded draft:
+
+- added membership;
+- removed membership;
+- changed primary/secondary membership type.
+
+The Save button count is the number of changed employees and is disabled when
+there is no difference. Reopening and saving without a semantic change must
+preserve every primary/secondary value and every other-node membership.
+
+The first membership defaults to primary only when the employee has no other
+effective primary. If another primary exists, the new membership defaults to
+secondary and the current primary structural path is shown. Promoting the new
+membership remains an explicit action with confirmation; the former primary is
+demoted, not deleted. Removing the employee's last effective primary is
+rejected until another membership has explicitly become primary. Dual
+effective primaries remain invalid.
+
+### ORG-005 guided Approval & Reporting
+
+The guided surface edits only explicitly chosen relationships and persists
+stable position keys. Position choices always show title, concise structural
+path, and primary incumbent or `VACANT`, and search may match any of those
+display values. A vacant position remains a valid target where the configured
+domain vacancy behavior permits it.
+
+For a node, the normal summary/configuration may expose its explicit leader,
+that leader's reports-to position, and Unit Approver. For a position, it may
+expose its reports-to position, governance approver, and governance oversight
+parent. Optional governance fields appear only for position configuration.
+Unselected relationships remain unconfigured; the UI never creates
+`UNIT_APPROVER`, `GOVERNANCE_APPROVER`, or `OVERSIGHT_PARENT` from structural
+hierarchy. The raw authority editor remains an advanced diagnostic/editing
+surface.
+
+The guided write is DRAFT-only, atomic, audited, and replaces only the supplied
+semantic relationships. Existing vacancy policy is preserved when a binding is
+replaced; a new binding uses the explicitly configured target position vacancy
+policy. It does not change rollout state or grant authorization.
+
+### ORG-005 published and draft lifecycle
+
+A published snapshot is visibly read-only and offers **Buat draft koreksi**.
+The draft header identifies its effective date, base/source version, draft
+status, and same-day correction when applicable. Validation presents a
+human-readable explanation first, with technical diagnostic codes under
+advanced detail. Impact preview reports only server-authoritative structural,
+membership, leadership/reporting, authority, and workflow-resolution
+comparisons. Publish requires explicit confirmation and never mutates the base
+snapshot.
 
 Target experience is a visual organization designer, not only maintenance tables.
 

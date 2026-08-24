@@ -38,6 +38,7 @@ import { AdminShell } from "@/layouts/AdminShell";
 import { AdminApiError } from "@/lib/adminEmployees";
 import {
   createOrganizationAuthorityBinding,
+  configureOrganizationApprovalReporting,
   configureOrganizationLeader,
   createOrganizationDraft,
   createOrganizationNode,
@@ -48,6 +49,7 @@ import {
   discardOrganizationDraft,
   getOrganizationDesignerView,
   getOrganizationImpact,
+  getOrganizationRollout,
   listFoundationBoardAccounts,
   listOrganizationEmployees,
   previewOrganizationResolution,
@@ -64,6 +66,7 @@ import {
   type OrganizationNode,
   type OrganizationPosition,
   type OrganizationResolutionPreview,
+  type OrganizationRolloutConfiguration,
   type OrganizationValidationReport,
   type OrganizationVacancyPolicy,
 } from "@/lib/organizationDesigner";
@@ -74,6 +77,12 @@ import {
   filterOrganizationEmployees,
   organizationEmployeeUnits,
 } from "@/lib/organizationMemberPicker";
+import {
+  buildMembershipDeltas,
+  currentNodeMemberships,
+  defaultMembershipIsPrimary,
+  type OrganizationMembershipDelta,
+} from "@/lib/organizationMembershipEditor";
 import { selectableOrganizationParents } from "@/lib/organizationTree";
 
 type EditorAction =
@@ -100,6 +109,11 @@ type EditorAction =
     }
   | {
       type: "authority";
+      item: OrganizationNode | OrganizationPosition;
+      kind: "node" | "position";
+    }
+  | {
+      type: "approval-reporting";
       item: OrganizationNode | OrganizationPosition;
       kind: "node" | "position";
     }
@@ -152,11 +166,13 @@ function errorMessage(cause: unknown, fallback: string) {
 function Modal({
   title,
   description,
+  wide = false,
   onClose,
   children,
 }: {
   title: string;
   description?: string;
+  wide?: boolean;
   onClose: () => void;
   children: ReactNode;
 }) {
@@ -166,13 +182,16 @@ function Modal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="organization-dialog-title"
-        className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:max-w-xl sm:rounded-3xl"
+        className={cn(
+          "max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl",
+          wide ? "sm:max-w-2xl" : "sm:max-w-xl",
+        )}
       >
         <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-border/70 bg-white px-5 py-4 sm:px-6">
           <div>
             <h2
               id="organization-dialog-title"
-              className="text-lg font-bold text-brand-heading"
+              className="text-xl font-bold text-brand-heading"
             >
               {title}
             </h2>
@@ -210,7 +229,7 @@ function Field({
     <label className="block">
       <span className="text-xs font-bold text-brand-heading">{label}</span>
       {hint ? (
-        <span className="ml-1 text-[11px] text-muted-foreground">{hint}</span>
+        <span className="ml-1 text-xs text-muted-foreground">{hint}</span>
       ) : null}
       <span className="mt-1.5 block">{children}</span>
     </label>
@@ -224,10 +243,12 @@ function SubmitRow({
   saving,
   onCancel,
   label,
+  disabled = false,
 }: {
   saving: boolean;
   onCancel: () => void;
   label: string;
+  disabled?: boolean;
 }) {
   return (
     <div className="mt-6 flex justify-end gap-2 border-t border-border/70 pt-4">
@@ -240,7 +261,7 @@ function SubmitRow({
       </button>
       <button
         type="submit"
-        disabled={saving}
+        disabled={saving || disabled}
         className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white hover:bg-brand-primary-deep disabled:opacity-60"
       >
         {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
@@ -258,6 +279,25 @@ function statusCopy(mode: OrganizationDesignerView["mode"]) {
   if (mode === "DRAFT")
     return { label: "Draft", className: "bg-amber-100 text-amber-900" };
   return { label: "Saat ini", className: "bg-emerald-50 text-emerald-800" };
+}
+
+function validationIssueCopy(code: string) {
+  if (code.includes("CYCLE") || code === "AUTHORITY_LOOP") {
+    return "Ada hubungan berputar yang harus diputus sebelum draft dapat diterbitkan.";
+  }
+  if (code.includes("OVERLAP")) {
+    return "Ada dua penetapan efektif pada waktu yang sama. Periksa tanggal atau pilihan utama.";
+  }
+  if (code.includes("REFERENCE") || code.includes("_NODE") || code.includes("_PARENT")) {
+    return "Ada referensi struktur atau posisi yang sudah tidak valid.";
+  }
+  if (code.includes("INCUMBENT") || code.includes("ACCOUNT")) {
+    return "Pejabat yang dipilih belum memenuhi konfigurasi struktur yang diperlukan.";
+  }
+  if (code.includes("MEMBERSHIP")) {
+    return "Keanggotaan utama perlu diperiksa agar reporting tidak ambigu.";
+  }
+  return "Konfigurasi ini perlu diperiksa sebelum draft dapat diterbitkan.";
 }
 
 function ImpactCard({
@@ -281,7 +321,7 @@ function ImpactCard({
       )}
     >
       <p className="text-xl font-bold text-brand-heading">{count}</p>
-      <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+      <p className="mt-0.5 text-xs leading-4 text-muted-foreground">
         {label}
       </p>
     </div>
@@ -397,19 +437,25 @@ function MembershipEditor({
   onCancel: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
-  const [selected, setSelected] = useState(
-    () =>
-      new Set(
-        memberships
-          .filter((item) => item.nodeKey === node.stableKey)
-          .map((item) => item.employeeId),
-      ),
+  const currentMemberships = useMemo(
+    () => currentNodeMemberships(memberships, node.stableKey),
+    [memberships, node.stableKey],
   );
-  const [primaryByEmployeeId, setPrimaryByEmployeeId] = useState(() => new Map(
-    memberships
-      .filter((item) => item.nodeKey === node.stableKey)
-      .map((item) => [item.employeeId, item.isPrimary ?? false]),
-  ));
+  const currentEmployeeIds = useMemo(
+    () => new Set(currentMemberships.map((item) => item.employeeId)),
+    [currentMemberships],
+  );
+  const [selected, setSelected] = useState(
+    () => new Set(currentMemberships.map((item) => item.employeeId)),
+  );
+  const [primaryByEmployeeId, setPrimaryByEmployeeId] = useState(
+    () => new Map(
+      currentMemberships.map((item) => [item.employeeId, Boolean(item.isPrimary)]),
+    ),
+  );
+  const [confirmedPrimarySwitches, setConfirmedPrimarySwitches] = useState(
+    () => new Set<string>(),
+  );
   const [legacyUnit, setLegacyUnit] = useState("");
   const [manualUnit, setManualUnit] = useState("");
   const [search, setSearch] = useState("");
@@ -422,18 +468,47 @@ function MembershipEditor({
     [employees],
   );
   const legacyCandidates = useMemo(
-    () =>
-      legacyUnit
-        ? activeEmployees.filter((employee) => employee.unitName === legacyUnit)
-        : [],
+    () => legacyUnit
+      ? activeEmployees.filter((employee) => employee.unitName === legacyUnit)
+      : [],
     [activeEmployees, legacyUnit],
   );
   const filteredEmployees = useMemo(
-    () => filterOrganizationEmployees(employees, { search, unit: manualUnit }),
-    [employees, manualUnit, search],
+    () => filterOrganizationEmployees(employees, { search, unit: manualUnit })
+      .filter((employee) => !currentEmployeeIds.has(employee.id)),
+    [currentEmployeeIds, employees, manualUnit, search],
+  );
+  const deltas = useMemo(
+    () => buildMembershipDeltas({
+      nodeKey: node.stableKey,
+      memberships,
+      selectedEmployeeIds: selected,
+      primaryByEmployeeId,
+    }),
+    [memberships, node.stableKey, primaryByEmployeeId, selected],
   );
   const filtersApplied = Boolean(search.trim() || manualUnit);
+  const blockedPrimaryRemoval = deltas.some((delta) => delta.blocksLastPrimaryRemoval);
+  const missingPrimaryConfirmation = deltas.some(
+    (delta) =>
+      delta.requiresPrimarySwitchConfirmation &&
+      !confirmedPrimarySwitches.has(delta.employeeId),
+  );
 
+  const employeeFor = (employeeId: string) =>
+    employees.find((employee) => employee.id === employeeId);
+  const setMembershipType = (employeeId: string, isPrimary: boolean) => {
+    setPrimaryByEmployeeId((current) =>
+      new Map(current).set(employeeId, isPrimary),
+    );
+    if (!isPrimary) {
+      setConfirmedPrimarySwitches((current) => {
+        const next = new Set(current);
+        next.delete(employeeId);
+        return next;
+      });
+    }
+  };
   const toggle = (employeeId: string, checked: boolean) => {
     setSelected((current) => {
       const next = new Set(current);
@@ -442,18 +517,14 @@ function MembershipEditor({
       return next;
     });
     if (checked && !primaryByEmployeeId.has(employeeId)) {
-      setPrimaryByEmployeeId((current) => {
-        const next = new Map(current);
-        next.set(employeeId, !memberships.some((item) => item.employeeId === employeeId && item.nodeKey !== node.stableKey && item.isPrimary));
-        return next;
-      });
+      setPrimaryByEmployeeId((current) =>
+        new Map(current).set(
+          employeeId,
+          defaultMembershipIsPrimary(memberships, node.stableKey, employeeId),
+        ),
+      );
     }
   };
-  const primaryMembershipByEmployeeId = new Map(
-    memberships
-      .filter((item) => item.nodeKey !== node.stableKey && item.isPrimary)
-      .map((item) => [item.employeeId, item]),
-  );
   const nodePath = (nodeKey: string) => {
     const parts: string[] = [];
     let current = nodes.find((item) => item.stableKey === nodeKey);
@@ -465,88 +536,76 @@ function MembershipEditor({
     }
     return parts.join(" / ") || nodeKey;
   };
+  const deltaLabel = (delta: OrganizationMembershipDelta) => {
+    if (delta.kind === "ADDED") return "+ Ditambahkan";
+    if (delta.kind === "REMOVED") return "− Dihapus";
+    return "~ Perubahan keanggotaan";
+  };
+  const addLegacyCandidates = () => {
+    for (const employee of legacyCandidates) {
+      if (currentEmployeeIds.has(employee.id)) continue;
+      toggle(employee.id, true);
+    }
+  };
 
   return (
     <form onSubmit={onSubmit}>
-      <section className="rounded-xl border border-blue-200 bg-blue-50 p-4">
-        <h3 className="text-xs font-bold text-blue-950">
-          Tambahkan anggota dari unit lama
-        </h3>
-        <p className="mt-1 text-[11px] leading-4 text-blue-900">
-          Bantuan migrasi ini hanya menyalin keanggotaan. Posisi, leader,
-          hierarchy, dan kewenangan tidak dibuat otomatis.
-        </p>
-        <select
-          aria-label="Pilih unit organisasi lama"
-          value={legacyUnit}
-          onChange={(event) => setLegacyUnit(event.target.value)}
-          className={`${inputClass} mt-3`}
-        >
-          <option value="">Pilih unit lama untuk preview...</option>
-          {legacyUnits.map((unit) => (
-            <option key={unit} value={unit}>
-              {unit}
-            </option>
-          ))}
-        </select>
-        {legacyUnit ? (
-          <div className="mt-3 rounded-lg bg-white/80 p-3">
-            <p className="text-xs font-bold text-brand-heading">
-              Preview: {legacyCandidates.length} pegawai aktif
-            </p>
-            <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">
-              {legacyCandidates
-                .map((employee) => employee.fullName)
-                .join(", ") || "Tidak ada pegawai aktif pada unit ini."}
-            </p>
-            <button
-              type="button"
-              disabled={legacyCandidates.length === 0}
-              onClick={() =>
-                setSelected(
-                  (current) =>
-                    new Set([
-                      ...current,
-                      ...legacyCandidates.map((employee) => employee.id),
-                    ]),
-                )
-              }
-              className="mt-3 h-9 rounded-lg border border-blue-300 bg-white px-3 text-xs font-bold text-blue-950 disabled:opacity-50"
-            >
-              Tambahkan {legacyCandidates.length} anggota dari unit lama
-            </button>
-          </div>
-        ) : null}
-      </section>
+      <details className="rounded-xl border border-border bg-white">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-4 py-3 text-sm font-bold text-brand-heading hover:bg-muted">
+          <span>{currentMemberships.length} anggota saat ini</span>
+          <span className="text-xs font-semibold text-brand-primary-deep">
+            Lihat anggota saat ini
+          </span>
+        </summary>
+        <div className="max-h-48 space-y-1 overflow-y-auto border-t border-border px-2 py-2">
+          {currentMemberships.map((membership) => {
+            const employee = employeeFor(membership.employeeId);
+            return (
+              <div
+                key={membership.employeeId}
+                className="flex items-center justify-between gap-3 rounded-lg px-2 py-2 hover:bg-muted"
+              >
+                <label className="flex min-w-0 flex-1 items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(membership.employeeId)}
+                    onChange={(event) => toggle(membership.employeeId, event.target.checked)}
+                    aria-label={`Pertahankan ${employee?.fullName ?? membership.employeeId} sebagai anggota`}
+                    className="h-4 w-4 accent-[var(--color-brand-primary)]"
+                  />
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-semibold text-brand-heading">
+                      {employee?.fullName ?? membership.employeeName ?? membership.employeeId}
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      {membership.isPrimary ? "Anggota utama" : "Tambahan / rangkap unit"}
+                    </span>
+                  </span>
+                </label>
+                {!membership.isPrimary && selected.has(membership.employeeId) ? (
+                  <button
+                    type="button"
+                    onClick={() => setMembershipType(membership.employeeId, true)}
+                    className="shrink-0 rounded-lg border border-border px-2 py-1.5 text-xs font-bold text-brand-primary-deep hover:bg-brand-primary-pale"
+                  >
+                    Jadikan unit utama
+                  </button>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      </details>
 
-      <div className="mt-4 flex items-center justify-between">
-        <p className="text-xs font-bold text-brand-heading">
-          Anggota terpilih: {selected.size}
-        </p>
-        <button
-          type="button"
-          onClick={() => setSelected(new Set())}
-          className="text-[11px] font-semibold text-muted-foreground hover:text-brand-heading"
-        >
-          Kosongkan pilihan
-        </button>
-      </div>
       <section
-        className="mt-3 rounded-xl border border-border bg-surface/60 p-3"
+        className="mt-4 rounded-xl border border-border bg-surface/60 p-3"
         aria-label="Filter pegawai aktif"
       >
-        <p className="text-xs font-bold text-brand-heading">
-          Cari pegawai aktif
-        </p>
-        <p className="mt-1 text-[11px] text-muted-foreground">
-          Pilih unit atau masukkan nama/nomor pegawai, lalu tinjau hasil sebelum
-          memilih.
-        </p>
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
           <input
             type="search"
             aria-label="Cari nama atau nomor pegawai"
-            placeholder="Nama atau nomor pegawai"
+            placeholder="Cari nama / NIP..."
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             className={inputClass}
@@ -566,6 +625,54 @@ function MembershipEditor({
           </select>
         </div>
       </section>
+
+      <section className="mt-3" aria-label="Pegawai tersedia">
+        <p className="px-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+          Pegawai tersedia
+        </p>
+        <div
+          className="mt-2 max-h-56 space-y-1 overflow-y-auto overscroll-contain rounded-xl border border-border p-2"
+          aria-live="polite"
+        >
+          {filteredEmployees.map((employee) => (
+            <label
+              key={employee.id}
+              className="flex cursor-pointer items-start gap-3 rounded-lg px-3 py-2.5 hover:bg-muted"
+            >
+              <input
+                type="checkbox"
+                checked={selected.has(employee.id)}
+                onChange={(event) => toggle(employee.id, event.target.checked)}
+                className="mt-1 h-4 w-4 accent-[var(--color-brand-primary)]"
+              />
+              <span>
+                <span className="block text-sm font-semibold text-brand-heading">
+                  {employee.fullName}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {employee.employeeNumber} · {employee.unitName ?? "Tanpa unit"}
+                </span>
+              </span>
+            </label>
+          ))}
+          {activeEmployees.length === 0 ? (
+            <p className="p-4 text-center text-sm text-muted-foreground">
+              Daftar pegawai aktif belum tersedia.
+            </p>
+          ) : null}
+          {activeEmployees.length > 0 && !filtersApplied ? (
+            <p className="p-4 text-center text-sm text-muted-foreground">
+              Cari nama/NIP atau pilih filter unit untuk menampilkan pegawai.
+            </p>
+          ) : null}
+          {filtersApplied && filteredEmployees.length === 0 ? (
+            <p className="p-4 text-center text-sm text-muted-foreground">
+              Tidak ada pegawai tersedia yang cocok.
+            </p>
+          ) : null}
+        </div>
+      </section>
+
       {[...selected].map((employeeId) => (
         <input
           key={employeeId}
@@ -574,73 +681,467 @@ function MembershipEditor({
           value={employeeId}
         />
       ))}
-      {[...selected].filter((employeeId) => primaryByEmployeeId.get(employeeId) ?? !primaryMembershipByEmployeeId.has(employeeId)).map((employeeId) => (
+      {[...selected].filter((employeeId) =>
+        primaryByEmployeeId.get(employeeId) ??
+        defaultMembershipIsPrimary(memberships, node.stableKey, employeeId),
+      ).map((employeeId) => (
         <input key={`primary-${employeeId}`} type="hidden" name="primaryEmployeeIds" value={employeeId} />
       ))}
-      <section className="mt-3 space-y-3 rounded-xl border border-border bg-surface/60 p-3" aria-label="Jenis keanggotaan">
-        <p className="text-xs font-bold text-brand-heading">Status keanggotaan</p>
-        {[...selected].map((employeeId) => {
-          const employee = employees.find((item) => item.id === employeeId);
-          const existingPrimary = primaryMembershipByEmployeeId.get(employeeId);
-          const isPrimary = primaryByEmployeeId.get(employeeId) ?? !existingPrimary;
-          const existingCurrent = memberships.find((item) => item.nodeKey === node.stableKey && item.employeeId === employeeId);
-          const showTypeChoice = !existingCurrent || Boolean(existingPrimary) || existingCurrent.isPrimary === false;
-          return (
-            <div key={`membership-mode-${employeeId}`} className="rounded-lg border border-border bg-white p-3">
-              <p className="text-sm font-semibold text-brand-heading">{employee?.fullName ?? employeeId}</p>
-              {existingPrimary ? <p className="mt-1 text-[11px] text-muted-foreground">Unit utama saat ini: {nodePath(existingPrimary.nodeKey)}</p> : null}
-              <p className="mt-1 text-[11px] text-muted-foreground">Menambahkan ke: {nodePath(node.stableKey)}</p>
-              {showTypeChoice ? <div className="mt-2 flex flex-wrap gap-3 text-xs">
-                <label className="flex items-center gap-1.5"><input type="radio" name={`membershipMode-${employeeId}`} checked={isPrimary} onChange={() => setPrimaryByEmployeeId((current) => new Map(current).set(employeeId, true))} /> Utama</label>
-                <label className="flex items-center gap-1.5"><input type="radio" name={`membershipMode-${employeeId}`} checked={!isPrimary} onChange={() => setPrimaryByEmployeeId((current) => new Map(current).set(employeeId, false))} /> Tambahan / rangkap unit</label>
-              </div> : <p className="mt-2 text-[11px] text-muted-foreground">Utama</p>}
-              {existingPrimary && isPrimary ? <label className="mt-3 flex items-start gap-2 text-[11px] text-amber-900"><input type="checkbox" name="confirmPrimarySwitchEmployeeIds" value={employeeId} className="mt-0.5" /> Saya konfirmasi unit utama sebelumnya tetap disimpan sebagai keanggotaan tambahan.</label> : null}
-            </div>
-          );
-        })}
+
+      <section className="mt-4" aria-label="Perubahan keanggotaan">
+        <p className="px-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+          Perubahan ({deltas.length})
+        </p>
+        {deltas.length === 0 ? (
+          <p className="mt-2 rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+            Belum ada perubahan. Anggota yang tidak diubah tidak akan ditulis ulang.
+          </p>
+        ) : (
+          <div className="mt-2 space-y-2">
+            {deltas.map((delta) => {
+              const employee = employeeFor(delta.employeeId);
+              return (
+                <article key={delta.employeeId} className="rounded-xl border border-border bg-white p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-brand-heading">
+                        {employee?.fullName ?? delta.employeeId}
+                      </p>
+                      <p className="mt-0.5 text-xs font-semibold text-brand-primary-deep">
+                        {deltaLabel(delta)}
+                      </p>
+                    </div>
+                    {delta.kind !== "REMOVED" ? (
+                      <span className="rounded-full bg-surface px-2 py-1 text-xs font-bold text-brand-heading">
+                        {delta.after === "PRIMARY" ? "Anggota utama" : "Tambahan / rangkap unit"}
+                      </span>
+                    ) : null}
+                  </div>
+                  {delta.primaryElsewhere ? (
+                    <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                      Unit utama saat ini: <span className="font-semibold text-brand-heading">{nodePath(delta.primaryElsewhere.nodeKey)}</span>
+                    </p>
+                  ) : null}
+                  {delta.kind !== "REMOVED" ? (
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      Perubahan: + {nodePath(node.stableKey)} sebagai {delta.after === "PRIMARY" ? "Anggota utama" : "Tambahan / rangkap unit"}
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Keanggotaan pada {nodePath(node.stableKey)} akan dihapus saat disimpan.
+                    </p>
+                  )}
+                  {delta.after === "SECONDARY" && delta.primaryElsewhere ? (
+                    <button
+                      type="button"
+                      onClick={() => setMembershipType(delta.employeeId, true)}
+                      className="mt-3 rounded-lg border border-border px-3 py-2 text-xs font-bold text-brand-primary-deep hover:bg-brand-primary-pale"
+                    >
+                      Jadikan ini unit utama
+                    </button>
+                  ) : null}
+                  {delta.requiresPrimarySwitchConfirmation ? (
+                    <label className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-950">
+                      <input
+                        type="checkbox"
+                        checked={confirmedPrimarySwitches.has(delta.employeeId)}
+                        onChange={(event) => setConfirmedPrimarySwitches((current) => {
+                          const next = new Set(current);
+                          if (event.target.checked) next.add(delta.employeeId);
+                          else next.delete(delta.employeeId);
+                          return next;
+                        })}
+                        className="mt-1 h-4 w-4"
+                      />
+                      Saya konfirmasi unit utama sebelumnya tetap disimpan sebagai keanggotaan tambahan.
+                    </label>
+                  ) : null}
+                  {delta.blocksLastPrimaryRemoval ? (
+                    <p role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs leading-5 text-red-800">
+                      Unit utama terakhir tidak dapat dihapus. Jadikan keanggotaan di unit lain sebagai unit utama terlebih dahulu.
+                    </p>
+                  ) : null}
+                </article>
+              );
+            })}
+          </div>
+        )}
       </section>
-      <div
-        className="mt-2 max-h-[18rem] space-y-1 overflow-y-auto overscroll-contain rounded-xl border border-border p-2"
-        aria-live="polite"
-      >
-        {filteredEmployees.map((employee) => (
-          <label
-            key={employee.id}
-            className="flex cursor-pointer items-start gap-3 rounded-lg px-3 py-2.5 hover:bg-muted"
-          >
-            <input
-              type="checkbox"
-              checked={selected.has(employee.id)}
-              onChange={(event) => toggle(employee.id, event.target.checked)}
-              className="mt-1 h-4 w-4 accent-[var(--color-brand-primary)]"
-            />
-            <span>
-              <span className="block text-sm font-semibold text-brand-heading">
-                {employee.fullName}
-              </span>
-              <span className="text-[11px] text-muted-foreground">
-                {employee.employeeNumber} · {employee.unitName ?? "Tanpa unit"}
-              </span>
-            </span>
-          </label>
-        ))}
-        {activeEmployees.length === 0 ? (
-          <p className="p-4 text-center text-sm text-muted-foreground">
-            Daftar pegawai aktif belum tersedia.
-          </p>
+
+      {[...confirmedPrimarySwitches].map((employeeId) => (
+        <input key={`confirm-primary-${employeeId}`} type="hidden" name="confirmPrimarySwitchEmployeeIds" value={employeeId} />
+      ))}
+
+      <details className="mt-4 rounded-xl border border-border bg-surface p-3">
+        <summary className="cursor-pointer text-xs font-bold text-brand-heading">
+          Bantuan migrasi unit lama
+        </summary>
+        <p className="mt-2 text-xs leading-5 text-muted-foreground">
+          Bantuan ini hanya menyalin keanggotaan. Posisi, pimpinan, hierarchy,
+          dan kewenangan tidak dibuat otomatis.
+        </p>
+        <select
+          aria-label="Pilih unit organisasi lama"
+          value={legacyUnit}
+          onChange={(event) => setLegacyUnit(event.target.value)}
+          className={`${inputClass} mt-3`}
+        >
+          <option value="">Pilih unit lama untuk preview...</option>
+          {legacyUnits.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
+        </select>
+        {legacyUnit ? (
+          <div className="mt-3 rounded-lg bg-white p-3">
+            <p className="text-xs font-bold text-brand-heading">
+              Preview: {legacyCandidates.length} pegawai aktif
+            </p>
+            <button
+              type="button"
+              disabled={legacyCandidates.length === 0}
+              onClick={addLegacyCandidates}
+              className="mt-3 h-9 rounded-lg border border-border bg-white px-3 text-xs font-bold text-brand-primary-deep disabled:opacity-50"
+            >
+              Tambahkan {legacyCandidates.length} pegawai tersedia
+            </button>
+          </div>
         ) : null}
-        {activeEmployees.length > 0 && !filtersApplied ? (
-          <p className="p-4 text-center text-sm text-muted-foreground">
-            Gunakan pencarian atau filter unit untuk menampilkan pegawai.
-          </p>
-        ) : null}
-        {filtersApplied && filteredEmployees.length === 0 ? (
-          <p className="p-4 text-center text-sm text-muted-foreground">
-            Tidak ada pegawai aktif yang cocok.
-          </p>
-        ) : null}
-      </div>
-      <SubmitRow saving={saving} onCancel={onCancel} label="Simpan anggota" />
+      </details>
+
+      <SubmitRow
+        saving={saving}
+        onCancel={onCancel}
+        label={`Simpan ${deltas.length} perubahan`}
+        disabled={deltas.length === 0 || blockedPrimaryRemoval || missingPrimaryConfirmation}
+      />
+    </form>
+  );
+}
+
+function organizationPositionHolder(position: OrganizationPosition | null | undefined) {
+  if (!position) return "Belum ditetapkan";
+  return position.actingIncumbent?.employeeName
+    ? `${position.actingIncumbent.employeeName} · PLT`
+    : position.primaryIncumbent?.accountEmail
+      ?? position.primaryIncumbent?.employeeName
+      ?? "VACANT";
+}
+
+export function ApprovalReportingEditor({
+  item,
+  kind,
+  data,
+  saving,
+  onCancel,
+  onSubmit,
+}: {
+  item: OrganizationNode | OrganizationPosition;
+  kind: "node" | "position";
+  data: OrganizationDesignerView;
+  saving: boolean;
+  onCancel: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  const bindingTarget = (
+    sourceType: "NODE" | "POSITION",
+    sourceKey: string,
+    authorityType: OrganizationDesignerView["bindings"][number]["authorityType"],
+  ) => data.bindings.find((binding) =>
+    binding.sourceType === sourceType &&
+    binding.sourceKey === sourceKey &&
+    binding.authorityType === authorityType,
+  )?.targetPositionKey ?? null;
+  const positionFor = (stableKey: string | null) =>
+    stableKey
+      ? data.positions.find((position) => position.stableKey === stableKey) ?? null
+      : null;
+  const reportingTargetFor = (stableKey: string | null) => {
+    const position = positionFor(stableKey);
+    if (!position) return null;
+    return bindingTarget("POSITION", stableKey!, "SUPERVISORY_PARENT")
+      ?? position.parentPositionKey;
+  };
+
+  const node = kind === "node" ? item as OrganizationNode : null;
+  const sourcePosition = kind === "position" ? item as OrganizationPosition : null;
+  const initialLeaderKey = node
+    ? bindingTarget("NODE", node.stableKey, "LEADER")
+    : null;
+  const [leaderKey, setLeaderKey] = useState(initialLeaderKey);
+  const [reportsToKey, setReportsToKey] = useState(
+    reportingTargetFor(sourcePosition?.stableKey ?? initialLeaderKey),
+  );
+  const [unitApproverKey, setUnitApproverKey] = useState(
+    node ? bindingTarget("NODE", node.stableKey, "UNIT_APPROVER") : null,
+  );
+  const [governanceApproverKey, setGovernanceApproverKey] = useState(
+    sourcePosition
+      ? bindingTarget("POSITION", sourcePosition.stableKey, "GOVERNANCE_APPROVER")
+      : null,
+  );
+  const [oversightParentKey, setOversightParentKey] = useState(
+    sourcePosition
+      ? bindingTarget("POSITION", sourcePosition.stableKey, "OVERSIGHT_PARENT")
+      : null,
+  );
+  const currentSubject = sourcePosition ?? positionFor(initialLeaderKey);
+  const currentReportsTo = positionFor(reportingTargetFor(currentSubject?.stableKey ?? null));
+
+  return (
+    <form onSubmit={onSubmit} className="space-y-4" data-guided-approval-reporting={kind}>
+      <section className="rounded-xl border border-border bg-surface p-3">
+        <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+          Konfigurasi saat ini
+        </p>
+        <dl className="mt-2 grid gap-3 text-sm sm:grid-cols-2">
+          <div>
+            <dt className="text-xs text-muted-foreground">{node ? "Pimpinan struktur" : "Posisi"}</dt>
+            <dd className="font-bold text-brand-heading">{currentSubject?.title ?? "Belum ditetapkan"}</dd>
+            <dd className="text-xs text-muted-foreground">{organizationPositionHolder(currentSubject)}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Melapor kepada</dt>
+            <dd className="font-bold text-brand-heading">{currentReportsTo?.title ?? "Belum ditetapkan"}</dd>
+            <dd className="text-xs text-muted-foreground">{organizationPositionHolder(currentReportsTo)}</dd>
+          </div>
+        </dl>
+      </section>
+
+      {node ? (
+        <Field label="Pimpinan struktur" hint="posisi pimpinan yang dipilih secara eksplisit">
+          <PositionPicker
+            name="leaderPositionKey"
+            value={leaderKey}
+            onChange={(key) => {
+              setLeaderKey(key);
+              setReportsToKey(reportingTargetFor(key));
+            }}
+            positions={data.positions.filter((position) => position.nodeKey === node.stableKey)}
+            nodes={data.nodes}
+            emptyLabel="Belum ditetapkan"
+          />
+        </Field>
+      ) : null}
+
+      <Field label="Atasan posisi" hint="hubungan reporting; tidak mengikuti tampilan chart">
+        <PositionPicker
+          name="reportsToPositionKey"
+          value={reportsToKey}
+          onChange={setReportsToKey}
+          positions={data.positions.filter((position) =>
+            position.stableKey !== (sourcePosition?.stableKey ?? leaderKey),
+          )}
+          nodes={data.nodes}
+          emptyLabel="Atasan struktural belum ditetapkan"
+        />
+      </Field>
+      {!reportsToKey ? (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+          Atasan struktural belum ditetapkan.
+        </p>
+      ) : null}
+
+      {node ? (
+        <Field label="Penyetuju unit" hint="posisi authority untuk permintaan baru saat Struktur aktif">
+          <PositionPicker
+            name="unitApproverPositionKey"
+            value={unitApproverKey}
+            onChange={setUnitApproverKey}
+            positions={data.positions}
+            nodes={data.nodes}
+            emptyLabel="Belum ditetapkan"
+          />
+        </Field>
+      ) : (
+        <details className="rounded-xl border border-border bg-surface p-3">
+          <summary className="cursor-pointer text-sm font-bold text-brand-heading">
+            Governance
+          </summary>
+          <div className="mt-4 space-y-4">
+            <Field label="Penyetuju governance" hint="opsional dan selalu dipilih eksplisit">
+              <PositionPicker
+                name="governanceApproverPositionKey"
+                value={governanceApproverKey}
+                onChange={setGovernanceApproverKey}
+                positions={data.positions.filter((position) => position.stableKey !== sourcePosition?.stableKey)}
+                nodes={data.nodes}
+                emptyLabel="Belum ditetapkan"
+              />
+            </Field>
+            <Field label="Atasan / oversight governance" hint="penerima informasi di atas authority ini">
+              <PositionPicker
+                name="oversightParentPositionKey"
+                value={oversightParentKey}
+                onChange={setOversightParentKey}
+                positions={data.positions.filter((position) => position.stableKey !== sourcePosition?.stableKey)}
+                nodes={data.nodes}
+                emptyLabel="Belum ditetapkan"
+              />
+            </Field>
+          </div>
+        </details>
+      )}
+
+      <p className="text-xs leading-5 text-muted-foreground">
+        Hanya hubungan yang Anda pilih yang disimpan. Sistem tidak membuat authority dari nama jabatan, hierarchy, atau rank visual.
+      </p>
+      <SubmitRow saving={saving} onCancel={onCancel} label="Simpan Approval & Reporting" />
+    </form>
+  );
+}
+
+export function LeaderEditor({
+  node,
+  data,
+  employees,
+  accounts,
+  saving,
+  onCancel,
+  onSubmit,
+}: {
+  node: OrganizationNode;
+  data: OrganizationDesignerView;
+  employees: OrganizationEmployeeOption[];
+  accounts: OrganizationAccountOption[];
+  saving: boolean;
+  onCancel: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  const positions = data.positions.filter((position) => position.nodeKey === node.stableKey);
+  const currentLeader = positions.find((position) => position.stableKey === node.leaderPositionKey) ?? null;
+  const [leaderMode, setLeaderMode] = useState<"existing" | "new">(
+    positions.length > 0 ? "existing" : "new",
+  );
+  const [positionKey, setPositionKey] = useState<string | null>(
+    currentLeader?.stableKey ?? positions[0]?.stableKey ?? null,
+  );
+  const [holderMode, setHolderMode] = useState<"KEEP" | "EMPLOYEE" | "ACCOUNT" | "VACANT">(
+    currentLeader ? "KEEP" : "VACANT",
+  );
+  const reportTargetFor = (key: string | null) => {
+    if (!key) return null;
+    const binding = data.bindings.find((item) =>
+      item.sourceType === "POSITION" &&
+      item.sourceKey === key &&
+      item.authorityType === "SUPERVISORY_PARENT",
+    );
+    return binding?.targetPositionKey
+      ?? data.positions.find((position) => position.stableKey === key)?.parentPositionKey
+      ?? null;
+  };
+  const [reportsToKey, setReportsToKey] = useState(reportTargetFor(positionKey));
+  const selectedPosition = data.positions.find((position) => position.stableKey === positionKey) ?? null;
+
+  return (
+    <form onSubmit={onSubmit} className="space-y-4" data-guided-leader>
+      <section className="rounded-xl border border-border bg-surface p-3">
+        <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Pimpinan saat ini</p>
+        <p className="mt-1 text-sm font-bold text-brand-heading">
+          {currentLeader?.title ?? "Belum ditetapkan"}
+        </p>
+        <p className="text-xs text-muted-foreground">{organizationPositionHolder(currentLeader)}</p>
+      </section>
+
+      <Field label="Jabatan">
+        <select
+          name="leaderMode"
+          value={leaderMode}
+          onChange={(event) => {
+            const mode = event.target.value as "existing" | "new";
+            setLeaderMode(mode);
+            setHolderMode(mode === "existing" && currentLeader ? "KEEP" : "VACANT");
+          }}
+          className={inputClass}
+        >
+          {positions.length > 0 ? <option value="existing">Gunakan jabatan yang ada</option> : null}
+          <option value="new">Buat jabatan pimpinan baru</option>
+        </select>
+      </Field>
+      {leaderMode === "existing" ? (
+        <PositionPicker
+          name="positionKey"
+          value={positionKey}
+          onChange={(key) => {
+            setPositionKey(key);
+            setReportsToKey(reportTargetFor(key));
+            setHolderMode("KEEP");
+          }}
+          positions={positions}
+          nodes={data.nodes}
+        />
+      ) : (
+        <Field label="Nama jabatan pimpinan">
+          <input name="title" required placeholder="Contoh: Wakil Kepala Sekolah" className={inputClass} />
+        </Field>
+      )}
+
+      <Field label="Pejabat">
+        <select
+          name="holderMode"
+          value={holderMode}
+          onChange={(event) => setHolderMode(event.target.value as typeof holderMode)}
+          className={inputClass}
+        >
+          {leaderMode === "existing" ? <option value="KEEP">Pertahankan pejabat saat ini</option> : null}
+          <option value="EMPLOYEE">Pegawai</option>
+          <option value="ACCOUNT">Organ Yayasan</option>
+          <option value="VACANT">VACANT · belum ada pejabat</option>
+        </select>
+      </Field>
+      <input
+        type="hidden"
+        name="holderSource"
+        value={holderMode === "ACCOUNT"
+          ? "ACCOUNT"
+          : holderMode === "KEEP" || holderMode === "VACANT"
+            ? selectedPosition?.holderSource ?? "EMPLOYEE"
+            : "EMPLOYEE"}
+      />
+      {holderMode === "EMPLOYEE" ? (
+        <Field label="Pilih pegawai">
+          <select name="employeeId" required className={inputClass}>
+            <option value="">Pilih pegawai...</option>
+            {employees.map((employee) => (
+              <option key={employee.id} value={employee.id}>{employee.fullName} — {employee.employeeNumber}</option>
+            ))}
+          </select>
+        </Field>
+      ) : null}
+      {holderMode === "ACCOUNT" ? (
+        <Field label="Pilih Organ Yayasan" hint="account governance yang sudah ada">
+          <select name="accountId" required className={inputClass}>
+            <option value="">Pilih berdasarkan email...</option>
+            {accounts.map((account) => (
+              <option key={account.id} value={account.id}>{account.email} · {account.status}</option>
+            ))}
+          </select>
+        </Field>
+      ) : null}
+      {holderMode === "EMPLOYEE" ? (
+        <Field label="Jenis penugasan">
+          <select name="assignmentType" className={inputClass}>
+            <option value="PRIMARY_STRUCTURAL">Jabatan utama</option>
+            <option value="SECONDARY">Rangkap jabatan</option>
+          </select>
+        </Field>
+      ) : (
+        <input type="hidden" name="assignmentType" value="SECONDARY" />
+      )}
+
+      <Field label="Melapor kepada" hint="pilihan eksplisit; tidak diinferensikan dari hierarchy">
+        <PositionPicker
+          name="parentPositionKey"
+          value={reportsToKey}
+          onChange={setReportsToKey}
+          positions={data.positions.filter((position) => position.stableKey !== positionKey)}
+          nodes={data.nodes}
+          emptyLabel="Atasan struktural belum ditetapkan"
+        />
+      </Field>
+      {!reportsToKey ? (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+          Atasan struktural belum ditetapkan.
+        </p>
+      ) : null}
+      <SubmitRow saving={saving} onCancel={onCancel} label="Simpan pimpinan" />
     </form>
   );
 }
@@ -679,8 +1180,8 @@ export function HolderAssignmentEditor({
       </div>
       {!acting ? (
         <Field
-          label="Sumber pemegang posisi"
-          hint="identitas struktur, bukan pemberian izin"
+          label="Jenis pejabat"
+          hint="pilihan ini tidak memberikan permission"
         >
           <select
             name="holderSource"
@@ -690,8 +1191,8 @@ export function HolderAssignmentEditor({
             }
             className={inputClass}
           >
-            <option value="EMPLOYEE">Pegawai (EMPLOYEE)</option>
-            <option value="ACCOUNT">Account Organ Yayasan (ACCOUNT)</option>
+            <option value="EMPLOYEE">Pegawai</option>
+            <option value="ACCOUNT">Organ Yayasan</option>
           </select>
         </Field>
       ) : (
@@ -719,7 +1220,7 @@ export function HolderAssignmentEditor({
             </select>
           </Field>
           {accounts.length === 0 ? (
-            <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-[11px] leading-4 text-amber-900">
+            <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-4 text-amber-900">
               Belum ada account FOUNDATION_BOARD yang dapat dipilih. Account
               tidak dibuat atau diaktifkan otomatis.
             </p>
@@ -839,6 +1340,7 @@ export function AdminOrganizationPage() {
   );
   const [previewEmployeeId, setPreviewEmployeeId] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [rollout, setRollout] = useState<OrganizationRolloutConfiguration | null>(null);
 
   const reload = async () => {
     setLoading(true);
@@ -865,6 +1367,11 @@ export function AdminOrganizationPage() {
     void listFoundationBoardAccounts()
       .then(setBoardAccounts)
       .catch(() => setBoardAccounts([]));
+  }, []);
+  useEffect(() => {
+    void getOrganizationRollout()
+      .then(setRollout)
+      .catch(() => setRollout(null));
   }, []);
 
   const selectedNode = useMemo(
@@ -911,12 +1418,60 @@ export function AdminOrganizationPage() {
         : null,
     [data?.positions, selectedPosition],
   );
-  const selectedBindings = useMemo(() => {
-    const key = selectedNode?.stableKey ?? selectedPosition?.stableKey;
-    return key
-      ? (data?.bindings.filter((binding) => binding.sourceKey === key) ?? [])
-      : [];
-  }, [data?.bindings, selectedNode, selectedPosition]);
+  const selectedLeaderPosition = useMemo(
+    () => selectedNode?.leaderPositionKey
+      ? data?.positions.find((position) => position.stableKey === selectedNode.leaderPositionKey) ?? null
+      : null,
+    [data?.positions, selectedNode],
+  );
+  const approvalSubjectPosition = selectedPosition ?? selectedLeaderPosition;
+  const selectedReportsToPosition = useMemo(() => {
+    if (!approvalSubjectPosition) return null;
+    const bindingTarget = data?.bindings.find((binding) =>
+      binding.sourceType === "POSITION" &&
+      binding.sourceKey === approvalSubjectPosition.stableKey &&
+      binding.authorityType === "SUPERVISORY_PARENT",
+    )?.targetPositionKey;
+    const targetKey = bindingTarget ?? approvalSubjectPosition.parentPositionKey;
+    return targetKey
+      ? data?.positions.find((position) => position.stableKey === targetKey) ?? null
+      : null;
+  }, [approvalSubjectPosition, data?.bindings, data?.positions]);
+  const selectedUnitApproverPosition = useMemo(() => {
+    const nodeKey = selectedNode?.stableKey ?? selectedPositionNode?.stableKey;
+    const targetKey = nodeKey
+      ? data?.bindings.find((binding) =>
+        binding.sourceType === "NODE" &&
+        binding.sourceKey === nodeKey &&
+        binding.authorityType === "UNIT_APPROVER",
+      )?.targetPositionKey
+      : null;
+    return targetKey
+      ? data?.positions.find((position) => position.stableKey === targetKey) ?? null
+      : null;
+  }, [data?.bindings, data?.positions, selectedNode, selectedPositionNode]);
+  const selectedGovernancePosition = useMemo(() => {
+    if (!selectedPosition) return null;
+    const targetKey = data?.bindings.find((binding) =>
+      binding.sourceType === "POSITION" &&
+      binding.sourceKey === selectedPosition.stableKey &&
+      binding.authorityType === "GOVERNANCE_APPROVER",
+    )?.targetPositionKey;
+    return targetKey
+      ? data?.positions.find((position) => position.stableKey === targetKey) ?? null
+      : null;
+  }, [data?.bindings, data?.positions, selectedPosition]);
+  const selectedOversightPosition = useMemo(() => {
+    if (!selectedPosition) return null;
+    const targetKey = data?.bindings.find((binding) =>
+      binding.sourceType === "POSITION" &&
+      binding.sourceKey === selectedPosition.stableKey &&
+      binding.authorityType === "OVERSIGHT_PARENT",
+    )?.targetPositionKey;
+    return targetKey
+      ? data?.positions.find((position) => position.stableKey === targetKey) ?? null
+      : null;
+  }, [data?.bindings, data?.positions, selectedPosition]);
   const selectedPath = useMemo(() => {
     const target = selectedNode ?? selectedPositionNode;
     if (!target || !data) return [];
@@ -1149,15 +1704,20 @@ export function AdminOrganizationPage() {
     const form = new FormData(event.currentTarget);
     const useExisting = String(form.get("leaderMode")) === "existing";
     const holderSource = String(form.get("holderSource")) as "EMPLOYEE" | "ACCOUNT";
-    const replaceHolder = !useExisting || form.get("setVacant") === "yes" || Boolean(form.get("employeeId")) || Boolean(form.get("accountId"));
+    const holderMode = String(form.get("holderMode"));
+    const replaceHolder = holderMode !== "KEEP";
     void mutate(
       () => configureOrganizationLeader(data.draft!.id, {
         nodeKey: editor.node.stableKey,
         positionKey: useExisting ? String(form.get("positionKey")) || null : null,
         title: useExisting ? undefined : String(form.get("title")),
         holderSource,
-        primaryEmployeeId: holderSource === "EMPLOYEE" && replaceHolder ? String(form.get("employeeId")) || null : undefined,
-        primaryAccountId: holderSource === "ACCOUNT" && replaceHolder ? String(form.get("accountId")) || null : undefined,
+        primaryEmployeeId: holderSource === "EMPLOYEE" && replaceHolder
+          ? holderMode === "EMPLOYEE" ? String(form.get("employeeId")) || null : null
+          : undefined,
+        primaryAccountId: holderSource === "ACCOUNT" && replaceHolder
+          ? holderMode === "ACCOUNT" ? String(form.get("accountId")) || null : null
+          : undefined,
         assignmentType: String(form.get("assignmentType") || "PRIMARY_STRUCTURAL") as "PRIMARY_STRUCTURAL" | "SECONDARY",
         parentPositionKey: String(form.get("parentPositionKey")) || null,
         effectiveFrom: data.draft!.effectiveOn,
@@ -1267,6 +1827,33 @@ export function AdminOrganizationPage() {
           effectiveTo: null,
         }),
       "Hubungan kewenangan disimpan.",
+    );
+  };
+
+  const handleApprovalReporting = (
+    event: FormEvent<HTMLFormElement>,
+    editor: Extract<EditorAction, { type: "approval-reporting" }>,
+  ) => {
+    event.preventDefault();
+    if (!data?.draft) return;
+    const form = new FormData(event.currentTarget);
+    const positionKey = (name: string) => String(form.get(name)) || null;
+    void mutate(
+      () => configureOrganizationApprovalReporting(data.draft!.id, {
+        sourceType: editor.kind === "node" ? "NODE" : "POSITION",
+        sourceKey: editor.item.stableKey,
+        ...(editor.kind === "node" ? {
+          leaderPositionKey: positionKey("leaderPositionKey"),
+          reportsToPositionKey: positionKey("reportsToPositionKey"),
+          unitApproverPositionKey: positionKey("unitApproverPositionKey"),
+        } : {
+          reportsToPositionKey: positionKey("reportsToPositionKey"),
+          governanceApproverPositionKey: positionKey("governanceApproverPositionKey"),
+          oversightParentPositionKey: positionKey("oversightParentPositionKey"),
+        }),
+        effectiveFrom: data.draft!.effectiveOn,
+      }),
+      "Approval & Reporting diperbarui tanpa inferensi authority.",
     );
   };
 
@@ -1464,9 +2051,11 @@ export function AdminOrganizationPage() {
                     ? `Revisi struktur untuk ${displayDate(data.draft.effectiveOn)}`
                     : data.draft.name}
                 </p>
-                <p className="text-[11px] text-amber-800">
-                  Efektif {displayDate(data.draft.effectiveOn)} ·{" "}
-                  {data.draft.status}
+                <p className="text-xs text-amber-800">
+                  Efektif {displayDate(data.draft.effectiveOn)} · {data.draft.status === "DRAFT" ? "Sedang diedit" : data.draft.status === "VALIDATED" ? "Sudah divalidasi" : "Diterbitkan"}
+                </p>
+                <p className="mt-1 text-xs text-amber-800">
+                  Sumber: {data.draft.baseChangeSetId ? `versi ${data.draft.baseChangeSetId.slice(0, 8)}` : "struktur kosong"} · Perubahan tersimpan langsung ke draft
                 </p>
               </div>
             ) : null}
@@ -1524,7 +2113,7 @@ export function AdminOrganizationPage() {
         {selectedPath.length > 0 ? (
           <nav
             aria-label="Jalur struktural terpilih"
-            className="flex flex-wrap items-center gap-1 border-b border-border/70 bg-white px-5 py-2.5 text-[11px] text-muted-foreground"
+            className="flex flex-wrap items-center gap-1 border-b border-border/70 bg-white px-5 py-2.5 text-xs text-muted-foreground"
           >
             {selectedPath.map((node, index) => (
               <span key={node.stableKey} className="contents">
@@ -1583,7 +2172,7 @@ export function AdminOrganizationPage() {
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                  <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
                     Dipilih
                   </p>
                   <h2 className="mt-1 break-words text-base font-bold text-brand-heading">
@@ -1607,7 +2196,7 @@ export function AdminOrganizationPage() {
 
               <dl className="mt-4 space-y-3 rounded-xl bg-surface p-3 text-xs">
                 <div>
-                  <dt className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                  <dt className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
                     Induk struktural
                   </dt>
                   <dd className="mt-1 font-semibold text-brand-heading">
@@ -1621,7 +2210,7 @@ export function AdminOrganizationPage() {
                 {selectedNode ? (
                   <>
                     <div>
-                      <dt className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                      <dt className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
                         Posisi
                       </dt>
                       <dd className="mt-1 font-semibold text-brand-heading">
@@ -1633,7 +2222,7 @@ export function AdminOrganizationPage() {
                       </dd>
                     </div>
                     <div>
-                      <dt className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                      <dt className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
                         Anggota
                       </dt>
                       <dd className="mt-1 font-semibold text-brand-heading">
@@ -1644,7 +2233,7 @@ export function AdminOrganizationPage() {
                 ) : (
                   <>
                     <div>
-                      <dt className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                      <dt className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
                         Kelompok
                       </dt>
                       <dd className="mt-1 font-semibold text-brand-heading">
@@ -1652,11 +2241,8 @@ export function AdminOrganizationPage() {
                       </dd>
                     </div>
                     <div className="min-w-0">
-                      <dt className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-                        Pejabat ·{" "}
-                        {selectedPosition?.holderSource === "ACCOUNT"
-                          ? "ACCOUNT"
-                          : "EMPLOYEE"}
+                      <dt className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                        Pejabat
                       </dt>
                       <dd
                         title={
@@ -1673,8 +2259,8 @@ export function AdminOrganizationPage() {
                             "VACANT")}
                       </dd>
                       {selectedPosition?.holderSource === "ACCOUNT" ? (
-                        <dd className="mt-0.5 truncate text-[10px] text-muted-foreground">
-                          FOUNDATION_BOARD ·{" "}
+                        <dd className="mt-0.5 truncate text-xs text-muted-foreground">
+                          Organ Yayasan ·{" "}
                           {selectedPosition.primaryIncumbent?.accountStatus ??
                             "belum ditetapkan"}
                         </dd>
@@ -1682,7 +2268,7 @@ export function AdminOrganizationPage() {
                     </div>
                     {selectedPosition?.actingIncumbent ? (
                       <div>
-                        <dt className="text-[10px] font-bold uppercase tracking-wide text-blue-800">
+                        <dt className="text-xs font-bold uppercase tracking-wide text-blue-800">
                           Pelaksana tugas
                         </dt>
                         <dd className="mt-1 font-bold text-blue-950">
@@ -1691,7 +2277,7 @@ export function AdminOrganizationPage() {
                       </div>
                     ) : null}
                     <div>
-                      <dt className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                      <dt className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
                         Penugasan
                       </dt>
                       <dd className="mt-1 font-semibold text-brand-heading">
@@ -1700,17 +2286,47 @@ export function AdminOrganizationPage() {
                     </div>
                   </>
                 )}
-                <div>
-                  <dt className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Approval & reporting</dt>
-                  <dd className="mt-1 space-y-1 text-[11px] text-brand-heading">
-                    <span className="block">Pimpinan: {selectedNode ? (data?.positions.find((item) => item.stableKey === selectedNode.leaderPositionKey)?.title ?? "Belum ditetapkan") : "—"}</span>
-                    <span className="block">Melapor kepada: {selectedPosition?.parentPositionKey ? (data?.positions.find((item) => item.stableKey === selectedPosition.parentPositionKey)?.title ?? "Belum ditetapkan") : "Belum ditetapkan"}</span>
-                    <span className="block">Penyetuju unit: {selectedBindings.find((binding) => binding.authorityType === "UNIT_APPROVER") ? "Ditetapkan" : "Belum ditetapkan"}</span>
-                    <span className="block">Rollout: Legacy / Shadow / Structure</span>
+                <div className="border-t border-border pt-3">
+                  <dt className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                    Approval & Reporting
+                  </dt>
+                  <dd className="mt-3 space-y-3 text-sm text-brand-heading">
+                    <span className="block">
+                      <span className="block text-xs text-muted-foreground">Pimpinan</span>
+                      <span className="block font-bold">{approvalSubjectPosition?.title ?? "Belum ditetapkan"}</span>
+                      <span className="block text-xs text-muted-foreground">{organizationPositionHolder(approvalSubjectPosition)}</span>
+                    </span>
+                    <span className="block">
+                      <span className="block text-xs text-muted-foreground">Melapor kepada</span>
+                      <span className="block font-bold">{selectedReportsToPosition?.title ?? "Belum ditetapkan"}</span>
+                      {selectedReportsToPosition ? <span className="block text-xs text-muted-foreground">{organizationPositionHolder(selectedReportsToPosition)}</span> : null}
+                    </span>
+                    <span className="block">
+                      <span className="block text-xs text-muted-foreground">Penyetuju unit</span>
+                      <span className="block font-bold">{selectedUnitApproverPosition?.title ?? "Belum ditetapkan"}</span>
+                      {selectedUnitApproverPosition ? <span className="block text-xs text-muted-foreground">{organizationPositionHolder(selectedUnitApproverPosition)}</span> : null}
+                    </span>
+                    <span className="block">
+                      <span className="block text-xs text-muted-foreground">Governance</span>
+                      <span className="block font-bold">
+                        {selectedPosition ? selectedGovernancePosition?.title ?? "Belum ditetapkan" : "Tidak berlaku"}
+                      </span>
+                      {selectedPosition && selectedOversightPosition ? (
+                        <span className="block text-xs text-muted-foreground">
+                          Oversight: {selectedOversightPosition.title} · {organizationPositionHolder(selectedOversightPosition)}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="block">
+                      <span className="block text-xs text-muted-foreground">Rollout</span>
+                      <span className="block font-bold">
+                        {rollout?.mode === "STRUCTURE" ? "Struktur" : rollout?.mode === "SHADOW" ? "Shadow" : rollout?.mode === "LEGACY" ? "Legacy" : "Tidak dapat dimuat"}
+                      </span>
+                    </span>
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                  <dt className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
                     Penempatan tampilan
                   </dt>
                   <dd className="mt-1 font-semibold text-brand-heading">
@@ -1726,7 +2342,7 @@ export function AdminOrganizationPage() {
               {(selectedNode?.visualRankOffset ??
                 selectedPosition?.visualRankOffset ??
                 0) > 0 ? (
-                <p className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-[11px] leading-4 text-blue-900">
+                <p className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs leading-4 text-blue-900">
                   Penempatan ini hanya untuk tampilan chart. Hubungan
                   struktural, reporting, dan approval tidak berubah.
                 </p>
@@ -1734,7 +2350,7 @@ export function AdminOrganizationPage() {
 
               {canEdit ? (
                 <div className="mt-4">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                  <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
                     Tindakan
                   </p>
                   <div className="mt-2 grid grid-cols-2 gap-1.5">
@@ -1771,6 +2387,16 @@ export function AdminOrganizationPage() {
                         >
                           Kelola anggota
                         </ActionButton>
+                        <ActionButton
+                          onClick={() => setAction({
+                            type: "approval-reporting",
+                            item: selectedNode,
+                            kind: "node",
+                          })}
+                          icon={<Network />}
+                        >
+                          Approval & Reporting
+                        </ActionButton>
                         <ActionButton onClick={() => setAction({ type: "node", mode: "edit", node: selectedNode })} icon={<ArrowRightLeft />}>
                           Edit struktur
                         </ActionButton>
@@ -1778,13 +2404,13 @@ export function AdminOrganizationPage() {
                           <summary className="cursor-pointer text-xs font-bold text-brand-heading">Pengaturan lanjutan</summary>
                           <div className="mt-2 grid grid-cols-2 gap-1.5">
                             <ActionButton onClick={() => setAction({ type: "position", mode: "create", nodeKey: selectedNode.stableKey })} icon={<BriefcaseBusiness />}>Tambah posisi tambahan</ActionButton>
-                            <ActionButton onClick={() => setAction({ type: "authority", item: selectedNode, kind: "node" })} icon={<Network />}>Kewenangan</ActionButton>
+                            <ActionButton onClick={() => setAction({ type: "authority", item: selectedNode, kind: "node" })} icon={<Network />}>Editor authority mentah</ActionButton>
                             <ActionButton onClick={() => setAction({ type: "visual", item: selectedNode, kind: "node" })} icon={<ArrowDownToLine />}>Tampilan</ActionButton>
                             <ActionButton onClick={() => setAction({ type: "node", mode: "move", node: selectedNode })} icon={<ArrowRightLeft />}>Pindahkan</ActionButton>
                           </div>
                         </details>
                         <div className="col-span-2 mt-2 rounded-lg border border-red-200 bg-red-50 p-2">
-                          <p className="text-[10px] font-bold uppercase tracking-wide text-red-800">Zona berbahaya</p>
+                          <p className="text-xs font-bold uppercase tracking-wide text-red-800">Zona berbahaya</p>
                           <div className="mt-2 grid grid-cols-2 gap-1.5">
                             <ActionButton onClick={() => setAction({ type: "delete-group", node: selectedNode })} icon={<Trash2 />}>Hapus kelompok</ActionButton>
                             <ActionButton onClick={() => setAction({ type: "delete-node", node: selectedNode })} icon={<Trash2 />}>Hapus subtree</ActionButton>
@@ -1793,19 +2419,6 @@ export function AdminOrganizationPage() {
                       </>
                     ) : selectedPosition ? (
                       <>
-                        <ActionButton
-                          onClick={() =>
-                            setAction({
-                              type: "position",
-                              mode: "edit",
-                              nodeKey: selectedPosition.nodeKey,
-                              position: selectedPosition,
-                            })
-                          }
-                          icon={<ArrowRightLeft />}
-                        >
-                          Edit jabatan
-                        </ActionButton>
                         <ActionButton
                           onClick={() =>
                             setAction({
@@ -1835,14 +2448,37 @@ export function AdminOrganizationPage() {
                           </ActionButton>
                         ) : null}
                         <ActionButton
+                          onClick={() =>
+                            setAction({
+                              type: "position",
+                              mode: "edit",
+                              nodeKey: selectedPosition.nodeKey,
+                              position: selectedPosition,
+                            })
+                          }
+                          icon={<ArrowRightLeft />}
+                        >
+                          Edit jabatan
+                        </ActionButton>
+                        <ActionButton
+                          onClick={() => setAction({
+                            type: "approval-reporting",
+                            item: selectedPosition,
+                            kind: "position",
+                          })}
+                          icon={<Network />}
+                        >
+                          Approval & Reporting
+                        </ActionButton>
+                        <details className="col-span-2 mt-2 rounded-lg border border-border bg-surface p-2">
+                          <summary className="cursor-pointer text-xs font-bold text-brand-heading">Pengaturan lanjutan</summary>
+                          <div className="mt-2 grid grid-cols-2 gap-1.5">
+                        <ActionButton
                           onClick={() => markVacant(selectedPosition)}
                           icon={<PanelRightClose />}
                         >
                           Tandai VACANT
                         </ActionButton>
-                        <details className="col-span-2 mt-2 rounded-lg border border-border bg-surface p-2">
-                          <summary className="cursor-pointer text-xs font-bold text-brand-heading">Pengaturan lanjutan</summary>
-                          <div className="mt-2 grid grid-cols-2 gap-1.5">
                         <ActionButton
                           onClick={() =>
                             setAction({
@@ -1866,7 +2502,7 @@ export function AdminOrganizationPage() {
                           }
                           icon={<Network />}
                         >
-                          Kewenangan
+                          Editor authority mentah
                         </ActionButton>
                         <ActionButton
                           onClick={() =>
@@ -1904,7 +2540,7 @@ export function AdminOrganizationPage() {
                           </div>
                         </details>
                         <div className="col-span-2 mt-2 rounded-lg border border-red-200 bg-red-50 p-2">
-                          <p className="text-[10px] font-bold uppercase tracking-wide text-red-800">Zona berbahaya</p>
+                          <p className="text-xs font-bold uppercase tracking-wide text-red-800">Zona berbahaya</p>
                         <ActionButton
                           onClick={() =>
                             setAction({
@@ -1929,7 +2565,7 @@ export function AdminOrganizationPage() {
             </aside>
           ) : null}
         </div>
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/70 bg-white px-5 py-3 text-[11px] text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/70 bg-white px-5 py-3 text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-sm border border-brand-primary bg-brand-primary-pale" />{" "}
             Posisi terisi
@@ -1971,9 +2607,12 @@ export function AdminOrganizationPage() {
           {validation.issues.length > 0 ? (
             <ul className="mt-3 space-y-2 text-sm">
               {validation.issues.map((issue, index) => (
-                <li key={`${issue.code}-${index}`}>
-                  <span className="font-bold">{issue.code}</span> —{" "}
-                  {issue.message}
+                <li key={`${issue.code}-${index}`} className="rounded-xl border border-red-200 bg-white/70 p-3">
+                  <p className="font-semibold text-red-900">{validationIssueCopy(issue.code)}</p>
+                  <details className="mt-2 text-xs text-red-800">
+                    <summary className="cursor-pointer font-semibold">Detail teknis</summary>
+                    <p className="mt-1"><code>{issue.code}</code> · {issue.message}</p>
+                  </details>
                 </li>
               ))}
             </ul>
@@ -2007,7 +2646,17 @@ export function AdminOrganizationPage() {
               </span>
             )}
           </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <h3 className="mt-5 text-sm font-bold text-brand-heading">Perubahan draft</h3>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            <ImpactCard label="Struktur" count={impact.structureChanges.nodes} />
+            <ImpactCard label="Posisi pimpinan" count={impact.structureChanges.positions} />
+            <ImpactCard label="Keanggotaan" count={impact.structureChanges.memberships} />
+            <ImpactCard label="Pejabat / penugasan" count={impact.structureChanges.incumbencies} />
+            <ImpactCard label="Hubungan authority" count={impact.structureChanges.authorityRelationships} />
+            <ImpactCard label="Hubungan reporting" count={impact.structureChanges.reportingRelationships} />
+          </div>
+          <h3 className="mt-5 text-sm font-bold text-brand-heading">Dampak resolusi workflow</h3>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
             <ImpactCard
               label="Atasan langsung berubah"
               count={impact.directManagerChanges.length}
@@ -2096,7 +2745,7 @@ export function AdminOrganizationPage() {
                       <span className="rounded-xl border border-border bg-white px-3 py-2 text-xs">
                         <span className="font-bold">{step.employeeName}</span>
                         {step.authorityType ? (
-                          <span className="block text-[10px] text-muted-foreground">
+                          <span className="block text-xs text-muted-foreground">
                             {step.authorityType}
                           </span>
                         ) : null}
@@ -2201,7 +2850,7 @@ export function AdminOrganizationPage() {
             {action.mode === "move" ? (
               <>
                 <div className="rounded-xl bg-surface p-3">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                  <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
                     Pindahkan
                   </p>
                   <p className="mt-1 text-sm font-bold text-brand-heading">
@@ -2436,7 +3085,12 @@ export function AdminOrganizationPage() {
                     />
                   </>
                 )}
-                <Field label="Ketika posisi vacant">
+                <details className="rounded-xl border border-border bg-surface p-3">
+                  <summary className="cursor-pointer text-sm font-bold text-brand-heading">
+                    Pengaturan lanjutan
+                  </summary>
+                  <div className="mt-4 space-y-4">
+                <Field label="Ketika posisi VACANT">
                   <select
                     name="vacancyPolicy"
                     defaultValue={
@@ -2454,8 +3108,8 @@ export function AdminOrganizationPage() {
                   </select>
                 </Field>
                 <Field
-                  label="Sumber pemegang posisi"
-                  hint="eksplisit, bukan berdasarkan judul"
+                  label="Jenis pejabat"
+                  hint="identitas teknis; tidak memberikan permission"
                 >
                   <select
                     name="holderSource"
@@ -2478,6 +3132,8 @@ export function AdminOrganizationPage() {
                     <option value="3">Tampilkan 3 tingkat lebih rendah</option>
                   </select>
                 </Field>
+                  </div>
+                </details>
               </>
             )}
             <SubmitRow
@@ -2524,59 +3180,28 @@ export function AdminOrganizationPage() {
 
       {action?.type === "leader" ? (
         <Modal
+          wide
           title={`Tetapkan pimpinan · ${action.node.name}`}
           description="Pilih jabatan yang sudah ada atau buat jabatan pimpinan. Atasan struktural hanya ditulis bila dipilih secara eksplisit."
           onClose={() => setAction(null)}
         >
-          <form onSubmit={(event) => handleLeader(event, action)} className="space-y-4">
-            <Field label="Jabatan">
-              <select name="leaderMode" defaultValue={(data?.positions.filter((item) => item.nodeKey === action.node.stableKey).length ?? 0) > 0 ? "existing" : "new"} className={inputClass}>
-                {(data?.positions.filter((item) => item.nodeKey === action.node.stableKey).length ?? 0) > 0 ? <option value="existing">Gunakan posisi yang ada</option> : null}
-                <option value="new">Buat posisi pimpinan baru</option>
-              </select>
-            </Field>
-            <Field label="Gunakan posisi">
-              <PositionPicker
-                name="positionKey"
-                defaultValue={action.node.leaderPositionKey}
-                positions={(data?.positions ?? []).filter((item) => item.nodeKey === action.node.stableKey)}
-                nodes={data?.nodes ?? []}
-              />
-            </Field>
-            <Field label="Jabatan baru" hint="Isi bila membuat posisi pimpinan baru">
-              <input name="title" placeholder="Contoh: Kepala Unit" className={inputClass} />
-            </Field>
-            <Field label="Pemegang">
-              <select name="holderSource" className={inputClass} defaultValue="EMPLOYEE">
-                <option value="EMPLOYEE">Pegawai</option>
-                <option value="ACCOUNT">Organ Yayasan / Account</option>
-              </select>
-            </Field>
-            <Field label="Pejabat" hint="Kosongkan untuk VACANT">
-              <select name="employeeId" className={inputClass}><option value="">VACANT</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.fullName} — {employee.employeeNumber}</option>)}</select>
-            </Field>
-            <label className="flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" name="setVacant" value="yes" /> Tetapkan sebagai VACANT</label>
-            <Field label="Account governance" hint="Digunakan bila pemegang adalah Organ Yayasan / Account">
-              <select name="accountId" className={inputClass}><option value="">VACANT</option>{boardAccounts.map((account) => <option key={account.id} value={account.id}>{account.email} · {account.status}</option>)}</select>
-            </Field>
-            <Field label="Jenis penugasan">
-              <select name="assignmentType" className={inputClass}><option value="PRIMARY_STRUCTURAL">Jabatan utama</option><option value="SECONDARY">Rangkap jabatan</option></select>
-            </Field>
-            <Field label="Melapor kepada" hint="Opsional; tidak akan diinferensikan otomatis">
-              <PositionPicker
-                name="parentPositionKey"
-                positions={(data?.positions ?? []).filter((position) => position.nodeKey !== action.node.stableKey || position.stableKey !== action.node.leaderPositionKey)}
-                nodes={data?.nodes ?? []}
-                emptyLabel="Atasan struktural belum ditetapkan"
-              />
-            </Field>
-            <SubmitRow saving={saving} onCancel={() => setAction(null)} label="Simpan pimpinan" />
-          </form>
+          {data ? (
+            <LeaderEditor
+              node={action.node}
+              data={data}
+              employees={employees}
+              accounts={boardAccounts}
+              saving={saving}
+              onCancel={() => setAction(null)}
+              onSubmit={(event) => handleLeader(event, action)}
+            />
+          ) : null}
         </Modal>
       ) : null}
 
       {action?.type === "members" ? (
         <Modal
+          wide
           title={`Kelola anggota · ${action.node.name}`}
           description="Pilih satu per satu atau gunakan unit lama sebagai bantuan migrasi keanggotaan yang eksplisit."
           onClose={() => setAction(null)}
@@ -2622,7 +3247,7 @@ export function AdminOrganizationPage() {
                         ? "Tingkat normal"
                         : `Tampilkan ${offset} tingkat lebih rendah`}
                     </span>
-                    <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
                       {offset === 0
                         ? "Ikuti kedalaman hubungan induk."
                         : "Garis konektor tetap menunjuk ke induk struktural sebenarnya."}
@@ -2664,7 +3289,7 @@ export function AdminOrganizationPage() {
                   pendingDeletionImpact?.reportingOverrides ?? 0,
               }).map(([label, count]) => (
                 <div key={label} className="rounded-lg bg-white/80 p-2">
-                  <dt className="text-[10px] text-red-700">{label}</dt>
+                  <dt className="text-xs text-red-700">{label}</dt>
                   <dd className="mt-0.5 font-bold">{count}</dd>
                 </div>
               ))}
@@ -2713,7 +3338,7 @@ export function AdminOrganizationPage() {
                   pendingGroupDeletionImpact?.reportingOverrides ?? 0,
               }).map(([label, count]) => (
                 <div key={label} className="rounded-lg bg-white/80 p-2">
-                  <dt className="text-[10px] text-red-700">{label}</dt>
+                  <dt className="text-xs text-red-700">{label}</dt>
                   <dd className="mt-0.5 font-bold">{count}</dd>
                 </div>
               ))}
@@ -2770,7 +3395,7 @@ export function AdminOrganizationPage() {
                   pendingPositionDeletionImpact?.reportingOverrides ?? 0,
               }).map(([label, count]) => (
                 <div key={label} className="rounded-lg bg-white/80 p-2">
-                  <dt className="text-[10px] text-red-700">{label}</dt>
+                  <dt className="text-xs text-red-700">{label}</dt>
                   <dd className="mt-0.5 font-bold">{count}</dd>
                 </div>
               ))}
@@ -2829,10 +3454,28 @@ export function AdminOrganizationPage() {
         </Modal>
       ) : null}
 
+      {action?.type === "approval-reporting" && data ? (
+        <Modal
+          wide
+          title={`Atur Approval & Reporting · ${"name" in action.item ? action.item.name : action.item.title}`}
+          description="Pilih hubungan reporting dan approval secara eksplisit. Posisi VACANT tetap dapat dipilih; resolver menerapkan kebijakan posisi di server."
+          onClose={() => setAction(null)}
+        >
+          <ApprovalReportingEditor
+            item={action.item}
+            kind={action.kind}
+            data={data}
+            saving={saving}
+            onCancel={() => setAction(null)}
+            onSubmit={(event) => handleApprovalReporting(event, action)}
+          />
+        </Modal>
+      ) : null}
+
       {action?.type === "authority" ? (
         <Modal
-          title="Konfigurasi kewenangan"
-          description="Pilih hubungan semantik dan posisi target. Nama jabatan tidak dipakai sebagai business rule."
+          title="Pengaturan lanjutan · authority mentah"
+          description="Gunakan editor teknis ini hanya untuk hubungan yang tidak tersedia pada alur Approval & Reporting. Nama jabatan tidak dipakai sebagai business rule."
           onClose={() => setAction(null)}
         >
           <form
@@ -2894,6 +3537,8 @@ export function PositionPicker({
   positions,
   nodes,
   defaultValue = null,
+  value,
+  onChange,
   placeholder = "Pilih posisi...",
   emptyLabel,
 }: {
@@ -2901,11 +3546,18 @@ export function PositionPicker({
   positions: OrganizationPosition[];
   nodes: OrganizationNode[];
   defaultValue?: string | null;
+  value?: string | null;
+  onChange?: (value: string | null) => void;
   placeholder?: string;
   emptyLabel?: string;
 }) {
-  const [selectedKey, setSelectedKey] = useState(defaultValue ?? "");
+  const [internalSelectedKey, setInternalSelectedKey] = useState(defaultValue ?? "");
   const [query, setQuery] = useState("");
+  const selectedKey = value === undefined ? internalSelectedKey : value ?? "";
+  const select = (key: string) => {
+    if (value === undefined) setInternalSelectedKey(key);
+    onChange?.(key || null);
+  };
   const selected = positions.find((position) => position.stableKey === selectedKey);
   const pathFor = (position: OrganizationPosition) => {
     const names: string[] = [];
@@ -2945,7 +3597,7 @@ export function PositionPicker({
       </div>
       <div className="max-h-52 space-y-1 overflow-y-auto py-2">
         {emptyLabel ? (
-          <button type="button" onClick={() => setSelectedKey("")} className={cn("w-full rounded-lg px-2 py-2 text-left text-xs", !selectedKey ? "bg-brand-primary-pale font-bold text-brand-primary-deep" : "hover:bg-muted")}>
+          <button type="button" onClick={() => select("")} className={cn("w-full rounded-lg px-2 py-2 text-left text-xs", !selectedKey ? "bg-brand-primary-pale font-bold text-brand-primary-deep" : "hover:bg-muted")}>
             {emptyLabel}
           </button>
         ) : null}
@@ -2955,12 +3607,12 @@ export function PositionPicker({
             <button
               key={position.stableKey}
               type="button"
-              onClick={() => setSelectedKey(position.stableKey)}
+              onClick={() => select(position.stableKey)}
               className={cn("w-full rounded-lg px-2 py-2 text-left hover:bg-muted", selectedKey === position.stableKey && "bg-brand-primary-pale")}
             >
               <span className="block text-sm font-bold text-brand-heading">{position.title}</span>
-              <span className="mt-0.5 block text-[11px] text-muted-foreground">{path || "Struktur belum ditetapkan"}</span>
-              <span className="mt-0.5 block text-[11px] font-semibold text-muted-foreground">{holderFor(position)}</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">{path || "Struktur belum ditetapkan"}</span>
+              <span className="mt-0.5 block text-xs font-semibold text-muted-foreground">{holderFor(position)}</span>
             </button>
           );
         })}
@@ -2984,7 +3636,7 @@ function ActionButton({
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex h-8 min-w-0 items-center gap-1 rounded-lg border border-border bg-white px-2 text-left text-[10px] font-bold leading-3 hover:border-brand-primary/40 hover:bg-brand-primary-pale/30 [&_svg]:h-3 [&_svg]:w-3 [&_svg]:shrink-0"
+      className="inline-flex h-9 min-w-0 items-center gap-1.5 rounded-lg border border-border bg-white px-2 text-left text-xs font-bold leading-4 hover:border-brand-primary/40 hover:bg-brand-primary-pale/30 [&_svg]:h-3.5 [&_svg]:w-3.5 [&_svg]:shrink-0"
     >
       <span className="contents">{icon}</span>
       <span

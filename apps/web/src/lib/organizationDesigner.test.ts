@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  configureOrganizationApprovalReporting,
   getOrganizationDesignerView,
   configureOrganizationLeader,
   replaceOrganizationIncumbencies,
@@ -106,6 +107,28 @@ describe("Organization Designer API client", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/admin/organization/designer/drafts/draft-1/leader",
       expect.objectContaining({ method: "PUT", body: expect.stringContaining('"assignmentType":"SECONDARY"') }),
+    );
+  });
+
+  it("uses one atomic guided operation for explicit Approval & Reporting relationships", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ changedRelationships: ["UNIT_APPROVER"] }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await configureOrganizationApprovalReporting("draft-1", {
+      sourceType: "NODE",
+      sourceKey: "node-1",
+      leaderPositionKey: "leader-1",
+      reportsToPositionKey: "parent-1",
+      unitApproverPositionKey: "approver-1",
+      effectiveFrom: "2027-01-01",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/admin/organization/designer/drafts/draft-1/approval-reporting",
+      expect.objectContaining({
+        method: "PUT",
+        body: expect.stringContaining('"unitApproverPositionKey":"approver-1"'),
+      }),
     );
   });
 });
