@@ -7,6 +7,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 import { AppShell } from "@/layouts/AppShell";
+import { HcisButton } from "@/components/hcis/HcisButton";
 import {
   decideLeaveApproval,
   EmployeeLeaveApiError,
@@ -157,19 +158,17 @@ export function EmployeeApprovalsPage() {
                     </p>
                   </div>
                   <div className="flex gap-2">
-                    <button
-                      type="button"
+                    <HcisButton
                       disabled={acting === item.stepId}
                       onClick={() => void decide(item, "reject")}
-                      className="inline-flex h-10 items-center gap-2 rounded-xl border border-red-200 bg-white px-4 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60"
+                      variant="destructive"
                     >
                       <XCircle className="h-4 w-4" aria-hidden="true" /> Tolak
-                    </button>
-                    <button
-                      type="button"
+                    </HcisButton>
+                    <HcisButton
                       disabled={acting === item.stepId}
                       onClick={() => void decide(item, "approve")}
-                      className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white shadow-[var(--shadow-button)] disabled:opacity-60"
+                      className="font-bold"
                     >
                       {acting === item.stepId ? (
                         <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
@@ -177,7 +176,7 @@ export function EmployeeApprovalsPage() {
                         <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
                       )}
                       Setujui
-                    </button>
+                    </HcisButton>
                   </div>
                 </div>
               </article>
