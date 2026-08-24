@@ -37,6 +37,7 @@ import {
   fitZoomForViewport,
   MAX_CANVAS_ZOOM,
   MIN_CANVAS_ZOOM,
+  ORGANIZATION_POSITION_VISUAL_BAND_HEIGHT,
   organizationNodeTypeLabel,
 } from "@/lib/organizationCanvas";
 import { cn } from "@/lib/utils";
@@ -220,9 +221,14 @@ function NodeCard({
           {item.positions.map((position) => (
             <div
               key={position.stableKey}
+              className="relative"
+              style={{
+                marginTop: position.visualRankOffset * ORGANIZATION_POSITION_VISUAL_BAND_HEIGHT,
+              }}
               data-position-key={position.stableKey}
               data-parent-position-key={position.parentPositionKey ?? undefined}
               data-structural-depth={position.structuralDepth}
+              data-requested-visual-depth={position.requestedVisualDepth}
               data-visual-band={position.visualDepth}
               data-visual-rank-offset={position.visualRankOffset}
             >
@@ -555,6 +561,7 @@ export function OrganizationChart({
                 data-node-key={item.stableKey}
                 data-parent-node-key={item.parentNodeKey ?? undefined}
                 data-structural-depth={item.structuralDepth}
+                data-requested-visual-depth={item.requestedVisualDepth}
                 data-visual-band={item.visualDepth}
                 data-visual-rank-offset={item.visualRankOffset}
               >

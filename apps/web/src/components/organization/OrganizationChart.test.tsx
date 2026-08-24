@@ -236,6 +236,9 @@ describe("Organization Designer chart", () => {
     expect(visualBandGap(0, 3, ORGANIZATION_POSITION_VISUAL_BAND_HEIGHT)).toBe(
       128,
     );
+    expect(html).toMatch(
+      /style="margin-top:128px"[^>]*data-position-key="vice-principal"/,
+    );
     expect(html).not.toContain('data-connector-kind="position"');
   });
 
@@ -284,34 +287,81 @@ describe("Organization Designer chart", () => {
     expect(html).not.toContain(">+2</span>");
   });
 
-  it("aligns equal computed visual depths to the same visual band for offsets 0 through 3", () => {
-    const levelOne = childNode("level-one", "Level one", 1);
-    const levelTwo: OrganizationNode = {
-      ...childNode("level-two", "Level two", 0),
-      parentNodeKey: levelOne.stableKey,
+  it("resolves offset parents and children into strictly descending visual rows", () => {
+    const offsetParent = childNode("offset-parent", "Offset parent", 1);
+    const normalChild = {
+      ...childNode("normal-child", "Normal child"),
+      parentNodeKey: offsetParent.stableKey,
     };
-    const roots = [0, 1, 2, 3].map((offset) => ({
-      ...baseNode,
-      id: `root-${offset}`,
-      stableKey: `root-${offset}`,
-      name: `Root ${offset}`,
-      visualRankOffset: offset,
-      leaderPositionKey: null,
-    }));
-    const tree = buildOrganizationTree(
-      [baseNode, levelOne, levelTwo, ...roots],
+    const furtherOffsetChild = {
+      ...childNode("further-offset-child", "Further offset child", 1),
+      parentNodeKey: offsetParent.stableKey,
+    };
+    const roots = buildOrganizationTree(
+      [baseNode, offsetParent, normalChild, furtherOffsetChild],
       [],
     );
-    const main = tree.find((item) => item.stableKey === baseNode.stableKey)!;
+    const parent = roots[0]!.children[0]!;
+    const child = parent.children.find((item) => item.stableKey === "normal-child")!;
+    const offsetChild = parent.children.find((item) => item.stableKey === "further-offset-child")!;
+    const layout = layoutOrganizationChart({
+      roots,
+      expandedKeys: new Set(["foundation", "offset-parent"]),
+      cardWidth: 280,
+      columnGap: 32,
+      rowGap: 52,
+      defaultCardHeight: 132,
+    });
+    const byKey = new Map(layout.items.map((item) => [item.item.stableKey, item]));
 
-    expect(main.children[0]!.visualDepth).toBe(2);
-    expect(main.children[0]!.children[0]!.visualDepth).toBe(2);
-    expect(
-      roots.map(
-        (item) =>
-          tree.find((entry) => entry.stableKey === item.stableKey)?.visualDepth,
-      ),
-    ).toEqual([0, 1, 2, 3]);
+    expect(parent.requestedVisualDepth).toBe(2);
+    expect(parent.visualDepth).toBe(2);
+    expect(child.requestedVisualDepth).toBe(2);
+    expect(child.visualDepth).toBeGreaterThan(parent.visualDepth);
+    expect(offsetChild.visualDepth).toBeGreaterThan(parent.visualDepth);
+    expect(byKey.get(parent.stableKey)?.y).toBeLessThan(byKey.get(child.stableKey)?.y ?? 0);
+  });
+
+  it("does not allow a normal child to rise above a parent offset by two bands", () => {
+    const offsetParent = childNode("offset-parent", "Offset parent", 2);
+    const normalChild = {
+      ...childNode("normal-child", "Normal child"),
+      parentNodeKey: offsetParent.stableKey,
+    };
+    const roots = buildOrganizationTree([baseNode, offsetParent, normalChild], []);
+    const parent = roots[0]!.children[0]!;
+    const child = parent.children[0]!;
+
+    expect(parent.visualDepth).toBe(3);
+    expect(child.requestedVisualDepth).toBe(2);
+    expect(child.visualDepth).toBeGreaterThan(parent.visualDepth);
+  });
+
+  it("keeps unrelated nodes with an equal resolved visual depth on one global row", () => {
+    const offsetParent = childNode("offset-parent", "Offset parent", 1);
+    const offsetChild = {
+      ...childNode("offset-child", "Offset child"),
+      parentNodeKey: offsetParent.stableKey,
+    };
+    const peer = childNode("peer", "Peer", 2);
+    const roots = buildOrganizationTree([baseNode, offsetParent, offsetChild, peer], []);
+    const layout = layoutOrganizationChart({
+      roots,
+      expandedKeys: new Set(["foundation", "offset-parent"]),
+      cardWidth: 280,
+      columnGap: 32,
+      rowGap: 52,
+      defaultCardHeight: 132,
+    });
+    const byKey = new Map(layout.items.map((item) => [item.item.stableKey, item]));
+    const resolvedParent = roots[0]!.children.find((item) => item.stableKey === "offset-parent")!;
+    const resolvedPeer = roots[0]!.children.find((item) => item.stableKey === "peer")!;
+    const resolvedChild = resolvedParent.children[0]!;
+
+    expect(resolvedParent.visualDepth).toBe(2);
+    expect(resolvedPeer.visualDepth).toBe(3);
+    expect(resolvedChild.visualDepth).toBe(3);
+    expect(byKey.get("peer")?.y).toBe(byKey.get("offset-child")?.y);
   });
 
   it("uses the tallest measured card in a visual-depth band for every descendant row", () => {
