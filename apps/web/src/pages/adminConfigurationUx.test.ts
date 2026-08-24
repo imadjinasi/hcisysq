@@ -19,7 +19,7 @@ const adminShellSource = readFileSync(
 describe("Organization Designer administration UX contracts", () => {
   it("keeps add-below parent context fixed and integration code advanced", () => {
     expect(organizationSource).toContain('action.mode === "child" ? "Di bawah" : "Induk bersama"');
-    expect(organizationSource).toContain('type="hidden" name="parentNodeKey"');
+    expect(organizationSource).toMatch(/type="hidden"\s+name="parentNodeKey"/);
     expect(organizationSource).toContain("Pengaturan lanjutan");
     expect(organizationSource).toContain("Kode integrasi");
     expect(organizationSource).toContain("Tampilkan 1 tingkat lebih rendah");
@@ -35,6 +35,15 @@ describe("Organization Designer administration UX contracts", () => {
     expect(organizationSource).toContain("tidak membuat account, mengaktifkan account, atau memberikan permission");
   });
 
+  it("keeps partial group and position deletion distinct, explicit, and draft-only", () => {
+    expect(organizationSource).toContain("Hapus kelompok");
+    expect(organizationSource).toContain("Hapus subtree");
+    expect(organizationSource).toContain("Hapus posisi");
+    expect(organizationSource).toContain("tidak ada cascade otomatis");
+    expect(organizationSource).toContain("Penghapusan aman ditolak jika masih ada dependensi");
+    expect(organizationSource).toContain('const canEdit = data?.draft?.status === "DRAFT"');
+  });
+
   it("provides a selected-item inspector and intentional Move actions", () => {
     expect(organizationSource).toContain('aria-label="Inspector pilihan struktur"');
     expect(organizationSource).toContain("Induk struktural");
@@ -47,7 +56,7 @@ describe("Organization Designer administration UX contracts", () => {
   it("offers explicit legacy-unit membership preview without authority inference", () => {
     expect(organizationSource).toContain("Tambahkan anggota dari unit lama");
     expect(organizationSource).toContain("Preview: {legacyCandidates.length} pegawai aktif");
-    expect(organizationSource).toContain("Posisi, leader, hierarchy, dan kewenangan tidak dibuat otomatis");
+    expect(organizationSource).toMatch(/Posisi, leader,\s*hierarchy, dan kewenangan tidak dibuat otomatis/);
     expect(organizationSource).toContain('aria-label="Cari nama atau nomor pegawai"');
     expect(organizationSource).toContain('aria-label="Filter unit pegawai"');
     expect(organizationSource).toContain("Gunakan pencarian atau filter unit untuk menampilkan pegawai");
