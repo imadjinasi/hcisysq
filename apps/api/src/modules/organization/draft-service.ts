@@ -116,6 +116,18 @@ export class OrganizationDraftService {
     await this.repository.publishValidated(changeSetId, actorAccountId);
   }
 
+  async reopenForCorrection(changeSetId: string): Promise<void> {
+    const snapshot = await this.repository.loadChangeSetSnapshotForUpdate(changeSetId);
+    if (!snapshot) throw new OrganizationDraftError("CHANGE_SET_NOT_FOUND", "Organization draft was not found.");
+    if (snapshot.changeSet.status !== "VALIDATED") {
+      throw new OrganizationDraftError(
+        "CHANGE_SET_NOT_VALIDATED",
+        "Only a validated organization revision can be reopened for correction.",
+      );
+    }
+    await this.repository.reopenValidated(changeSetId);
+  }
+
   private resolverFor(snapshot: OrganizationSnapshot): OrganizationAuthorityResolver {
     return new OrganizationAuthorityResolver(
       { loadEffectiveSnapshot: async () => snapshot },

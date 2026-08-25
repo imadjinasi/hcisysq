@@ -7,6 +7,7 @@ import {
   replaceOrganizationIncumbencies,
   updateOrganizationPosition,
   validateOrganizationDraft,
+  reopenOrganizationDraft,
 } from "@/lib/organizationDesigner";
 
 afterEach(() => {
@@ -63,6 +64,23 @@ describe("Organization Designer API client", () => {
     await expect(validateOrganizationDraft("draft-1")).resolves.toEqual({ valid: true, issues: [] });
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/admin/organization/designer/drafts/draft-1/validate",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("uses the focused server operation to reopen a validated revision", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: "draft-1", status: "DRAFT" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await reopenOrganizationDraft("draft-1");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/admin/organization/designer/drafts/draft-1/reopen",
       expect.objectContaining({ method: "POST" }),
     );
   });

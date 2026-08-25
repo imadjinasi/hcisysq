@@ -55,6 +55,7 @@ import {
   organizationStatusCopy,
   previewOrganizationResolution,
   publishOrganizationDraft,
+  reopenOrganizationDraft,
   replaceOrganizationIncumbencies,
   replaceOrganizationMemberships,
   updateOrganizationNode,
@@ -1906,6 +1907,25 @@ export function AdminOrganizationPage() {
     }
   };
 
+  const reopenForCorrection = async () => {
+    if (!data?.draft || !window.confirm(
+      "Versi tervalidasi akan dibuka kembali untuk koreksi dan harus divalidasi ulang sebelum dapat diterbitkan.",
+    )) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await reopenOrganizationDraft(data.draft.id);
+      setValidation(null);
+      setImpact(null);
+      setNotice("Versi dibuka kembali untuk koreksi. Validasi perlu dijalankan ulang.");
+      await reload();
+    } catch (cause) {
+      setError(errorMessage(cause, "Versi tidak dapat dibuka kembali untuk koreksi."));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const runPublish = async () => {
     if (
       !data?.draft ||
@@ -2093,7 +2113,7 @@ export function AdminOrganizationPage() {
               </>
             }
             toolbarActions={
-              !hasActiveDraft ? <button type="button" onClick={() => setAction({ type: "draft" })} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-white px-2 text-xs font-bold hover:bg-muted"><CalendarClock className="h-3.5 w-3.5" /> {data?.draft?.status === "PUBLISHED" ? "Buat draft koreksi" : "Jadwalkan perubahan"}</button> : <>{canEdit ? <button type="button" disabled={saving} onClick={() => void runValidation()} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-2 text-xs font-bold text-amber-900 hover:bg-amber-50 disabled:opacity-60"><ShieldCheck className="h-3.5 w-3.5" /> Validasi</button> : null}<button type="button" disabled={saving} onClick={() => void runImpact()} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-white px-2 text-xs font-bold hover:bg-muted disabled:opacity-60"><Eye className="h-3.5 w-3.5" /> Preview dampak</button><button type="button" disabled={saving || data?.draft?.status !== "VALIDATED"} onClick={() => void runPublish()} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-brand-primary px-2 text-xs font-bold text-white hover:bg-brand-primary-deep disabled:opacity-50"><Rocket className="h-3.5 w-3.5" /> Publikasikan</button><button type="button" disabled={saving} onClick={() => setAction({ type: "discard-draft" })} className="hidden h-8 items-center gap-1.5 rounded-lg border border-red-300 bg-white px-2 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-50 xl:inline-flex"><Trash2 className="h-3.5 w-3.5" /> Buang draft</button></>
+              !hasActiveDraft ? <button type="button" onClick={() => setAction({ type: "draft" })} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-white px-2 text-xs font-bold hover:bg-muted"><CalendarClock className="h-3.5 w-3.5" /> {data?.draft?.status === "PUBLISHED" ? "Buat draft koreksi" : "Jadwalkan perubahan"}</button> : <>{canEdit ? <button type="button" disabled={saving} onClick={() => void runValidation()} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-2 text-xs font-bold text-amber-900 hover:bg-amber-50 disabled:opacity-60"><ShieldCheck className="h-3.5 w-3.5" /> Validasi</button> : null}{data?.draft?.status === "VALIDATED" ? <button type="button" disabled={saving} onClick={() => void reopenForCorrection()} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-2 text-xs font-bold text-amber-900 hover:bg-amber-50 disabled:opacity-60"><ArrowRightLeft className="h-3.5 w-3.5" /> Koreksi lagi</button> : null}<button type="button" disabled={saving} onClick={() => void runImpact()} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-white px-2 text-xs font-bold hover:bg-muted disabled:opacity-60"><Eye className="h-3.5 w-3.5" /> Preview dampak</button><button type="button" disabled={saving || data?.draft?.status !== "VALIDATED"} onClick={() => void runPublish()} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-brand-primary px-2 text-xs font-bold text-white hover:bg-brand-primary-deep disabled:opacity-50"><Rocket className="h-3.5 w-3.5" /> Publikasikan</button><button type="button" disabled={saving} onClick={() => setAction({ type: "discard-draft" })} className="hidden h-8 items-center gap-1.5 rounded-lg border border-red-300 bg-white px-2 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-50 xl:inline-flex"><Trash2 className="h-3.5 w-3.5" /> Buang draft</button></>
             }
           />
 

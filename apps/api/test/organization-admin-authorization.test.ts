@@ -43,7 +43,7 @@ function createPool(principalType: "SUPER_ADMIN" | "EMPLOYEE" | "FOUNDATION_BOAR
 
 async function request(
   principalType: "SUPER_ADMIN" | "EMPLOYEE" | "FOUNDATION_BOARD",
-  method: "GET" | "PATCH",
+  method: "GET" | "PATCH" | "POST",
   url: string,
 ) {
   const { pool, query } = createPool(principalType);
@@ -100,6 +100,17 @@ describe("Organization Designer administration boundary", () => {
       ).toBe(false);
     },
   );
+
+  it("rejects a non-admin from reopening a validated revision", async () => {
+    const { response, query } = await request(
+      "EMPLOYEE",
+      "POST",
+      "/admin/organization/designer/drafts/00000000-0000-4000-8000-000000000010/reopen",
+    );
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ code: "FORBIDDEN" });
+    expect(query.mock.calls.some(([sql]) => String(sql).includes("UPDATE organization_change_sets"))).toBe(false);
+  });
 
   it("rolls back a privileged mutation when its audit event fails", async () => {
     let rolloutPersisted = false;

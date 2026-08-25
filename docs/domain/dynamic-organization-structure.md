@@ -40,6 +40,13 @@ the snapshot rows. Mutation, full-snapshot persistence, audit, and commit remain
 one transaction so overlapping administrators cannot silently overwrite each
 other's changes.
 
+An unpublished `VALIDATED` revision may be reopened for correction by an
+authorized organization administrator. Reopening changes only its lifecycle to
+`DRAFT`, clears its validation actor, timestamp, and report, and records an
+audit event in the same transaction. It never clones or rewrites snapshot rows;
+the revision must pass validation again before publication. `PUBLISHED`
+revisions remain immutable.
+
 ### Governance account holders
 
 An organization position declares its holder source explicitly as `EMPLOYEE`

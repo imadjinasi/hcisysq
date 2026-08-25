@@ -623,6 +623,61 @@ describe("ORG-004 draft validation and impact", () => {
     expect(draft.changeSet.status).toBe("PUBLISHED");
   });
 
+  it("reopens the same validated revision without changing its snapshot, then validates it again", async () => {
+    const draft = snapshot({
+      reportingOverrides: [{
+        id: "override-staff", employeeId: employeeIds.staff, managerPositionKey: "position-head",
+        managerEmployeeId: null, reason: "Synthetic exception", effectiveFrom, effectiveTo: null,
+      }],
+    });
+    draft.changeSet.status = "VALIDATED";
+    draft.changeSet.publishedAt = null;
+    draft.changeSet.validationReport = { valid: true, issues: [], checkedAt: "2026-08-25T00:00:00.000Z" };
+    const snapshotRows = structuredClone({
+      nodes: draft.nodes, positions: draft.positions, memberships: draft.memberships,
+      incumbencies: draft.incumbencies, authorityBindings: draft.authorityBindings,
+      reportingOverrides: draft.reportingOverrides,
+    });
+    let reopenCalls = 0;
+    const fakeRepository = {
+      loadChangeSetSnapshotForUpdate: async () => draft,
+      reopenValidated: async () => {
+        reopenCalls += 1;
+        draft.changeSet.status = "DRAFT";
+        draft.changeSet.validatedAt = null;
+        draft.changeSet.validationReport = { valid: false, issues: [] };
+      },
+      validateStructuralIncumbent: async () => ({ eligible: true, reason: null }),
+      markValidated: async (_id: string, _actor: string, report: OrganizationSnapshot["changeSet"]["validationReport"]) => {
+        draft.changeSet.status = report.valid ? "VALIDATED" : "DRAFT";
+        draft.changeSet.validationReport = report;
+      },
+    } as unknown as PostgresOrganizationRepository;
+    const service = new OrganizationDraftService(fakeRepository);
+
+    await expect(service.reopenForCorrection(draft.changeSet.id)).resolves.toBeUndefined();
+    expect(reopenCalls).toBe(1);
+    expect(draft.changeSet).toMatchObject({ status: "DRAFT", validatedAt: null, validationReport: { valid: false, issues: [] } });
+    expect({ nodes: draft.nodes, positions: draft.positions, memberships: draft.memberships,
+      incumbencies: draft.incumbencies, authorityBindings: draft.authorityBindings,
+      reportingOverrides: draft.reportingOverrides }).toEqual(snapshotRows);
+
+    await expect(service.validateDraft(draft.changeSet.id, "admin")).resolves.toMatchObject({ valid: true });
+    expect(draft.changeSet.status).toBe("VALIDATED");
+  });
+
+  it("rejects reopening a published revision", async () => {
+    const published = snapshot();
+    const fakeRepository = {
+      loadChangeSetSnapshotForUpdate: async () => published,
+      reopenValidated: vi.fn(),
+    } as unknown as PostgresOrganizationRepository;
+
+    await expect(new OrganizationDraftService(fakeRepository).reopenForCorrection(published.changeSet.id))
+      .rejects.toMatchObject({ code: "CHANGE_SET_NOT_VALIDATED" });
+    expect(fakeRepository.reopenValidated).not.toHaveBeenCalled();
+  });
+
   it("fails closed when a structural Leave approver has no eligible account", async () => {
     const structure = snapshot();
     structure.positions[1] = { ...structure.positions[1]!, vacancyPolicy: "BLOCK" };

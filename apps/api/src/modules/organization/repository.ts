@@ -342,6 +342,22 @@ export class PostgresOrganizationRepository {
     );
   }
 
+  async reopenValidated(changeSetId: string): Promise<void> {
+    const result = await this.db.query(
+      `UPDATE organization_change_sets
+       SET status = 'DRAFT',
+           validation_report = '{}'::jsonb,
+           validated_by_account_id = NULL,
+           validated_at = NULL,
+           updated_at = now()
+       WHERE id = $1 AND status = 'VALIDATED'`,
+      [changeSetId],
+    );
+    if (result.rowCount !== 1) {
+      throw new Error("Only VALIDATED organization change sets can be reopened.");
+    }
+  }
+
   async publishValidated(changeSetId: string, actorAccountId: string): Promise<void> {
     const result = await this.db.query(
       `UPDATE organization_change_sets

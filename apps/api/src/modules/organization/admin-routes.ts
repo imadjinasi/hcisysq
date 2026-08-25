@@ -739,6 +739,25 @@ export async function registerOrganizationAdminRoutes(
     return reply.send({ valid: report.valid, issues: report.issues.map((issue) => ({ ...issue, severity: "ERROR", itemKey: issue.entityId ?? null })) });
   });
 
+  app.post("/admin/organization/designer/drafts/:draftId/reopen", async (request, reply) => {
+    const principal = await authenticate(request, reply); if (!principal) return;
+    const params = draftParams.safeParse(request.params); if (!params.success) return invalid(reply, "INVALID_DRAFT_ID", "Invalid draft identifier.");
+    const changeSet = await atomicOrganizationMutation(pool, principal, async (transaction) => {
+      const snapshot = await transaction.repository.loadChangeSetSnapshotForUpdate(params.data.draftId);
+      if (!snapshot) { await reply.status(404).send({ code: "ORGANIZATION_DRAFT_NOT_FOUND" }); return null; }
+      if (snapshot.changeSet.status !== "VALIDATED") {
+        await reply.status(409).send({ code: "ORGANIZATION_REVISION_NOT_VALIDATED", message: "Only a validated revision can be reopened for correction." });
+        return null;
+      }
+      await transaction.draftService.reopenForCorrection(snapshot.changeSet.id);
+      await transaction.audit("organization.draft.reopened", "organization_change_set", snapshot.changeSet.id,
+        snapshot.changeSet.id, { previousStatus: "VALIDATED", newStatus: "DRAFT" });
+      return (await transaction.repository.loadChangeSetSnapshot(snapshot.changeSet.id))!.changeSet;
+    });
+    if (!changeSet) return;
+    return reply.send(changeSet);
+  });
+
   app.get("/admin/organization/designer/drafts/:draftId/impact", async (request, reply) => {
     if (!(await authenticate(request, reply))) return;
     const params = draftParams.safeParse(request.params); if (!params.success) return invalid(reply, "INVALID_DRAFT_ID", "Invalid draft identifier.");

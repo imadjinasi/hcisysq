@@ -540,6 +540,17 @@ paths:
         '204': { description: Draft position deleted only when it has no child positions or dependencies }
         '409': { description: Position has child positions/dependencies or draft is immutable }
 
+  /admin/organization/designer/drafts/{draftId}/reopen:
+    post:
+      tags: [Organization]
+      operationId: reopenOrganizationDraft
+      parameters: [{ $ref: '#/components/parameters/DraftId' }]
+      responses:
+        '200': { description: The same validated revision reopened as a draft with validation metadata cleared }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Revision is not validated and cannot be reopened }
+
   /admin/organization/designer/drafts/{draftId}/memberships:
     put:
       tags: [Organization]

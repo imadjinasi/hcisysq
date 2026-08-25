@@ -473,6 +473,10 @@ export function validateOrganizationDraft(
   });
 }
 
+export function reopenOrganizationDraft(draftId: string): Promise<OrganizationDraft> {
+  return request<OrganizationDraft>(`/drafts/${draftId}/reopen`, { method: "POST" });
+}
+
 export function getOrganizationImpact(
   draftId: string,
 ): Promise<OrganizationImpactPreview> {
