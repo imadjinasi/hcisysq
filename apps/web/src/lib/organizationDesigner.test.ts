@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   configureOrganizationApprovalReporting,
   getOrganizationDesignerView,
+  listOrganizationRevisions,
   configureOrganizationLeader,
   replaceOrganizationIncumbencies,
   updateOrganizationPosition,
@@ -15,6 +16,13 @@ afterEach(() => {
 });
 
 describe("Organization Designer API client", () => {
+  it("loads canonical revision navigator metadata", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ items: [{ id: "revision-1", status: "DRAFT" }] }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(listOrganizationRevisions()).resolves.toEqual([{ id: "revision-1", status: "DRAFT" }]);
+    expect(fetchMock).toHaveBeenCalledWith("/api/admin/organization/designer/revisions", expect.objectContaining({ credentials: "include" }));
+  });
+
   it("requests an effective-dated draft chart", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ nodes: [] }), {
@@ -24,7 +32,7 @@ describe("Organization Designer API client", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await getOrganizationDesignerView({ effectiveDate: "2027-01-01", draftId: "draft-1" });
+    await getOrganizationDesignerView({ effectiveDate: "2027-01-01", revisionId: "draft-1" });
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/admin/organization/designer?effectiveDate=2027-01-01&draftId=draft-1",

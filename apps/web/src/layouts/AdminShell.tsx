@@ -147,6 +147,11 @@ export function AdminShell({
                   return <a
                     key={item.key}
                     href={item.href}
+                    onClick={(event) => {
+                      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                      event.preventDefault();
+                      void navigate({ to: item.href });
+                    }}
                     aria-current={selected ? "page" : undefined}
                     title={item.label}
                     className={cn(

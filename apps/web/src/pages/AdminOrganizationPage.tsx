@@ -29,6 +29,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 
 import {
   OrganizationChart,
@@ -52,6 +53,7 @@ import {
   getOrganizationRollout,
   listFoundationBoardAccounts,
   listOrganizationEmployees,
+  listOrganizationRevisions,
   organizationStatusCopy,
   previewOrganizationResolution,
   publishOrganizationDraft,
@@ -68,10 +70,17 @@ import {
   type OrganizationNode,
   type OrganizationPosition,
   type OrganizationResolutionPreview,
+  type OrganizationRevision,
   type OrganizationRolloutConfiguration,
   type OrganizationValidationReport,
   type OrganizationVacancyPolicy,
 } from "@/lib/organizationDesigner";
+import {
+  chooseOrganizationEntry,
+  ORGANIZATION_LAST_REVISION_KEY,
+  ORGANIZATION_PREVIEW_EMPLOYEE_KEY,
+  revisionStatusLabel,
+} from "@/lib/organizationWorkspace";
 import { cn } from "@/lib/utils";
 import { organizationNodeTypeLabel } from "@/lib/organizationCanvas";
 import {
@@ -138,22 +147,6 @@ function jakartaToday() {
     day: "2-digit",
     timeZone: "Asia/Jakarta",
   }).format(new Date());
-}
-
-function initialDesignerState() {
-  const params = new URLSearchParams(window.location.search);
-  return {
-    effectiveDate: params.get("effectiveDate") ?? jakartaToday(),
-    draftId: params.get("draftId"),
-  };
-}
-
-function updateDesignerUrl(effectiveDate: string, draftId: string | null) {
-  const url = new URL(window.location.href);
-  url.searchParams.set("effectiveDate", effectiveDate);
-  if (draftId) url.searchParams.set("draftId", draftId);
-  else url.searchParams.delete("draftId");
-  window.history.replaceState(null, "", url);
 }
 
 function displayDate(value: string) {
@@ -446,6 +439,7 @@ function MembershipEditor({
   memberships,
   saving,
   onCancel,
+  onDirtyChange,
   onSubmit,
 }: {
   node: OrganizationNode;
@@ -454,6 +448,7 @@ function MembershipEditor({
   memberships: OrganizationDesignerView["memberships"];
   saving: boolean;
   onCancel: () => void;
+  onDirtyChange: (dirty: boolean) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const currentMemberships = useMemo(
@@ -513,6 +508,7 @@ function MembershipEditor({
       delta.requiresPrimarySwitchConfirmation &&
       !confirmedPrimarySwitches.has(delta.employeeId),
   );
+  useEffect(() => onDirtyChange(deltas.length > 0), [deltas.length, onDirtyChange]);
 
   const employeeFor = (employeeId: string) =>
     employees.find((employee) => employee.id === employeeId);
@@ -1335,13 +1331,16 @@ export function HolderAssignmentEditor({
 }
 
 export function AdminOrganizationPage() {
-  const [initialState] = useState(initialDesignerState);
-  const [effectiveDate, setEffectiveDate] = useState(
-    initialState.effectiveDate,
-  );
-  const [draftId, setDraftId] = useState<string | null>(initialState.draftId);
+  const search = useSearch({ from: "/admin/organization" });
+  const navigate = useNavigate({ from: "/admin/organization" });
+  const revisionId = search.revisionId ?? search.draftId ?? null;
+  const effectiveDate = search.effectiveDate ?? jakartaToday();
   const [data, setData] = useState<OrganizationDesignerView | null>(null);
+  const [revisions, setRevisions] = useState<OrganizationRevision[] | null>(null);
+  const [revisionChooserOpen, setRevisionChooserOpen] = useState(false);
+  const [invalidRevision, setInvalidRevision] = useState(false);
   const [employees, setEmployees] = useState<OrganizationEmployeeOption[]>([]);
+  const [employeesState, setEmployeesState] = useState<"loading" | "loaded" | "error">("loading");
   const [boardAccounts, setBoardAccounts] = useState<
     OrganizationAccountOption[]
   >([]);
@@ -1357,15 +1356,20 @@ export function AdminOrganizationPage() {
   const [preview, setPreview] = useState<OrganizationResolutionPreview | null>(
     null,
   );
-  const [previewEmployeeId, setPreviewEmployeeId] = useState("");
+  const [previewEmployeeId, setPreviewEmployeeId] = useState(
+    () => sessionStorage.getItem(ORGANIZATION_PREVIEW_EMPLOYEE_KEY) ?? "",
+  );
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewStale, setPreviewStale] = useState(false);
+  const [discardConfirmation, setDiscardConfirmation] = useState("");
+  const [membershipDirty, setMembershipDirty] = useState(false);
   const [rollout, setRollout] = useState<OrganizationRolloutConfiguration | null>(null);
 
   const reload = async () => {
     setLoading(true);
     setError(null);
     try {
-      setData(await getOrganizationDesignerView({ effectiveDate, draftId }));
+      setData(await getOrganizationDesignerView({ effectiveDate, revisionId }));
     } catch (cause) {
       setError(errorMessage(cause, "Struktur organisasi tidak dapat dimuat."));
     } finally {
@@ -1373,15 +1377,70 @@ export function AdminOrganizationPage() {
     }
   };
 
-  useEffect(() => {
-    updateDesignerUrl(effectiveDate, draftId);
-    void reload();
-  }, [effectiveDate, draftId]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
+  const loadEmployees = () => {
+    setEmployeesState("loading");
     void listOrganizationEmployees()
-      .then(setEmployees)
-      .catch(() => setEmployees([]));
+      .then((items) => {
+        setEmployees(items);
+        setEmployeesState("loaded");
+      })
+      .catch(() => setEmployeesState("error"));
+  };
+
+  const loadRevisions = () => listOrganizationRevisions().then(setRevisions);
+
+  useEffect(() => {
+    void loadRevisions().catch(() => setError("Daftar revisi organisasi tidak dapat dimuat."));
+    loadEmployees();
   }, []);
+
+  useEffect(() => {
+    if (!revisions) return;
+    const decision = chooseOrganizationEntry({
+      explicitRevisionId: revisionId,
+      hasExplicitEffectiveDate: Boolean(search.effectiveDate),
+      rememberedRevisionId: sessionStorage.getItem(ORGANIZATION_LAST_REVISION_KEY),
+      revisions,
+    });
+    if (decision.kind === "invalid") {
+      if (sessionStorage.getItem(ORGANIZATION_LAST_REVISION_KEY) === decision.revisionId) {
+        sessionStorage.removeItem(ORGANIZATION_LAST_REVISION_KEY);
+      }
+      setInvalidRevision(true);
+      setRevisionChooserOpen(false);
+      setData(null);
+      setLoading(false);
+      return;
+    }
+    setInvalidRevision(false);
+    if (decision.kind === "revision") {
+      if (decision.revision.status !== "PUBLISHED") {
+        sessionStorage.setItem(ORGANIZATION_LAST_REVISION_KEY, decision.revision.id);
+      }
+      if (search.draftId || revisionId !== decision.revision.id || effectiveDate !== decision.revision.effectiveOn) {
+        void navigate({
+          replace: true,
+          search: { revisionId: decision.revision.id, effectiveDate: decision.revision.effectiveOn, draftId: undefined },
+        });
+        return;
+      }
+      setRevisionChooserOpen(false);
+    } else if (decision.kind === "chooser") {
+      sessionStorage.removeItem(ORGANIZATION_LAST_REVISION_KEY);
+      setRevisionChooserOpen(true);
+    } else {
+      setRevisionChooserOpen(false);
+    }
+    void reload();
+  }, [effectiveDate, navigate, revisionId, revisions, search.draftId, search.effectiveDate]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    setSelection(null);
+    setValidation(null);
+    setImpact(null);
+    setPreview(null);
+    setPreviewStale(false);
+  }, [revisionId, effectiveDate]);
   useEffect(() => {
     void listFoundationBoardAccounts()
       .then(setBoardAccounts)
@@ -1533,6 +1592,32 @@ export function AdminOrganizationPage() {
     [action, data],
   );
 
+  const switchToRevision = (revision: OrganizationRevision) => {
+    if (action && !window.confirm("Perubahan yang belum disimpan pada formulir ini akan ditutup. Data revisi yang sudah tersimpan di server tetap aman.")) return;
+    if (revision.status === "PUBLISHED") sessionStorage.removeItem(ORGANIZATION_LAST_REVISION_KEY);
+    else sessionStorage.setItem(ORGANIZATION_LAST_REVISION_KEY, revision.id);
+    setAction(null);
+    setRevisionChooserOpen(false);
+    void navigate({
+      search: { revisionId: revision.id, effectiveDate: revision.effectiveOn, draftId: undefined },
+    });
+  };
+
+  const showPublished = (date = jakartaToday()) => {
+    if (action && !window.confirm("Perubahan yang belum disimpan pada formulir ini akan ditutup. Data revisi yang sudah tersimpan di server tetap aman.")) return;
+    sessionStorage.removeItem(ORGANIZATION_LAST_REVISION_KEY);
+    setAction(null);
+    setRevisionChooserOpen(false);
+    setInvalidRevision(false);
+    void navigate({ search: { effectiveDate: date, revisionId: undefined, draftId: undefined } });
+  };
+
+  const closeMembershipEditor = () => {
+    if (membershipDirty && !window.confirm("Perubahan anggota yang belum disimpan akan dibatalkan. Data revisi yang sudah tersimpan di server tetap aman.")) return;
+    setMembershipDirty(false);
+    setAction(null);
+  };
+
   const mutate = async (operation: () => Promise<unknown>, success: string) => {
     setSaving(true);
     setError(null);
@@ -1542,6 +1627,10 @@ export function AdminOrganizationPage() {
       setAction(null);
       setValidation(null);
       setImpact(null);
+      if (preview || previewEmployeeId) {
+        setPreview(null);
+        setPreviewStale(true);
+      }
       setNotice(success);
       await reload();
     } catch (cause) {
@@ -1565,11 +1654,12 @@ export function AdminOrganizationPage() {
       name: String(form.get("name")),
       effectiveOn: String(form.get("effectiveOn")),
     })
-      .then((draft) => {
-        setDraftId(draft.id);
-        setEffectiveDate(draft.effectiveOn);
+      .then(async (draft) => {
+        sessionStorage.setItem(ORGANIZATION_LAST_REVISION_KEY, draft.id);
+        await loadRevisions();
+        await navigate({ search: { revisionId: draft.id, effectiveDate: draft.effectiveOn, draftId: undefined } });
         setAction(null);
-        setNotice("Draft restrukturisasi siap diedit.");
+        setNotice("Revisi baru siap diedit.");
       })
       .catch((cause: unknown) =>
         setError(errorMessage(cause, "Draft tidak dapat dibuat.")),
@@ -1886,6 +1976,7 @@ export function AdminOrganizationPage() {
       setNotice(
         report.valid ? "Draft valid dan siap ditinjau dampaknya." : null,
       );
+      await loadRevisions();
       await reload();
     } catch (cause) {
       setError(errorMessage(cause, "Validasi draft gagal dijalankan."));
@@ -1917,7 +2008,12 @@ export function AdminOrganizationPage() {
       await reopenOrganizationDraft(data.draft.id);
       setValidation(null);
       setImpact(null);
+      if (preview) {
+        setPreview(null);
+        setPreviewStale(true);
+      }
       setNotice("Versi dibuka kembali untuk koreksi. Validasi perlu dijalankan ulang.");
+      await loadRevisions();
       await reload();
     } catch (cause) {
       setError(errorMessage(cause, "Versi tidak dapat dibuka kembali untuk koreksi."));
@@ -1940,10 +2036,13 @@ export function AdminOrganizationPage() {
     setError(null);
     try {
       await publishOrganizationDraft(data.draft.id);
-      setDraftId(null);
-      setSelection(null);
+      sessionStorage.removeItem(ORGANIZATION_LAST_REVISION_KEY);
       setValidation(null);
       setImpact(null);
+      setPreview(null);
+      setPreviewStale(Boolean(previewEmployeeId));
+      await loadRevisions();
+      await reload();
       setNotice(
         "Struktur dipublikasikan. Struktur masa depan tidak aktif sebelum tanggal efektifnya.",
       );
@@ -1977,14 +2076,19 @@ export function AdminOrganizationPage() {
   };
 
   const discardDraft = async () => {
-    if (!data?.draft) return;
+    if (!data?.draft || data.draft.status !== "DRAFT" || discardConfirmation !== data.draft.name) return;
     setSaving(true);
     setError(null);
     try {
       await discardOrganizationDraft(data.draft.id);
+      sessionStorage.removeItem(ORGANIZATION_LAST_REVISION_KEY);
       setAction(null);
-      setDraftId(null);
+      setDiscardConfirmation("");
       setSelection(null);
+      setPreview(null);
+      setPreviewStale(false);
+      await loadRevisions();
+      void navigate({ search: { effectiveDate: jakartaToday(), revisionId: undefined, draftId: undefined } });
       setNotice(
         "Draft yang belum dipublikasikan telah dibuang. Histori terpublikasi tetap utuh.",
       );
@@ -1995,8 +2099,8 @@ export function AdminOrganizationPage() {
     }
   };
 
-  const runResolutionPreview = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const runResolutionPreview = async (event?: FormEvent<HTMLFormElement>) => {
+    event?.preventDefault();
     if (!data?.draft || !previewEmployeeId) return;
     setPreviewLoading(true);
     setError(null);
@@ -2008,6 +2112,7 @@ export function AdminOrganizationPage() {
           effectiveDate: data.draft.effectiveOn,
         }),
       );
+      setPreviewStale(false);
     } catch (cause) {
       setError(
         errorMessage(cause, "Preview rantai approval tidak dapat dimuat."),
@@ -2038,6 +2143,46 @@ export function AdminOrganizationPage() {
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{notice}</span>
         </div>
+      ) : null}
+      {invalidRevision ? (
+        <section role="alert" className="mb-4 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+          <p className="font-bold">Revisi ini sudah tidak tersedia.</p>
+          <p className="mt-1">Tautan atau revisi yang diingat browser tidak lagi ada di server. Revisi lain tidak dibuka otomatis.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" onClick={() => { setInvalidRevision(false); setRevisionChooserOpen(true); }} className="h-9 rounded-xl border border-amber-400 bg-white px-3 font-bold">Buka revisi lain</button>
+            <button type="button" onClick={() => showPublished()} className="h-9 rounded-xl bg-brand-primary px-3 font-bold text-white">Lihat struktur diterbitkan</button>
+          </div>
+        </section>
+      ) : null}
+      {revisionChooserOpen && revisions ? (
+        <section className="mb-4 rounded-2xl border border-border bg-white p-4 shadow-[var(--shadow-soft)]" aria-label="Pilih revisi organisasi">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-base font-bold text-brand-heading">Revisi belum selesai</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Pilih revisi secara eksplisit. Sistem tidak menebak revisi berdasarkan tanggal atau nama.</p>
+            </div>
+            <button type="button" onClick={() => showPublished()} className="h-9 rounded-xl border border-border px-3 text-sm font-bold">Lihat struktur diterbitkan</button>
+          </div>
+          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+            {revisions.filter((revision) => revision.status !== "PUBLISHED").map((revision) => (
+              <article key={revision.id} className="rounded-xl border border-border bg-surface p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold text-brand-heading">{revision.name}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{revisionStatusLabel(revision.status)} · Efektif {displayDate(revision.effectiveOn)}</p>
+                  </div>
+                  <button type="button" onClick={() => switchToRevision(revision)} className="h-9 shrink-0 rounded-xl bg-brand-primary px-3 text-sm font-bold text-white">Lanjutkan</button>
+                </div>
+              </article>
+            ))}
+          </div>
+          {revisions.some((revision) => revision.status === "PUBLISHED") ? <div className="mt-4 border-t border-border pt-4">
+            <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Diterbitkan / histori</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {revisions.filter((revision) => revision.status === "PUBLISHED").slice(0, 8).map((revision) => <button key={revision.id} type="button" onClick={() => switchToRevision(revision)} className="rounded-xl border border-border bg-white px-3 py-2 text-left text-xs hover:bg-muted"><span className="block font-bold text-brand-heading">{revision.name}</span><span className="text-muted-foreground">Efektif {displayDate(revision.effectiveOn)}</span></button>)}
+            </div>
+          </div> : null}
+        </section>
       ) : null}
       <section
         className={cn(
@@ -2103,17 +2248,18 @@ export function AdminOrganizationPage() {
             onStart={startFromEmpty}
             toolbarContext={
               <>
-                <label className="sr-only" htmlFor="organization-effective-date">Lihat struktur pada tanggal</label>
-                <span className="relative block">
-                  <CalendarDays className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                  <input id="organization-effective-date" type="date" value={effectiveDate} onChange={(event) => { setDraftId(null); setEffectiveDate(event.target.value); setSelection(null); }} className="h-8 w-[8.7rem] rounded-lg border border-border bg-white pl-7 pr-1.5 text-xs font-semibold outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/10" />
-                </span>
+                {!revisionId ? <><label className="sr-only" htmlFor="organization-effective-date">Lihat struktur diterbitkan pada tanggal</label>
+                  <span className="relative block">
+                    <CalendarDays className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <input id="organization-effective-date" type="date" value={effectiveDate} onChange={(event) => showPublished(event.target.value)} className="h-8 w-[8.7rem] rounded-lg border border-border bg-white pl-7 pr-1.5 text-xs font-semibold outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/10" />
+                  </span></> : null}
                 <span className={cn("ml-1 rounded-full px-2 py-1 text-xs font-bold", status.className)}>{data?.draft?.status === "PUBLISHED" ? data.mode === "FUTURE" ? "Diterbitkan · belum aktif" : "Diterbitkan · hanya baca" : status.label}</span>
                 {data?.draft ? <div className="ml-1 hidden min-w-0 sm:block" data-organization-version-summary><p className={cn("max-w-40 truncate text-xs font-bold", canEdit ? "text-amber-900" : "text-brand-heading")}>{data.draft.name}</p><p className={cn("text-xs", canEdit ? "text-amber-800" : "text-muted-foreground")}>Efektif {displayDate(data.draft.effectiveOn)}{data.isSameDayRevision ? " · Koreksi tanggal yang sama" : ""}</p>{data.draft.status !== "PUBLISHED" ? <p className="text-xs text-amber-800">{data.draft.baseChangeSetId ? "Berdasarkan versi terbit sebelumnya" : "Dimulai dari struktur kosong"}</p> : null}</div> : null}
+                <button type="button" onClick={() => setRevisionChooserOpen(true)} className="ml-1 inline-flex h-8 items-center rounded-lg border border-border bg-white px-2 text-xs font-bold hover:bg-muted">Ganti revisi</button>
               </>
             }
             toolbarActions={
-              !hasActiveDraft ? <button type="button" onClick={() => setAction({ type: "draft" })} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-white px-2 text-xs font-bold hover:bg-muted"><CalendarClock className="h-3.5 w-3.5" /> {data?.draft?.status === "PUBLISHED" ? "Buat draft koreksi" : "Jadwalkan perubahan"}</button> : <>{canEdit ? <button type="button" disabled={saving} onClick={() => void runValidation()} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-2 text-xs font-bold text-amber-900 hover:bg-amber-50 disabled:opacity-60"><ShieldCheck className="h-3.5 w-3.5" /> Validasi</button> : null}{data?.draft?.status === "VALIDATED" ? <button type="button" disabled={saving} onClick={() => void reopenForCorrection()} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-2 text-xs font-bold text-amber-900 hover:bg-amber-50 disabled:opacity-60"><ArrowRightLeft className="h-3.5 w-3.5" /> Koreksi lagi</button> : null}<button type="button" disabled={saving} onClick={() => void runImpact()} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-white px-2 text-xs font-bold hover:bg-muted disabled:opacity-60"><Eye className="h-3.5 w-3.5" /> Preview dampak</button><button type="button" disabled={saving || data?.draft?.status !== "VALIDATED"} onClick={() => void runPublish()} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-brand-primary px-2 text-xs font-bold text-white hover:bg-brand-primary-deep disabled:opacity-50"><Rocket className="h-3.5 w-3.5" /> Publikasikan</button><button type="button" disabled={saving} onClick={() => setAction({ type: "discard-draft" })} className="hidden h-8 items-center gap-1.5 rounded-lg border border-red-300 bg-white px-2 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-50 xl:inline-flex"><Trash2 className="h-3.5 w-3.5" /> Buang draft</button></>
+              !hasActiveDraft ? <button type="button" onClick={() => setAction({ type: "draft" })} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-white px-2 text-xs font-bold hover:bg-muted"><CalendarClock className="h-3.5 w-3.5" /> {data?.draft?.status === "PUBLISHED" ? "Buat revisi koreksi" : "Jadwalkan perubahan"}</button> : <>{canEdit ? <button type="button" disabled={saving} onClick={() => void runValidation()} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-brand-primary px-2 text-xs font-bold text-white hover:bg-brand-primary-deep disabled:opacity-60"><ShieldCheck className="h-3.5 w-3.5" /> Validasi</button> : null}{data?.draft?.status === "VALIDATED" ? <><button type="button" disabled={saving} onClick={() => void runPublish()} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-brand-primary px-2 text-xs font-bold text-white hover:bg-brand-primary-deep disabled:opacity-50"><Rocket className="h-3.5 w-3.5" /> Publikasikan</button><button type="button" disabled={saving} onClick={() => void reopenForCorrection()} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-white px-2 text-xs font-bold hover:bg-muted disabled:opacity-60"><ArrowRightLeft className="h-3.5 w-3.5" /> Koreksi lagi</button></> : null}<button type="button" disabled={saving} onClick={() => void runImpact()} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-white px-2 text-xs font-bold hover:bg-muted disabled:opacity-60"><Eye className="h-3.5 w-3.5" /> Preview dampak</button>{canEdit ? <details className="relative"><summary className="flex h-8 cursor-pointer list-none items-center rounded-lg border border-border bg-white px-2 text-xs font-bold">Lainnya</summary><div className="absolute right-0 z-20 mt-1 w-44 rounded-xl border border-red-200 bg-white p-1 shadow-lg"><button type="button" disabled={saving} onClick={() => { setDiscardConfirmation(""); setAction({ type: "discard-draft" }); }} className="flex h-9 w-full items-center gap-2 rounded-lg px-2 text-xs font-bold text-red-700 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" /> Buang revisi</button></div></details> : null}</>
             }
           />
 
@@ -2640,7 +2786,7 @@ export function AdminOrganizationPage() {
         </section>
       ) : null}
 
-      {hasActiveDraft ? (
+      {data?.draft ? (
         <section className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.7fr)]">
           <article className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
             <div className="flex items-center gap-2">
@@ -2653,6 +2799,11 @@ export function AdminOrganizationPage() {
               Server membaca revisi yang dipilih, lalu memisahkan maksud struktur
               dari kesiapan akun workflow. Preview ini tidak membuat langkah approval.
             </p>
+            <p className="mt-2 rounded-lg bg-surface px-3 py-2 text-xs font-semibold text-brand-heading">
+              {data.draft.name} · {revisionStatusLabel(data.draft.status)} · Efektif {displayDate(data.draft.effectiveOn)}
+            </p>
+            {employeesState === "error" ? <div role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900"><p className="font-bold">Daftar pegawai tidak dapat dimuat.</p><button type="button" onClick={loadEmployees} className="mt-2 h-9 rounded-xl border border-red-300 bg-white px-3 text-sm font-bold">Coba lagi</button></div> : null}
+            {previewStale ? <div role="status" className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"><span>Hasil preview perlu diperbarui karena struktur atau konteks revisi berubah.</span><button type="button" disabled={!previewEmployeeId || previewLoading} onClick={() => void runResolutionPreview()} className="h-9 rounded-xl bg-amber-900 px-3 text-sm font-bold text-white disabled:opacity-50">Perbarui preview</button></div> : null}
             <form
               onSubmit={(event) => void runResolutionPreview(event)}
               className="mt-4 flex flex-col gap-2 sm:flex-row"
@@ -2660,7 +2811,12 @@ export function AdminOrganizationPage() {
               <select
                 required
                 value={previewEmployeeId}
-                onChange={(event) => setPreviewEmployeeId(event.target.value)}
+                disabled={employeesState !== "loaded"}
+                onChange={(event) => {
+                  setPreviewEmployeeId(event.target.value);
+                  if (event.target.value) sessionStorage.setItem(ORGANIZATION_PREVIEW_EMPLOYEE_KEY, event.target.value);
+                  else sessionStorage.removeItem(ORGANIZATION_PREVIEW_EMPLOYEE_KEY);
+                }}
                 className={`${inputClass} min-w-0 flex-1`}
               >
                 <option value="">Pilih pegawai...</option>
@@ -2672,7 +2828,7 @@ export function AdminOrganizationPage() {
               </select>
               <button
                 type="submit"
-                disabled={previewLoading || !previewEmployeeId}
+                disabled={previewLoading || !previewEmployeeId || employeesState !== "loaded"}
                 className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white disabled:opacity-50"
               >
                 {previewLoading ? (
@@ -2690,7 +2846,7 @@ export function AdminOrganizationPage() {
                 </p>
                 {preview.snapshot ? (
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Revisi {preview.snapshot.status === "VALIDATED" ? "tervalidasi" : preview.snapshot.status === "DRAFT" ? "draft" : "terbit"}
+                    {data.draft.name} · {revisionStatusLabel(data.draft.status)} · Efektif {displayDate(data.draft.effectiveOn)}
                     {preview.requiredCapability === null ? " · capability tambahan tidak disyaratkan runtime Leave" : ""}
                   </p>
                 ) : null}
@@ -3238,7 +3394,7 @@ export function AdminOrganizationPage() {
           wide
           title={`Kelola anggota · ${action.node.name}`}
           description="Pilih satu per satu atau gunakan unit lama sebagai bantuan migrasi keanggotaan yang eksplisit."
-          onClose={() => setAction(null)}
+          onClose={closeMembershipEditor}
         >
           <MembershipEditor
             node={action.node}
@@ -3246,7 +3402,8 @@ export function AdminOrganizationPage() {
             employees={employees}
             memberships={data?.memberships ?? []}
             saving={saving}
-            onCancel={() => setAction(null)}
+            onCancel={closeMembershipEditor}
+            onDirtyChange={setMembershipDirty}
             onSubmit={(event) => handleMembers(event, action)}
           />
         </Modal>
@@ -3457,32 +3614,35 @@ export function AdminOrganizationPage() {
 
       {action?.type === "discard-draft" ? (
         <Modal
-          title="Buang seluruh draft?"
-          description="DRAFT atau hasil validasi yang belum dipublikasikan dapat dibuang. PUBLISHED tidak pernah dapat dihapus."
-          onClose={() => setAction(null)}
+          title="Buang revisi draft?"
+          description="Tindakan ini permanen. Revisi tervalidasi harus dibuka untuk koreksi terlebih dahulu; versi diterbitkan tidak dapat dihapus."
+          onClose={() => { setDiscardConfirmation(""); setAction(null); }}
         >
           <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
             <p className="font-bold">{data?.draft?.name}</p>
             <p className="mt-2 text-xs leading-5">
-              Semua perubahan yang belum dipublikasikan dalam draft ini akan
-              dihapus. Versi terpublikasi dan audit event tetap tersimpan.
+              Efektif {data?.draft ? displayDate(data.draft.effectiveOn) : "—"} · {data?.nodes.length ?? 0} kelompok · {data?.positions.length ?? 0} posisi · {data?.memberships.length ?? 0} keanggotaan.
+              Semua perubahan pada revisi ini akan dihapus. Versi diterbitkan dan audit event tetap tersimpan.
             </p>
           </div>
+          <Field label={`Ketik nama revisi “${data?.draft?.name ?? ""}” untuk melanjutkan`}>
+            <input value={discardConfirmation} onChange={(event) => setDiscardConfirmation(event.target.value)} autoComplete="off" className={inputClass} />
+          </Field>
           <div className="mt-6 flex justify-end gap-2">
             <button
               type="button"
-              onClick={() => setAction(null)}
+              onClick={() => { setDiscardConfirmation(""); setAction(null); }}
               className="h-10 rounded-xl border border-border px-4 text-sm font-semibold"
             >
               Batal
             </button>
             <button
               type="button"
-              disabled={saving}
+              disabled={saving || data?.draft?.status !== "DRAFT" || discardConfirmation !== data?.draft?.name}
               onClick={() => void discardDraft()}
               className="h-10 rounded-xl bg-red-700 px-4 text-sm font-bold text-white disabled:opacity-60"
             >
-              Buang draft
+              Buang revisi permanen
             </button>
           </div>
         </Modal>

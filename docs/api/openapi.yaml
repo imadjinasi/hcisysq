@@ -396,6 +396,15 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /admin/organization/designer/revisions:
+    get:
+      tags: [Organization]
+      operationId: listOrganizationDesignerRevisions
+      responses:
+        '200': { description: Stable navigator metadata for DRAFT, VALIDATED, and PUBLISHED revisions }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /admin/organization/designer/foundation-board-accounts:
     get:
       tags: [Organization]
@@ -435,10 +444,10 @@ paths:
       operationId: discardOrganizationDraft
       parameters: [{ $ref: '#/components/parameters/DraftId' }]
       responses:
-        '204': { description: Unpublished DRAFT or VALIDATED change set discarded; audit remains }
+        '204': { description: DRAFT change set discarded; audit remains }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
-        '409': { description: Published history is immutable }
+        '409': { description: VALIDATED must be reopened first; PUBLISHED history is immutable }
 
   /admin/organization/designer/drafts/{draftId}/nodes:
     post:

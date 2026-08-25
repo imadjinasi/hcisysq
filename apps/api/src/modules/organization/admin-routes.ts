@@ -365,6 +365,23 @@ export async function registerOrganizationAdminRoutes(
     });
   });
 
+  app.get("/admin/organization/designer/revisions", async (request, reply) => {
+    if (!(await authenticate(request, reply))) return;
+    const revisions = await repository.listChangeSets();
+    return reply.send({
+      items: revisions.map((revision) => ({
+        id: revision.id,
+        name: revision.name,
+        status: revision.status,
+        effectiveOn: revision.effectiveOn,
+        baseChangeSetId: revision.baseChangeSetId,
+        createdAt: revision.createdAt,
+        validatedAt: revision.validatedAt,
+        publishedAt: revision.publishedAt,
+      })),
+    });
+  });
+
   app.get("/admin/organization/designer/employees", async (request, reply) => {
     if (!(await authenticate(request, reply))) return;
     const result = await pool.query(
@@ -910,8 +927,15 @@ export async function registerOrganizationAdminRoutes(
     const deleted = await atomicOrganizationMutation(pool, principal, async (transaction) => {
       const snapshot = await transaction.repository.loadChangeSetSnapshotForUpdate(params.data.draftId);
       if (!snapshot) { await reply.status(404).send({ code: "ORGANIZATION_DRAFT_NOT_FOUND" }); return false; }
-      if (snapshot.changeSet.status === "PUBLISHED") {
-        await reply.status(409).send({ code: "ORGANIZATION_PUBLISHED_IMMUTABLE", message: "Published organization history cannot be deleted." });
+      if (snapshot.changeSet.status !== "DRAFT") {
+        await reply.status(409).send({
+          code: snapshot.changeSet.status === "PUBLISHED"
+            ? "ORGANIZATION_PUBLISHED_IMMUTABLE"
+            : "ORGANIZATION_VALIDATED_REOPEN_REQUIRED",
+          message: snapshot.changeSet.status === "PUBLISHED"
+            ? "Published organization history cannot be deleted."
+            : "Reopen the validated revision for correction before discarding it.",
+        });
         return false;
       }
       await transaction.audit("organization.draft.discarded", "organization_change_set", snapshot.changeSet.id,

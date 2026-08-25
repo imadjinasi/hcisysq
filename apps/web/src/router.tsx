@@ -179,6 +179,11 @@ const adminEmployeeImportHistoryRoute = createRoute({
 const adminOrganizationRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/organization",
+  validateSearch: (search: Record<string, unknown>) => ({
+    effectiveDate: typeof search.effectiveDate === "string" ? search.effectiveDate : undefined,
+    revisionId: typeof search.revisionId === "string" ? search.revisionId : undefined,
+    draftId: typeof search.draftId === "string" ? search.draftId : undefined,
+  }),
   beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
   component: AdminOrganizationPage,
 });

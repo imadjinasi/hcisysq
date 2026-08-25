@@ -63,8 +63,10 @@ identifier to an employee identifier or grants new permissions.
 Only a DRAFT group subtree may be deleted from a snapshot. The server removes
 its descendant groups, positions, memberships, incumbencies, authority
 bindings, and dependent reporting references atomically and audits impact
-counts. A whole DRAFT or VALIDATED-but-unpublished change set may be discarded
-after destructive confirmation. PUBLISHED history cannot be deleted.
+counts. A whole change set may be hard-discarded only while it is `DRAFT` and
+only after deliberate confirmation using its human revision name. A
+`VALIDATED` revision must first be reopened for correction. `PUBLISHED`
+history cannot be deleted.
 
 ### Resolver behavior
 
@@ -649,6 +651,36 @@ governance-account holder, replaces that node's explicit `LEADER` binding,
 and optionally saves an explicitly selected `parentPositionKey`. No reporting
 parent, `UNIT_APPROVER`, governance binding, or rollout state is inferred or
 created. A vacant leader is valid configuration.
+
+### ORG-009 revision continuity and recovery
+
+The primary workspace concept is an **Organization revision**, identified to
+administrators by its name, lifecycle (`Draft`, `Tervalidasi`, or
+`Diterbitkan`), and effective date. UUIDs remain internal identifiers and may
+support legacy deep links, but are never the required recovery workflow.
+
+The router owns the selected `revisionId` and published-history
+`effectiveDate`. A concrete revision's own `effectiveOn` is authoritative and
+the route is canonicalized to it. Back, forward, refresh, and router-native
+administration navigation must preserve that context. The browser session may
+remember only the last unfinished revision ID and preview employee ID; the
+server remains the source of truth and snapshot contents are never stored in
+browser storage.
+
+Workspace entry follows this deterministic order: explicit revision, an
+existing remembered unfinished revision, an explicit chooser when unfinished
+revisions exist, then the effective published snapshot. Multiple unfinished
+revisions are never resolved by title, date, or arbitrary recency. Missing
+identifiers produce recovery choices rather than silently substituting another
+revision.
+
+Switching revisions is explicit and clears revision-scoped validation, impact,
+and resolution diagnostics. A structure mutation invalidates any displayed
+resolution preview until it is refreshed for the selected employee. Employee
+list failures remain visible and retryable. Resolution preview is available
+for every concrete DRAFT, VALIDATED, or PUBLISHED snapshot supported by the
+server diagnostic endpoint; this does not change Leave submission or rollout
+authority semantics.
 
 When a position is selected for authority or reporting, the UI must retain the
 stable position key but disambiguate the human choice with position title, a

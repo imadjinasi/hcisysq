@@ -19,6 +19,8 @@ export interface OrganizationDraft {
   baseChangeSetId?: string | null;
 }
 
+export type OrganizationRevision = Omit<OrganizationDraft, "validationReport">;
+
 export interface OrganizationIncumbent {
   assignmentId?: string;
   positionKey?: string;
@@ -257,11 +259,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function getOrganizationDesignerView(input: {
   effectiveDate: string;
-  draftId?: string | null;
+  revisionId?: string | null;
 }): Promise<OrganizationDesignerView> {
   const params = new URLSearchParams({ effectiveDate: input.effectiveDate });
-  if (input.draftId) params.set("draftId", input.draftId);
+  if (input.revisionId) params.set("draftId", input.revisionId);
   return request<OrganizationDesignerView>(`?${params.toString()}`);
+}
+
+export async function listOrganizationRevisions(): Promise<OrganizationRevision[]> {
+  const result = await request<{ items: OrganizationRevision[] }>("/revisions");
+  return result.items;
 }
 
 export async function listOrganizationEmployees(): Promise<OrganizationEmployeeOption[]> {

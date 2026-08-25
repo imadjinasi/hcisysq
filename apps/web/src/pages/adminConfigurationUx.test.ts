@@ -27,10 +27,12 @@ describe("Organization Designer administration UX contracts", () => {
     expect(organizationSource).toContain("Tampilkan 3 tingkat lebih rendah");
   });
 
-  it("makes same-day revisions, destructive draft deletion, and account holders explicit", () => {
+  it("makes same-day revisions, deliberate DRAFT-only discard, and account holders explicit", () => {
     expect(organizationSource).toContain("Versi sebelumnya tetap tersimpan sebagai histori");
     expect(organizationSource).toContain("Hapus kelompok dan subtree?");
-    expect(organizationSource).toContain("Buang seluruh draft?");
+    expect(organizationSource).toContain("Buang revisi draft?");
+    expect(organizationSource).toContain("Ketik nama revisi");
+    expect(organizationSource).toContain('data?.draft?.status !== "DRAFT"');
     expect(organizationSource).toContain("Account Organ Yayasan");
     expect(organizationSource).toContain('href="/admin/access"');
     expect(organizationSource).toContain("tidak membuat account, mengaktifkan account, atau memberikan permission");
