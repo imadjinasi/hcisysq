@@ -133,6 +133,31 @@ export interface AuthorityEligibilityValidator {
   ): Promise<AuthorityEligibilityResult>;
 }
 
+export type AuthorityAccountStatus =
+  | "ACTIVE"
+  | "INVITED"
+  | "MISSING"
+  | "SUSPENDED"
+  | "INACTIVE";
+
+export type AuthorityCapabilityStatus = "READY" | "MISSING" | "NOT_REQUIRED";
+
+export interface AuthorityReadinessState {
+  employeeId: string;
+  employeeName: string;
+  employeeActive: boolean;
+  accountStatus: AuthorityAccountStatus;
+  capabilityStatus: AuthorityCapabilityStatus;
+}
+
+export interface AuthorityReadinessReader {
+  describeAuthorityReadiness(
+    employeeIds: string[],
+    effectiveDate: string,
+    requiredCapability?: string | undefined,
+  ): Promise<AuthorityReadinessState[]>;
+}
+
 export interface AuthorityResolutionInput {
   requesterEmployeeId: string;
   effectiveDate?: string | undefined;

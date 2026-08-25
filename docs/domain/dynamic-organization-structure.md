@@ -75,6 +75,25 @@ Dates use the Asia/Jakarta business date when the caller does not supply an expl
 
 Structural incumbency validity is intentionally narrower than workflow eligibility. A position may be occupied by an active employee who has no active HCIS account yet, so account preparation does not block structure publication. When that position is selected as a workflow authority, the resolver separately requires the active employee account and any requested capability and fails closed with an actionable eligibility error until those prerequisites exist. ORG-004 never creates or activates an account automatically.
 
+### ORG-007 authority-readiness diagnostics
+
+The Organization Designer preview for a selected DRAFT or VALIDATED revision
+must resolve against that exact selected snapshot, even though real workflow
+submission continues to use rollout and the effective PUBLISHED snapshot. The
+admin response separates two conclusions:
+
+- **structural intent**: target position, incumbent, vacancy path, and fallback;
+- **workflow readiness**: active employment, employee-account state, applicable
+  capability requirement, and the fail-closed runtime verdict.
+
+An `invited` account is therefore reported as **pending user activation**, not
+as a broken organization mapping. It is never returned as an actionable
+approver. Missing primary membership, invalid relationships, or unresolved
+authority remain configuration failures. The diagnostic uses the same
+`requiredCapability` semantics as the actual Leave organization bridge;
+optional capability readiness must not create a stricter false-negative than
+runtime submission.
+
 ### Rollout and Leave integration
 
 - `LEGACY`: the verified ORG-002 result remains authoritative and ORG-004 produces no routing or oversight side effect.

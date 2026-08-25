@@ -739,8 +739,30 @@ paths:
                 workflowKey: { type: string }
                 effectiveDate: { type: string, format: date }
       responses:
-        '200': { description: Concrete structural authority preview }
-        '409': { description: Fail-closed structural configuration error }
+        '200':
+          description: Selected-revision structural intent and separate fail-closed workflow readiness
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [employee, snapshot, effectiveDate, workflowKey, requiredCapability, steps, runtime, structuralIntents, structuralErrors, warnings]
+                properties:
+                  employee: { type: object }
+                  snapshot:
+                    type: object
+                    required: [id, status]
+                    properties:
+                      id: { type: string, format: uuid }
+                      status: { type: string, enum: [DRAFT, VALIDATED, PUBLISHED] }
+                  effectiveDate: { type: string, format: date }
+                  workflowKey: { type: string }
+                  requiredCapability: { type: ['string', 'null'] }
+                  steps: { type: array, description: Runtime-actionable approvers only, items: { type: object } }
+                  runtime: { type: object }
+                  structuralIntents: { type: array, items: { type: object } }
+                  structuralErrors: { type: array, items: { type: object } }
+                  warnings: { type: array, items: { type: object } }
+        '409': { description: Unexpected preview execution failure }
 
   /admin/organization/designer/drafts/{draftId}/publish:
     post:

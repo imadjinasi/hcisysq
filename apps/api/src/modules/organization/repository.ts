@@ -5,6 +5,7 @@ import type { QueryResult, QueryResultRow } from "pg";
 import type {
   AuthorityEligibilityContext,
   AuthorityEligibilityResult,
+  AuthorityReadinessState,
   OrganizationAuthorityBinding,
   OrganizationChangeSet,
   OrganizationIncumbency,
@@ -456,6 +457,60 @@ export class PostgresOrganizationRepository {
     if (!row.accountActive) return { eligible: false, reason: "ACCOUNT_NOT_ACTIVE" };
     if (!row.capabilityValid) return { eligible: false, reason: "CAPABILITY_MISSING" };
     return { eligible: true, reason: null };
+  }
+
+  async describeAuthorityReadiness(
+    employeeIds: string[],
+    effectiveDate: string,
+    requiredCapability?: string,
+  ): Promise<AuthorityReadinessState[]> {
+    if (employeeIds.length === 0) return [];
+    assertIsoDate(effectiveDate);
+    const result = await this.db.query<{
+      employeeId: string;
+      employeeName: string;
+      employeeActive: boolean;
+      accountStatus: "active" | "invited" | "suspended" | "inactive" | null;
+      capabilityValid: boolean;
+    }>(
+      `SELECT
+         e.id AS "employeeId",
+         e.full_name AS "employeeName",
+         (e.status = 'active') AS "employeeActive",
+         account.status AS "accountStatus",
+         CASE WHEN $3::text IS NULL THEN true ELSE EXISTS (
+           SELECT 1
+           FROM accounts capability_account
+           JOIN account_role_assignments ara ON ara.account_id = capability_account.id
+           JOIN role_permissions rp ON rp.role_id = ara.role_id
+           WHERE capability_account.employee_id = e.id
+             AND capability_account.principal_type = 'EMPLOYEE'
+             AND capability_account.status = 'active'
+             AND rp.permission_key = $3
+             AND (ara.starts_on IS NULL OR ara.starts_on <= $2::date)
+             AND (ara.ends_on IS NULL OR ara.ends_on >= $2::date)
+         ) END AS "capabilityValid"
+       FROM employees e
+       LEFT JOIN LATERAL (
+         SELECT a.status
+         FROM accounts a
+         WHERE a.employee_id = e.id AND a.principal_type = 'EMPLOYEE'
+         ORDER BY a.created_at DESC
+         LIMIT 1
+       ) account ON true
+       WHERE e.id = ANY($1::uuid[])`,
+      [employeeIds, effectiveDate, requiredCapability ?? null],
+    );
+    return result.rows.map((row) => ({
+      employeeId: row.employeeId,
+      employeeName: row.employeeName,
+      employeeActive: row.employeeActive,
+      accountStatus: row.accountStatus?.toUpperCase() as AuthorityReadinessState["accountStatus"]
+        ?? "MISSING",
+      capabilityStatus: requiredCapability
+        ? row.capabilityValid ? "READY" : "MISSING"
+        : "NOT_REQUIRED",
+    }));
   }
 
   /**

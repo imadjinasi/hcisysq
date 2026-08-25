@@ -161,6 +161,8 @@ export interface OrganizationResolutionPreview {
   };
   effectiveDate: string;
   workflowKey: string;
+  snapshot?: { id: string; status: "DRAFT" | "VALIDATED" | "PUBLISHED" };
+  requiredCapability?: string | null;
   mode?: string;
   steps: Array<{
     authorityType?: string;
@@ -168,6 +170,43 @@ export interface OrganizationResolutionPreview {
     employeeName: string;
     positionTitle?: string | null;
     source?: string;
+  }>;
+  runtime?: {
+    authorities: Array<Record<string, unknown>>;
+    error: { code: string; message: string; details: Record<string, unknown> } | null;
+  };
+  structuralIntents?: Array<{
+    authorityType: string;
+    targetPositionKey: string | null;
+    targetPositionTitle: string | null;
+    targetNodeName: string | null;
+    intendedIncumbentEmployeeId: string;
+    intendedIncumbentEmployeeName: string;
+    vacancyFallback: boolean;
+    path: Array<{
+      positionKey: string;
+      positionTitle: string;
+      nodeName: string;
+      state: "OCCUPIED" | "VACANT";
+      incumbentEmployeeId: string | null;
+      incumbentEmployeeName: string | null;
+      accountStatus: "ACTIVE" | "INVITED" | "MISSING" | "SUSPENDED" | "INACTIVE" | null;
+    }>;
+    readiness: {
+      employeeId: string;
+      employeeName: string;
+      employeeActive: boolean;
+      accountStatus: "ACTIVE" | "INVITED" | "MISSING" | "SUSPENDED" | "INACTIVE";
+      capabilityStatus: "READY" | "MISSING" | "NOT_REQUIRED";
+      runtimeVerdict: "READY" | "PENDING_USER_ACTIVATION" | "CONFIGURATION_BLOCKED" | "VACANT_FALLBACK" | "BUSINESS_DECISION_REQUIRED";
+      runtimeEligible: boolean;
+    };
+  }>;
+  structuralErrors?: Array<{
+    authorityType: string;
+    code: string;
+    message: string;
+    details: Record<string, unknown>;
   }>;
   oversight?: {
     employeeId: string;
@@ -282,6 +321,25 @@ export function updateOrganizationNode(
     method: "PATCH",
     body: JSON.stringify(input),
   });
+}
+
+export function organizationStatusCopy(
+  mode: OrganizationDesignerView["mode"],
+  changeSetStatus?: "DRAFT" | "VALIDATED" | "PUBLISHED",
+) {
+  if (changeSetStatus === "DRAFT")
+    return { label: "Draft", className: "bg-amber-100 text-amber-900" };
+  if (changeSetStatus === "VALIDATED")
+    return { label: "Tervalidasi", className: "bg-blue-50 text-blue-800" };
+  if (changeSetStatus === "PUBLISHED")
+    return { label: "Diterbitkan · hanya baca", className: "bg-emerald-50 text-emerald-800" };
+  if (mode === "HISTORICAL")
+    return { label: "Historis", className: "bg-slate-100 text-slate-700" };
+  if (mode === "FUTURE")
+    return { label: "Terjadwal", className: "bg-blue-50 text-blue-800" };
+  if (mode === "DRAFT")
+    return { label: "Draft", className: "bg-amber-100 text-amber-900" };
+  return { label: "Saat ini", className: "bg-emerald-50 text-emerald-800" };
 }
 
 export async function listFoundationBoardAccounts(): Promise<OrganizationAccountOption[]> {

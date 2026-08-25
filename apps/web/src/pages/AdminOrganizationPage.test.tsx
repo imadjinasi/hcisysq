@@ -7,6 +7,7 @@ import {
   LeaderEditor,
   PositionPicker,
 } from "@/pages/AdminOrganizationPage";
+import { organizationStatusCopy } from "@/lib/organizationDesigner";
 import type {
   OrganizationAccountOption,
   OrganizationDesignerView,
@@ -168,5 +169,13 @@ describe("guided organization administration", () => {
     expect(html).toContain("Organ Yayasan");
     expect(html).toContain("VACANT · belum ada pejabat");
     expect(html).toContain("Atasan struktural belum ditetapkan");
+  });
+});
+
+describe("organization revision status", () => {
+  it("distinguishes a validated successor from a draft", () => {
+    expect(organizationStatusCopy("DRAFT", "DRAFT").label).toBe("Draft");
+    expect(organizationStatusCopy("DRAFT", "VALIDATED").label).toBe("Tervalidasi");
+    expect(organizationStatusCopy("CURRENT", "PUBLISHED").label).toBe("Diterbitkan · hanya baca");
   });
 });

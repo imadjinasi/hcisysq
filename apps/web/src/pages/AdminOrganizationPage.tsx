@@ -52,6 +52,7 @@ import {
   getOrganizationRollout,
   listFoundationBoardAccounts,
   listOrganizationEmployees,
+  organizationStatusCopy,
   previewOrganizationResolution,
   publishOrganizationDraft,
   replaceOrganizationIncumbencies,
@@ -271,14 +272,21 @@ function SubmitRow({
   );
 }
 
-function statusCopy(mode: OrganizationDesignerView["mode"]) {
-  if (mode === "HISTORICAL")
-    return { label: "Historis", className: "bg-slate-100 text-slate-700" };
-  if (mode === "FUTURE")
-    return { label: "Terjadwal", className: "bg-blue-50 text-blue-800" };
-  if (mode === "DRAFT")
-    return { label: "Draft", className: "bg-amber-100 text-amber-900" };
-  return { label: "Saat ini", className: "bg-emerald-50 text-emerald-800" };
+function readinessVerdictCopy(value: string) {
+  if (value === "READY") return "Siap";
+  if (value === "PENDING_USER_ACTIVATION") return "Menunggu aktivasi pengguna";
+  if (value === "VACANT_FALLBACK") return "Siap melalui fallback posisi kosong";
+  if (value === "BUSINESS_DECISION_REQUIRED") return "Memerlukan keputusan bisnis";
+  return "Konfigurasi belum siap";
+}
+
+function accountStatusCopy(value: string | null) {
+  if (value === "ACTIVE") return "Aktif";
+  if (value === "INVITED") return "Menunggu aktivasi";
+  if (value === "SUSPENDED") return "Ditangguhkan";
+  if (value === "INACTIVE") return "Nonaktif";
+  if (value === "MISSING") return "Belum ada akun";
+  return "Tidak ada pejabat";
 }
 
 function authorityTypeCopy(value: string) {
@@ -1501,7 +1509,7 @@ export function AdminOrganizationPage() {
   const canEdit = data?.draft?.status === "DRAFT";
   const hasActiveDraft =
     data?.draft?.status === "DRAFT" || data?.draft?.status === "VALIDATED";
-  const status = statusCopy(data?.mode ?? "CURRENT");
+  const status = organizationStatusCopy(data?.mode ?? "CURRENT", data?.draft?.status);
   const pendingDeletionImpact = useMemo(
     () =>
       action?.type === "delete-node" && data
@@ -2622,8 +2630,8 @@ export function AdminOrganizationPage() {
               </h2>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              Server menyelesaikan kewenangan, vacancy, acting, capability, dan
-              deduplikasi. Chart tidak menebak approver.
+              Server membaca revisi yang dipilih, lalu memisahkan maksud struktur
+              dari kesiapan akun workflow. Preview ini tidak membuat langkah approval.
             </p>
             <form
               onSubmit={(event) => void runResolutionPreview(event)}
@@ -2660,6 +2668,80 @@ export function AdminOrganizationPage() {
                 <p className="text-xs font-bold text-brand-heading">
                   {preview.employee.fullName}
                 </p>
+                {preview.snapshot ? (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Revisi {preview.snapshot.status === "VALIDATED" ? "tervalidasi" : preview.snapshot.status === "DRAFT" ? "draft" : "terbit"}
+                    {preview.requiredCapability === null ? " · capability tambahan tidak disyaratkan runtime Leave" : ""}
+                  </p>
+                ) : null}
+                {preview.structuralIntents?.length ? (
+                  <div className="mt-4 space-y-3">
+                    <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">
+                      Maksud struktur
+                    </p>
+                    {preview.structuralIntents.map((intent) => (
+                      <div key={intent.authorityType} className="rounded-xl border border-border bg-white p-3">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <p className="text-xs font-bold text-brand-heading">
+                              {authorityTypeCopy(intent.authorityType)}
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              Target: {intent.targetPositionTitle ?? "Belum terselesaikan"}
+                              {intent.targetNodeName ? ` · ${intent.targetNodeName}` : ""}
+                            </p>
+                          </div>
+                          <span className={cn(
+                            "rounded-full px-2 py-1 text-xs font-bold",
+                            intent.readiness.runtimeEligible
+                              ? "bg-emerald-50 text-emerald-800"
+                              : intent.readiness.runtimeVerdict === "PENDING_USER_ACTIVATION"
+                                ? "bg-amber-100 text-amber-900"
+                                : "bg-red-50 text-red-800",
+                          )}>
+                            {readinessVerdictCopy(intent.readiness.runtimeVerdict)}
+                          </span>
+                        </div>
+                        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                          {intent.path.map((item, index) => (
+                            <div key={`${intent.authorityType}-${item.positionKey}`} className="contents">
+                              <span className="rounded-lg bg-surface px-2 py-1 text-xs text-brand-heading">
+                                {item.positionTitle} · {item.nodeName}
+                                <span className="block text-muted-foreground">
+                                  {item.state === "VACANT"
+                                    ? "VACANT"
+                                    : `${item.incumbentEmployeeName ?? "Pejabat tidak dikenal"} · ${accountStatusCopy(item.accountStatus)}`}
+                                </span>
+                              </span>
+                              {index < intent.path.length - 1 ? <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" /> : null}
+                            </div>
+                          ))}
+                        </div>
+                        <p className="mt-3 text-xs text-muted-foreground">
+                          Pejabat dimaksud: <span className="font-bold text-brand-heading">{intent.intendedIncumbentEmployeeName}</span>
+                          {` · Pegawai ${intent.readiness.employeeActive ? "aktif" : "nonaktif"}`}
+                          {` · Akun ${accountStatusCopy(intent.readiness.accountStatus).toLowerCase()}`}
+                          {` · Capability ${intent.readiness.capabilityStatus === "NOT_REQUIRED" ? "tidak disyaratkan" : intent.readiness.capabilityStatus === "READY" ? "siap" : "belum tersedia"}`}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                {preview.structuralErrors?.length ? (
+                  <div className="mt-3 space-y-2">
+                    {preview.structuralErrors.map((item) => (
+                      <p key={`${item.authorityType}-${item.code}`} className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900">
+                        <span className="font-bold">{authorityTypeCopy(item.authorityType)}:</span>{" "}
+                        {item.code === "MEMBERSHIP_NOT_CONFIGURED"
+                          ? "Pegawai belum memiliki keanggotaan utama efektif pada revisi ini."
+                          : item.message}
+                      </p>
+                    ))}
+                  </div>
+                ) : null}
+                <p className="mt-4 text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">
+                  Kesiapan workflow aktual
+                </p>
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   {preview.steps.map((step, index) => (
                     <div
@@ -2680,11 +2762,19 @@ export function AdminOrganizationPage() {
                     </div>
                   ))}
                   {preview.steps.length === 0 ? (
-                    <span className="text-xs text-muted-foreground">
-                      Tidak ada approver yang terselesaikan.
+                    <span className="text-xs text-red-800">
+                      Tidak ada approver yang dapat ditindaklanjuti. Workflow tetap gagal tertutup.
                     </span>
                   ) : null}
                 </div>
+                {preview.runtime?.error ? (
+                  <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                    {preview.runtime.error.code === "AUTHORITY_INELIGIBLE"
+                      && preview.runtime.error.details.lastIneligibility === "ACCOUNT_NOT_ACTIVE"
+                      ? "Jalur struktur ditemukan, tetapi akun pejabat tujuan belum aktif."
+                      : preview.runtime.error.message}
+                  </p>
+                ) : null}
                 {preview.oversight ? (
                   <p className="mt-3 text-xs text-muted-foreground">
                     Setelah final approved, notifikasi oversight:{" "}

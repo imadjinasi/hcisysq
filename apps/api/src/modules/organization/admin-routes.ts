@@ -15,7 +15,7 @@ import {
   GuidedApprovalReportingError,
 } from "./approval-reporting.js";
 import { deleteOrganizationSubtree, OrganizationDraftService } from "./draft-service.js";
-import { OrganizationAuthorityResolver } from "./resolver.js";
+import { OrganizationAuthorityReadinessPreviewService } from "./readiness-preview.js";
 import { PostgresOrganizationRepository, type OrganizationQueryable } from "./repository.js";
 import { assertIsoDate, jakartaBusinessDate } from "./jakarta-date.js";
 
@@ -761,20 +761,37 @@ export async function registerOrganizationAdminRoutes(
     if (!params.success || !body.success) return invalid(reply, "INVALID_RESOLUTION_PREVIEW", "Invalid resolution preview input.");
     const snapshot = await repository.loadChangeSetSnapshot(params.data.draftId);
     if (!snapshot) return reply.status(404).send({ code: "ORGANIZATION_DRAFT_NOT_FOUND" });
-    const resolver = new OrganizationAuthorityResolver({ loadEffectiveSnapshot: async () => snapshot }, { eligibilityValidator: repository });
     try {
-      const result = await resolver.resolveLineAuthorities({ requesterEmployeeId: body.data.employeeId,
-        effectiveDate: body.data.effectiveDate, workflowKey: body.data.workflowKey, requiredCapability: "leave.approve" });
-      const ids = [...new Set([body.data.employeeId, ...result.authorities.map((item) => item.employeeId)])];
+      const result = await new OrganizationAuthorityReadinessPreviewService(
+        repository,
+        repository,
+      ).preview(snapshot, {
+        requesterEmployeeId: body.data.employeeId,
+        effectiveDate: body.data.effectiveDate,
+        workflowKey: body.data.workflowKey,
+      });
+      const ids = [...new Set([
+        body.data.employeeId,
+        ...result.runtime.authorities.map((item) => item.employeeId),
+      ])];
       const employees = await pool.query<{ id: string; employeeNumber: string; fullName: string }>(
         `SELECT id, employee_number AS "employeeNumber", full_name AS "fullName" FROM employees WHERE id = ANY($1::uuid[])`, [ids]);
       const byId = new Map(employees.rows.map((item) => [item.id, item]));
       return reply.send({ employee: byId.get(body.data.employeeId) ?? { id: body.data.employeeId, fullName: "Unknown employee" },
-        effectiveDate: result.effectiveDate, workflowKey: body.data.workflowKey,
-        steps: result.authorities.map((item) => ({ authorityType: (item.sources ?? [item.source]).join(" + "), employeeId: item.employeeId,
+        snapshot: result.snapshot, effectiveDate: result.effectiveDate, workflowKey: body.data.workflowKey,
+        requiredCapability: result.requiredCapability,
+        steps: result.runtime.authorities.map((item) => ({ authorityType: (item.sources ?? [item.source]).join(" + "), employeeId: item.employeeId,
           employeeName: byId.get(item.employeeId)?.fullName ?? "Unknown employee",
           positionTitle: snapshot.positions.find((position) => position.stableKey === item.positionKey)?.title ?? null,
-          source: item.incumbentKind })), oversight: null, warnings: [] });
+          source: item.incumbentKind })),
+        runtime: result.runtime,
+        structuralIntents: result.structuralIntents,
+        structuralErrors: result.structuralErrors,
+        oversight: null,
+        warnings: result.runtime.error
+          ? [{ code: result.runtime.error.code, message: result.runtime.error.message }]
+          : [],
+      });
     } catch (error) {
       const item = error as { code?: string; message?: string };
       return reply.status(409).send({ code: item.code ?? "ORGANIZATION_RESOLUTION_FAILED", message: item.message ?? "Authority cannot be resolved." });
