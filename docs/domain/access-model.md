@@ -1,7 +1,7 @@
 # Access Model
 
 **Status:** ACCEPTED — ORG-004 STRUCTURAL AUTHORITY EXTENSION PLANNED  
-**Specifications:** AUTH-001, AUTH-010, SEC-001  
+**Specifications:** AUTH-001, AUTH-010, SEC-001, ACCESS-ORG-001
 **Related:** ORG-001, ORG-002, ORG-004
 
 This document defines the target access model for HCIS YSQ. Legacy HCIS role names are discovery evidence only and must not be copied automatically into the new implementation.
@@ -225,6 +225,12 @@ inactive
 - `inactive`: login disabled because the account/mandate ended.
 
 Employee status and account status are validated independently.
+
+Bulk alignment for the confirmed active-employee policy is defined in
+`docs/domain/bulk-active-employee-access.md`. Bulk preparation may prepare an
+account, issue/rotate an activation invitation, or safely reactivate a
+previously activated inactive account. It never changes `invited` directly to
+`active`, creates a password, or silently reactivates a suspended account.
 
 ## Login behavior
 

@@ -12,6 +12,10 @@ import {
   type AuthPrincipal,
 } from "../auth/service.js";
 import {
+  BULK_EMPLOYEE_ACCESS_MAX_ITEMS,
+  BulkEmployeeAccessService,
+} from "./bulk-employee-access.js";
+import {
   assertAssignmentDates,
   assertAssignmentScope,
   assertManagerAssignment,
@@ -33,6 +37,13 @@ const createEmployeeAccountSchema = z.object({
 
 const accountStatusSchema = z.object({
   status: z.enum(["invited", "active", "suspended", "inactive"]),
+});
+
+const bulkEmployeeAccessSchema = z.object({
+  employeeIds: z.array(z.string().uuid())
+    .min(1)
+    .max(BULK_EMPLOYEE_ACCESS_MAX_ITEMS)
+    .refine((ids) => new Set(ids).size === ids.length, "Employee ID harus unik."),
 });
 
 const roleAssignmentSchema = z.object({
@@ -135,6 +146,18 @@ interface SimpleUnitRow {
   name: string;
 }
 
+interface EmployeeAccessRow {
+  id: string;
+  employeeNumber: string;
+  fullName: string;
+  status: "active" | "inactive" | "resigned";
+  email: string | null;
+  unitName: string | null;
+  positionName: string | null;
+  accountId: string | null;
+  accountStatus: "invited" | "active" | "suspended" | "inactive" | null;
+}
+
 async function audit(
   pool: Pool,
   principal: AuthPrincipal,
@@ -166,6 +189,7 @@ export async function registerOrgAccessAdminRoutes(
     config.AUTH_SESSION_TTL_HOURS,
     config.NODE_ENV === "production",
   );
+  const bulkEmployeeAccess = new BulkEmployeeAccessService(pool);
 
   async function authenticateAdmin(
     request: FastifyRequest,
@@ -429,7 +453,7 @@ export async function registerOrgAccessAdminRoutes(
     const principal = await authenticateAdmin(request, reply);
     if (!principal) return;
 
-    const [accounts, assignments, roles, units, unaccounted] = await Promise.all([
+    const [accounts, assignments, roles, units, unaccounted, employees] = await Promise.all([
       pool.query<AccessAccountRow>(
         `
           SELECT
@@ -500,6 +524,23 @@ export async function registerOrgAccessAdminRoutes(
             )
         `,
       ),
+      pool.query<EmployeeAccessRow>(
+        `SELECT
+           e.id,
+           e.employee_number AS "employeeNumber",
+           e.full_name AS "fullName",
+           e.status,
+           e.email,
+           u.name AS "unitName",
+           p.name AS "positionName",
+           a.id AS "accountId",
+           a.status AS "accountStatus"
+         FROM employees e
+         LEFT JOIN organizational_units u ON u.id = e.organizational_unit_id
+         LEFT JOIN positions p ON p.id = e.position_id
+         LEFT JOIN accounts a ON a.employee_id = e.id AND a.principal_type = 'EMPLOYEE'
+         ORDER BY e.full_name, e.id`,
+      ),
     ]);
 
     reply.header("Cache-Control", "no-store");
@@ -516,6 +557,7 @@ export async function registerOrgAccessAdminRoutes(
       })),
       roles: roles.rows,
       units: units.rows,
+      employees: employees.rows,
       summary: {
         accounts: accounts.rows.length,
         active: accounts.rows.filter((row) => row.status === "active").length,
@@ -523,6 +565,34 @@ export async function registerOrgAccessAdminRoutes(
         unaccountedActiveEmployees: unaccounted.rows[0]?.count ?? 0,
       },
     });
+  });
+
+  app.post("/admin/access/employee-accounts/bulk-preview", async (request, reply) => {
+    const principal = await authenticateAdmin(request, reply);
+    if (!principal) return;
+    const body = bulkEmployeeAccessSchema.safeParse(request.body);
+    if (!body.success) {
+      return reply.status(400).send({
+        code: "INVALID_BULK_EMPLOYEE_ACCESS_INPUT",
+        message: `Pilih 1-${BULK_EMPLOYEE_ACCESS_MAX_ITEMS} pegawai tanpa duplikasi.`,
+      });
+    }
+    reply.header("Cache-Control", "no-store");
+    return reply.send(await bulkEmployeeAccess.preview(body.data.employeeIds));
+  });
+
+  app.post("/admin/access/employee-accounts/bulk-prepare", async (request, reply) => {
+    const principal = await authenticateAdmin(request, reply);
+    if (!principal) return;
+    const body = bulkEmployeeAccessSchema.safeParse(request.body);
+    if (!body.success) {
+      return reply.status(400).send({
+        code: "INVALID_BULK_EMPLOYEE_ACCESS_INPUT",
+        message: `Pilih 1-${BULK_EMPLOYEE_ACCESS_MAX_ITEMS} pegawai tanpa duplikasi.`,
+      });
+    }
+    reply.header("Cache-Control", "no-store");
+    return reply.send(await bulkEmployeeAccess.prepare(body.data.employeeIds, principal.id));
   });
 
   app.post("/admin/access/employee-accounts", async (request, reply) => {

@@ -94,8 +94,87 @@ export interface AccessAccount {
   assignments: RoleAssignment[];
 }
 
+export interface EmployeeAccessRow {
+  id: string;
+  employeeNumber: string;
+  fullName: string;
+  status: "active" | "inactive" | "resigned";
+  email: string | null;
+  unitName: string | null;
+  positionName: string | null;
+  accountId: string | null;
+  accountStatus: "invited" | "active" | "suspended" | "inactive" | null;
+}
+
+export type BulkEmployeeAccessCategory =
+  | "ALREADY_ACTIVE"
+  | "INVITATION_REQUIRED"
+  | "ACCOUNT_PREPARATION_REQUIRED"
+  | "SAFE_REACTIVATION"
+  | "SKIPPED_EMPLOYEE_NOT_ACTIVE"
+  | "SUSPENDED_UNCHANGED"
+  | "REQUIRES_REVIEW";
+
+export interface BulkEmployeeAccessPreviewItem {
+  employeeId: string;
+  employeeNumber: string;
+  employeeName: string;
+  employeeStatus: EmployeeAccessRow["status"];
+  accountId: string | null;
+  accountStatus: EmployeeAccessRow["accountStatus"];
+  category: BulkEmployeeAccessCategory;
+  reasonCode: string | null;
+  message: string;
+}
+
+export interface BulkEmployeeAccessPreview {
+  items: BulkEmployeeAccessPreviewItem[];
+  summary: {
+    selected: number;
+    alreadyActive: number;
+    invitationRequired: number;
+    accountPreparationRequired: number;
+    safeReactivation: number;
+    skippedInactiveOrResigned: number;
+    suspendedUnchanged: number;
+    requiresReview: number;
+  };
+}
+
+export type BulkEmployeeAccessAction =
+  | "ALREADY_ACTIVE"
+  | "INVITATION_ISSUED"
+  | "ACCOUNT_PREPARED_AND_INVITATION_ISSUED"
+  | "ACCOUNT_REACTIVATED"
+  | "SKIPPED_EMPLOYEE_NOT_ACTIVE"
+  | "SUSPENDED_UNCHANGED"
+  | "REQUIRES_REVIEW"
+  | "FAILED";
+
+export interface BulkEmployeeAccessResult {
+  bulkOperationId: string;
+  items: Array<BulkEmployeeAccessPreviewItem & {
+    action: BulkEmployeeAccessAction;
+    resultingAccountStatus: EmployeeAccessRow["accountStatus"];
+    activationPath?: string;
+    activationExpiresAt?: string;
+  }>;
+  summary: {
+    selected: number;
+    alreadyActive: number;
+    accountsPrepared: number;
+    activationInvitationsIssuedOrReissued: number;
+    accountsSafelyReactivated: number;
+    skippedInactiveOrResigned: number;
+    suspendedUnchanged: number;
+    requiresReview: number;
+    failed: number;
+  };
+}
+
 export interface AccessAdminResponse {
   accounts: AccessAccount[];
+  employees: EmployeeAccessRow[];
   roles: AccessRole[];
   units: Array<{ id: string; name: string }>;
   summary: {
@@ -187,6 +266,30 @@ export async function prepareEmployeeAccount(input: {
     credentials: "include",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify(input),
+  });
+  return readJson(response);
+}
+
+export async function previewBulkEmployeeAccess(
+  employeeIds: string[],
+): Promise<BulkEmployeeAccessPreview> {
+  const response = await fetch("/api/admin/access/employee-accounts/bulk-preview", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ employeeIds }),
+  });
+  return readJson(response);
+}
+
+export async function prepareBulkEmployeeAccess(
+  employeeIds: string[],
+): Promise<BulkEmployeeAccessResult> {
+  const response = await fetch("/api/admin/access/employee-accounts/bulk-prepare", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ employeeIds }),
   });
   return readJson(response);
 }

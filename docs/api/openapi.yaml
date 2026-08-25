@@ -15,6 +15,7 @@ tags:
   - name: Employees
   - name: Leave
   - name: Approvals
+  - name: Access
   - name: Organization
 
 paths:
@@ -231,6 +232,46 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Problem'
+
+  /admin/access/employee-accounts/bulk-preview:
+    post:
+      tags: [Access]
+      operationId: previewBulkEmployeeAccess
+      summary: Preview canonical account preparation for explicitly selected employees
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BulkEmployeeAccessInput' }
+      responses:
+        '200':
+          description: Read-only per-employee classification and summary
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BulkEmployeeAccessPreview' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/access/employee-accounts/bulk-prepare:
+    post:
+      tags: [Access]
+      operationId: prepareBulkEmployeeAccess
+      summary: Prepare or align employee accounts without bypassing employee-owned activation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BulkEmployeeAccessInput' }
+      responses:
+        '200':
+          description: Audited per-item outcomes; invited accounts remain activation-pending
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BulkEmployeeAccessResult' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
 
   /admin/leave/configuration:
     get:
@@ -800,6 +841,98 @@ components:
             $ref: '#/components/schemas/ValidationProblem'
 
   schemas:
+    BulkEmployeeAccessInput:
+      type: object
+      additionalProperties: false
+      required: [employeeIds]
+      properties:
+        employeeIds:
+          type: array
+          minItems: 1
+          maxItems: 200
+          uniqueItems: true
+          items: { type: string, format: uuid }
+
+    BulkEmployeeAccessCategory:
+      type: string
+      enum:
+        - ALREADY_ACTIVE
+        - INVITATION_REQUIRED
+        - ACCOUNT_PREPARATION_REQUIRED
+        - SAFE_REACTIVATION
+        - SKIPPED_EMPLOYEE_NOT_ACTIVE
+        - SUSPENDED_UNCHANGED
+        - REQUIRES_REVIEW
+
+    BulkEmployeeAccessItem:
+      type: object
+      required: [employeeId, employeeNumber, employeeName, employeeStatus, accountId, accountStatus, category, reasonCode, message]
+      properties:
+        employeeId: { type: string, format: uuid }
+        employeeNumber: { type: string }
+        employeeName: { type: string }
+        employeeStatus: { type: string, enum: [active, inactive, resigned] }
+        accountId: { type: [string, 'null'], format: uuid }
+        accountStatus: { type: [string, 'null'], enum: [invited, active, suspended, inactive, null] }
+        category: { $ref: '#/components/schemas/BulkEmployeeAccessCategory' }
+        reasonCode: { type: [string, 'null'] }
+        message: { type: string }
+
+    BulkEmployeeAccessPreview:
+      type: object
+      required: [items, summary]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/BulkEmployeeAccessItem' }
+        summary:
+          type: object
+          required: [selected, alreadyActive, invitationRequired, accountPreparationRequired, safeReactivation, skippedInactiveOrResigned, suspendedUnchanged, requiresReview]
+          properties:
+            selected: { type: integer, minimum: 1, maximum: 200 }
+            alreadyActive: { type: integer, minimum: 0 }
+            invitationRequired: { type: integer, minimum: 0 }
+            accountPreparationRequired: { type: integer, minimum: 0 }
+            safeReactivation: { type: integer, minimum: 0 }
+            skippedInactiveOrResigned: { type: integer, minimum: 0 }
+            suspendedUnchanged: { type: integer, minimum: 0 }
+            requiresReview: { type: integer, minimum: 0 }
+
+    BulkEmployeeAccessResult:
+      type: object
+      required: [bulkOperationId, items, summary]
+      properties:
+        bulkOperationId: { type: string, format: uuid }
+        items:
+          type: array
+          items:
+            allOf:
+              - { $ref: '#/components/schemas/BulkEmployeeAccessItem' }
+              - type: object
+                required: [action, resultingAccountStatus]
+                properties:
+                  action:
+                    type: string
+                    enum: [ALREADY_ACTIVE, INVITATION_ISSUED, ACCOUNT_PREPARED_AND_INVITATION_ISSUED, ACCOUNT_REACTIVATED, SKIPPED_EMPLOYEE_NOT_ACTIVE, SUSPENDED_UNCHANGED, REQUIRES_REVIEW, FAILED]
+                  resultingAccountStatus: { type: [string, 'null'], enum: [invited, active, suspended, inactive, null] }
+                  activationPath:
+                    type: string
+                    description: One-time plaintext issuance response only; never persisted or audited
+                  activationExpiresAt: { type: string, format: date-time }
+        summary:
+          type: object
+          required: [selected, alreadyActive, accountsPrepared, activationInvitationsIssuedOrReissued, accountsSafelyReactivated, skippedInactiveOrResigned, suspendedUnchanged, requiresReview, failed]
+          properties:
+            selected: { type: integer, minimum: 1, maximum: 200 }
+            alreadyActive: { type: integer, minimum: 0 }
+            accountsPrepared: { type: integer, minimum: 0 }
+            activationInvitationsIssuedOrReissued: { type: integer, minimum: 0 }
+            accountsSafelyReactivated: { type: integer, minimum: 0 }
+            skippedInactiveOrResigned: { type: integer, minimum: 0 }
+            suspendedUnchanged: { type: integer, minimum: 0 }
+            requiresReview: { type: integer, minimum: 0 }
+            failed: { type: integer, minimum: 0 }
+
     OrganizationRolloutMode:
       type: string
       enum: [LEGACY, SHADOW, STRUCTURE]

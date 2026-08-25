@@ -84,6 +84,8 @@ Admin, wajib principal `SUPER_ADMIN`:
 - `POST /admin/access/employee-accounts`
 - `POST /admin/access/board-accounts`
 - `POST /admin/access/accounts/:accountId/activation`
+- `POST /admin/access/employee-accounts/bulk-preview`
+- `POST /admin/access/employee-accounts/bulk-prepare`
 
 Public capability route:
 
@@ -91,6 +93,11 @@ Public capability route:
 - `POST /auth/activation/complete` dengan body `{ token, password }`
 
 Respons penerbitan admin berisi `activationPath` berbentuk `/activate#token=...` dan `expiresAt`. Frontend membentuk absolute URL dari origin saat ini; backend tidak menyimpan hostname production.
+
+ACCESS-ORG-001 menggunakan primitive issuance yang sama di dalam transaksi
+per employee. Bulk reissue mencabut token aktif lama, account tetap `invited`,
+dan UI tidak menampilkan puluhan raw token sekaligus; administrator membuka
+hasil per employee dan menyalin satu link pada satu waktu.
 
 ## UX
 

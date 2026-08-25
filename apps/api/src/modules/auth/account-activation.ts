@@ -136,6 +136,77 @@ async function loadActivation(
 export class AccountActivationService {
   constructor(private readonly pool: Pool) {}
 
+  async issueInTransaction(
+    client: PoolClient,
+    accountId: string,
+    issuedByAccountId: string,
+  ): Promise<{ token: string; expiresAt: string }> {
+    const accountResult = await client.query<AccountForIssueRow>(
+      `SELECT
+        account.id,
+        account.principal_type AS "principalType",
+        account.status,
+        employee.status AS "employeeStatus",
+        account.password_hash AS "passwordHash"
+       FROM accounts account
+       LEFT JOIN employees employee ON employee.id = account.employee_id
+       WHERE account.id = $1
+       FOR UPDATE OF account`,
+      [accountId],
+    );
+    const account = accountResult.rows[0];
+    if (!account) {
+      throw new AccountActivationError(404, "ACCOUNT_NOT_FOUND", "Account tidak ditemukan.");
+    }
+    if (account.principalType === "SUPER_ADMIN") {
+      throw new AccountActivationError(
+        403,
+        "SUPER_ADMIN_ACTIVATION_PROTECTED",
+        "Aktivasi Super Admin tidak menggunakan alur undangan account biasa.",
+      );
+    }
+    if (account.status !== "invited") {
+      throw new AccountActivationError(
+        409,
+        "ACCOUNT_NOT_INVITED",
+        "Link aktivasi hanya dapat diterbitkan untuk account yang masih berstatus invited.",
+      );
+    }
+    if (account.passwordHash) {
+      throw new AccountActivationError(
+        409,
+        "ACCOUNT_ALREADY_ACTIVATED",
+        "Account sudah pernah diaktifkan. Gunakan alur pemulihan kata sandi untuk mengganti kredensial.",
+      );
+    }
+    if (account.principalType === "EMPLOYEE" && account.employeeStatus !== "active") {
+      throw new AccountActivationError(
+        409,
+        "EMPLOYEE_NOT_ACTIVE",
+        "Account pegawai hanya dapat diaktivasi ketika employee masih aktif.",
+      );
+    }
+
+    await client.query(
+      `UPDATE account_activation_tokens
+       SET revoked_at = now()
+       WHERE account_id = $1
+         AND consumed_at IS NULL
+         AND revoked_at IS NULL`,
+      [account.id],
+    );
+
+    const token = generateActivationToken();
+    const expiresAt = new Date(Date.now() + ACCOUNT_ACTIVATION_TTL_HOURS * 60 * 60 * 1000);
+    await client.query(
+      `INSERT INTO account_activation_tokens (
+        id, account_id, token_hash, expires_at, issued_by_account_id
+      ) VALUES ($1, $2, $3, $4, $5)`,
+      [randomUUID(), account.id, hashActivationToken(token), expiresAt, issuedByAccountId],
+    );
+    return { token, expiresAt: expiresAt.toISOString() };
+  }
+
   async issue(
     accountId: string,
     issuedByAccountId: string,
@@ -143,71 +214,9 @@ export class AccountActivationService {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
-      const accountResult = await client.query<AccountForIssueRow>(
-        `SELECT
-          account.id,
-          account.principal_type AS "principalType",
-          account.status,
-          employee.status AS "employeeStatus",
-          account.password_hash AS "passwordHash"
-         FROM accounts account
-         LEFT JOIN employees employee ON employee.id = account.employee_id
-         WHERE account.id = $1
-         FOR UPDATE OF account`,
-        [accountId],
-      );
-      const account = accountResult.rows[0];
-      if (!account) {
-        throw new AccountActivationError(404, "ACCOUNT_NOT_FOUND", "Account tidak ditemukan.");
-      }
-      if (account.principalType === "SUPER_ADMIN") {
-        throw new AccountActivationError(
-          403,
-          "SUPER_ADMIN_ACTIVATION_PROTECTED",
-          "Aktivasi Super Admin tidak menggunakan alur undangan account biasa.",
-        );
-      }
-      if (account.status !== "invited") {
-        throw new AccountActivationError(
-          409,
-          "ACCOUNT_NOT_INVITED",
-          "Link aktivasi hanya dapat diterbitkan untuk account yang masih berstatus invited.",
-        );
-      }
-      if (account.passwordHash) {
-        throw new AccountActivationError(
-          409,
-          "ACCOUNT_ALREADY_ACTIVATED",
-          "Account sudah pernah diaktifkan. Gunakan alur pemulihan kata sandi untuk mengganti kredensial.",
-        );
-      }
-      if (account.principalType === "EMPLOYEE" && account.employeeStatus !== "active") {
-        throw new AccountActivationError(
-          409,
-          "EMPLOYEE_NOT_ACTIVE",
-          "Account pegawai hanya dapat diaktivasi ketika employee masih aktif.",
-        );
-      }
-
-      await client.query(
-        `UPDATE account_activation_tokens
-         SET revoked_at = now()
-         WHERE account_id = $1
-           AND consumed_at IS NULL
-           AND revoked_at IS NULL`,
-        [account.id],
-      );
-
-      const token = generateActivationToken();
-      const expiresAt = new Date(Date.now() + ACCOUNT_ACTIVATION_TTL_HOURS * 60 * 60 * 1000);
-      await client.query(
-        `INSERT INTO account_activation_tokens (
-          id, account_id, token_hash, expires_at, issued_by_account_id
-        ) VALUES ($1, $2, $3, $4, $5)`,
-        [randomUUID(), account.id, hashActivationToken(token), expiresAt, issuedByAccountId],
-      );
+      const result = await this.issueInTransaction(client, accountId, issuedByAccountId);
       await client.query("COMMIT");
-      return { token, expiresAt: expiresAt.toISOString() };
+      return result;
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
