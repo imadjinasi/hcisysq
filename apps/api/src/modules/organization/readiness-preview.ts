@@ -1,4 +1,5 @@
 import type {
+  AuthorityActionabilityValidator,
   AuthorityEligibilityValidator,
   AuthorityReadinessReader,
   AuthorityReadinessState,
@@ -25,6 +26,8 @@ export interface AuthorityPositionTrace {
   state: "OCCUPIED" | "VACANT";
   incumbentEmployeeId: string | null;
   incumbentEmployeeName: string | null;
+  incumbentAccountId: string | null;
+  incumbentAccountName: string | null;
   accountStatus: AuthorityReadinessState["accountStatus"] | null;
 }
 
@@ -33,7 +36,9 @@ export interface AuthorityStructuralIntent {
   targetPositionKey: string | null;
   targetPositionTitle: string | null;
   targetNodeName: string | null;
-  intendedIncumbentEmployeeId: string;
+  intendedPrincipalType: "EMPLOYEE" | "ACCOUNT";
+  intendedIncumbentEmployeeId: string | null;
+  intendedIncumbentAccountId: string | null;
   intendedIncumbentEmployeeName: string;
   path: AuthorityPositionTrace[];
   vacancyFallback: boolean;
@@ -73,8 +78,9 @@ type ResolverFailure = {
  */
 export class OrganizationAuthorityReadinessPreviewService {
   constructor(
-    private readonly eligibilityValidator: AuthorityEligibilityValidator,
+    private readonly structuralEligibilityValidator: AuthorityEligibilityValidator,
     private readonly readinessReader: AuthorityReadinessReader,
+    private readonly actionabilityValidator?: AuthorityActionabilityValidator,
   ) {}
 
   async preview(
@@ -86,7 +92,8 @@ export class OrganizationAuthorityReadinessPreviewService {
       eligibilityValidator: { validate: async () => ({ eligible: true, reason: null }) },
     });
     const runtimeResolver = new OrganizationAuthorityResolver(snapshotReader, {
-      eligibilityValidator: this.eligibilityValidator,
+      eligibilityValidator: this.structuralEligibilityValidator,
+      actionabilityValidator: this.actionabilityValidator,
     });
 
     const { authorities: structuralAuthorities, failures } = await this.structuralAuthorities(
@@ -95,7 +102,7 @@ export class OrganizationAuthorityReadinessPreviewService {
     );
     const traceEmployeeIds = new Set<string>();
     for (const authority of structuralAuthorities) {
-      traceEmployeeIds.add(authority.employeeId);
+      if (authority.employeeId) traceEmployeeIds.add(authority.employeeId);
       for (const position of this.positionPath(snapshot, authority)) {
         const incumbent = this.effectiveIncumbent(snapshot, position, input.effectiveDate);
         if (incumbent?.employeeId) traceEmployeeIds.add(incumbent.employeeId);
@@ -107,6 +114,11 @@ export class OrganizationAuthorityReadinessPreviewService {
         input.effectiveDate,
       )).map((item) => [item.employeeId, item]),
     );
+    const accountIds = structuralAuthorities.flatMap((item) => item.accountId ? [item.accountId] : []);
+    const accountReadiness = new Map((this.readinessReader.describeAccountAuthorityReadiness
+      ? await this.readinessReader.describeAccountAuthorityReadiness(
+        accountIds, input.effectiveDate, "leave.governance.approve",
+      ) : []).map((item) => [item.accountId, item]));
 
     let runtimeAuthorities: ResolvedAuthority[] = [];
     let runtimeError: OrganizationAuthorityReadinessPreview["runtime"]["error"] = null;
@@ -128,7 +140,7 @@ export class OrganizationAuthorityReadinessPreviewService {
       requiredCapability: null,
       runtime: { authorities: runtimeAuthorities, error: runtimeError },
       structuralIntents: structuralAuthorities.map((authority) =>
-        this.intent(snapshot, authority, input, readiness)),
+        this.intent(snapshot, authority, input, readiness, accountReadiness)),
       structuralErrors: failures.map(({ authorityType, error }) => ({
         authorityType,
         code: error.code,
@@ -177,6 +189,12 @@ export class OrganizationAuthorityReadinessPreviewService {
     authority: ResolvedAuthority,
     input: { requesterEmployeeId: string; effectiveDate: string },
     readinessByEmployee: Map<string, AuthorityReadinessState>,
+    readinessByAccount: Map<string, {
+      accountId: string;
+      accountName: string;
+      accountStatus: AuthorityReadinessState["accountStatus"];
+      capabilityStatus: AuthorityReadinessState["capabilityStatus"];
+    }>,
   ): AuthorityStructuralIntent {
     const positions = this.positionPath(snapshot, authority);
     const requesterPositionKeys = new Set(snapshot.incumbencies
@@ -198,16 +216,31 @@ export class OrganizationAuthorityReadinessPreviewService {
         state: incumbent ? "OCCUPIED" as const : "VACANT" as const,
         incumbentEmployeeId: incumbent?.employeeId ?? null,
         incumbentEmployeeName: item?.employeeName ?? null,
-        accountStatus: item?.accountStatus ?? null,
+        incumbentAccountId: incumbent?.accountId ?? null,
+        incumbentAccountName: incumbent?.accountId
+          ? readinessByAccount.get(incumbent.accountId)?.accountName ?? null : null,
+        accountStatus: item?.accountStatus
+          ?? (incumbent?.accountId ? readinessByAccount.get(incumbent.accountId)?.accountStatus : null)
+          ?? null,
       };
     });
-    const authorityReadiness = readinessByEmployee.get(authority.employeeId) ?? {
-      employeeId: authority.employeeId,
-      employeeName: "Pegawai tidak ditemukan",
-      employeeActive: false,
-      accountStatus: "MISSING" as const,
-      capabilityStatus: "NOT_REQUIRED" as const,
-    };
+    const authorityKey = authority.employeeId ?? authority.accountId ?? "invalid-authority";
+    const accountItem = authority.accountId ? readinessByAccount.get(authority.accountId) : null;
+    const authorityReadiness = authority.principalType === "ACCOUNT"
+      ? {
+        employeeId: authorityKey,
+        employeeName: accountItem?.accountName ?? "Governance account not found",
+        employeeActive: Boolean(accountItem),
+        accountStatus: accountItem?.accountStatus ?? "MISSING" as const,
+        capabilityStatus: accountItem?.capabilityStatus ?? "MISSING" as const,
+      }
+      : readinessByEmployee.get(authorityKey) ?? {
+        employeeId: authorityKey,
+        employeeName: "Pegawai tidak ditemukan",
+        employeeActive: false,
+        accountStatus: "MISSING" as const,
+        capabilityStatus: "NOT_REQUIRED" as const,
+      };
     const vacancyFallback = path.some((item, index) =>
       item.state === "VACANT" && index < path.length - 1);
     const runtimeEligible = authorityReadiness.employeeActive
@@ -215,12 +248,14 @@ export class OrganizationAuthorityReadinessPreviewService {
       && authorityReadiness.capabilityStatus !== "MISSING";
     return {
       authorityType: authority.source,
+      intendedPrincipalType: authority.principalType,
       targetPositionKey: target?.stableKey ?? null,
       targetPositionTitle: target?.title ?? null,
       targetNodeName: target
         ? snapshot.nodes.find((node) => node.stableKey === target.nodeKey)?.name ?? null
         : null,
       intendedIncumbentEmployeeId: authority.employeeId,
+      intendedIncumbentAccountId: authority.accountId,
       intendedIncumbentEmployeeName: authorityReadiness.employeeName,
       path,
       vacancyFallback,

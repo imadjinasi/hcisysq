@@ -1,4 +1,5 @@
 import type {
+  AuthorityActionabilityValidator,
   AuthorityBindingType,
   AuthorityEligibilityValidator,
   AuthorityResolutionInput,
@@ -20,6 +21,7 @@ export interface OrganizationSnapshotReader {
 
 export interface OrganizationAuthorityResolverOptions {
   eligibilityValidator?: AuthorityEligibilityValidator | undefined;
+  actionabilityValidator?: AuthorityActionabilityValidator | undefined;
   maxTraversalDepth?: number | undefined;
 }
 
@@ -33,6 +35,7 @@ interface ResolutionContext {
 
 export class OrganizationAuthorityResolver {
   private readonly eligibilityValidator: AuthorityEligibilityValidator;
+  private readonly actionabilityValidator: AuthorityActionabilityValidator | null;
   private readonly maxTraversalDepth: number;
 
   constructor(
@@ -40,13 +43,22 @@ export class OrganizationAuthorityResolver {
     options: OrganizationAuthorityResolverOptions = {},
   ) {
     const repositoryValidator = repository as OrganizationSnapshotReader &
-      Partial<AuthorityEligibilityValidator>;
+      Partial<AuthorityEligibilityValidator & AuthorityActionabilityValidator> & {
+        validateStructuralIncumbent?: AuthorityEligibilityValidator["validate"];
+      };
     const validator = options.eligibilityValidator ??
-      (typeof repositoryValidator.validate === "function" ? repositoryValidator : undefined);
+      (typeof repositoryValidator.validateStructuralIncumbent === "function"
+        ? { validate: repositoryValidator.validateStructuralIncumbent.bind(repositoryValidator) }
+        : typeof repositoryValidator.validate === "function" ? repositoryValidator : undefined);
     if (!validator) {
       throw new Error("OrganizationAuthorityResolver requires an eligibility validator.");
     }
     this.eligibilityValidator = validator as AuthorityEligibilityValidator;
+    this.actionabilityValidator = options.actionabilityValidator ??
+      (typeof repositoryValidator.validateEmployeeAuthority === "function" &&
+       typeof repositoryValidator.validateAccountAuthority === "function"
+        ? repositoryValidator as AuthorityActionabilityValidator
+        : null);
     this.maxTraversalDepth = options.maxTraversalDepth ?? 32;
   }
 
@@ -103,11 +115,15 @@ export class OrganizationAuthorityResolver {
     const context: ResolutionContext = {
       snapshot,
       effectiveDate,
-      requesterEmployeeId: input.approverEmployeeId,
+      requesterEmployeeId: input.approverEmployeeId ?? "",
       workflowKey: input.workflowKey,
       requiredCapability: input.requiredCapability,
     };
-    const positions = this.employeePositions(context, input.approverEmployeeId)
+    const positions = (input.approverEmployeeId
+      ? this.employeePositions(context, input.approverEmployeeId)
+      : snapshot.positions.filter((position) => snapshot.incumbencies.some((item) =>
+        item.accountId === input.approverAccountId && item.positionKey === position.stableKey
+          && isEffective(item.effectiveFrom, item.effectiveTo, effectiveDate))))
       .filter((position) => this.binding(context, "POSITION", position.stableKey, "OVERSIGHT_PARENT"));
     if (positions.length === 0) return null;
     if (positions.length > 1) {
@@ -165,8 +181,13 @@ export class OrganizationAuthorityResolver {
     if (override?.managerEmployeeId) {
       await this.assertEligible(context, override.managerEmployeeId, "reporting-override");
       this.assertNotSelf(context, override.managerEmployeeId, "DIRECT_MANAGER");
+      await this.assertEmployeeActionable(
+        context, override.managerEmployeeId, "reporting-override", "DIRECT_MANAGER",
+      );
       return {
+        principalType: "EMPLOYEE",
         employeeId: override.managerEmployeeId,
+        accountId: null,
         source: "DIRECT_MANAGER",
         path: [`override:${override.id}`],
         incumbentKind: "OVERRIDE",
@@ -315,11 +336,23 @@ export class OrganizationAuthorityResolver {
         const candidate = candidates[0];
         if (!candidate) continue;
         if ((position.holderSource ?? "EMPLOYEE") === "ACCOUNT" || candidate.accountId) {
-          throw new OrganizationResolutionError(
-            "ACCOUNT_HOLDER_NOT_ACTIONABLE",
-            "This authority is held by a governance account and cannot act as an employee workflow approver.",
-            { positionKey, accountId: candidate.accountId ?? null },
-          );
+          if (!candidate.accountId || !["GOVERNANCE_APPROVER", "OVERSIGHT_PARENT"].includes(source)) {
+            throw new OrganizationResolutionError(
+              "INVALID_AUTHORITY_PRINCIPAL",
+              "Account-held positions may act only as explicit governance or oversight authorities.",
+              { positionKey, accountId: candidate.accountId ?? null, source },
+            );
+          }
+          await this.assertAccountActionable(context, candidate.accountId, positionKey, source);
+          return {
+            principalType: "ACCOUNT",
+            employeeId: null,
+            accountId: candidate.accountId,
+            source,
+            path,
+            incumbentKind: kind,
+            positionKey,
+          };
         }
         if (!candidate.employeeId) {
           throw new OrganizationResolutionError(
@@ -338,8 +371,11 @@ export class OrganizationAuthorityResolver {
           continue;
         }
         if (!allowSelf) this.assertNotSelf(context, candidate.employeeId, source);
+        await this.assertEmployeeActionable(context, candidate.employeeId, positionKey, source);
         return {
+          principalType: "EMPLOYEE",
           employeeId: candidate.employeeId,
+          accountId: null,
           source,
           path,
           incumbentKind: kind,
@@ -525,6 +561,51 @@ export class OrganizationAuthorityResolver {
     }
   }
 
+  private async assertEmployeeActionable(
+    context: ResolutionContext,
+    employeeId: string,
+    positionKey: string,
+    source: ResolvedAuthoritySource,
+  ): Promise<void> {
+    if (!this.actionabilityValidator) return;
+    const result = await this.actionabilityValidator.validateEmployeeAuthority(employeeId, context);
+    if (result.eligible) return;
+    const code = result.reason === "CAPABILITY_MISSING"
+      ? "AUTHORITY_CAPABILITY_MISSING"
+      : result.reason === "ACCOUNT_MISSING"
+        ? "AUTHORITY_ACCOUNT_MISSING"
+      : result.reason === "ACCOUNT_NOT_ACTIVE"
+        ? "AUTHORITY_ACCOUNT_NOT_ACTIVE"
+        : "AUTHORITY_INELIGIBLE";
+    throw new OrganizationResolutionError(code, "Selected structural authority is not actionable.", {
+      employeeId, positionKey, source, reason: result.reason,
+    });
+  }
+
+  private async assertAccountActionable(
+    context: ResolutionContext,
+    accountId: string,
+    positionKey: string,
+    source: ResolvedAuthoritySource,
+  ): Promise<void> {
+    if (!this.actionabilityValidator) return;
+    const result = await this.actionabilityValidator.validateAccountAuthority(accountId, {
+      ...context,
+      requiredCapability: source === "GOVERNANCE_APPROVER"
+        ? context.requiredCapability ?? "leave.governance.approve"
+        : context.requiredCapability,
+    });
+    if (result.eligible) return;
+    const code = result.reason === "CAPABILITY_MISSING"
+      ? "AUTHORITY_CAPABILITY_MISSING"
+      : result.reason === "ACCOUNT_MISSING"
+        ? "AUTHORITY_ACCOUNT_MISSING"
+        : "AUTHORITY_ACCOUNT_NOT_ACTIVE";
+    throw new OrganizationResolutionError(code, "Selected governance authority is not actionable.", {
+      accountId, positionKey, source, reason: result.reason,
+    });
+  }
+
   private assertNotSelf(
     context: ResolutionContext,
     employeeId: string,
@@ -550,7 +631,11 @@ function appendAuthority(
   authorities: ResolvedAuthority[],
   candidate: ResolvedAuthority,
 ): void {
-  const existing = authorities.find((item) => item.employeeId === candidate.employeeId);
+  const existing = authorities.find((item) =>
+    (item.principalType ?? "EMPLOYEE") === (candidate.principalType ?? "EMPLOYEE") &&
+    ((candidate.principalType ?? "EMPLOYEE") === "EMPLOYEE"
+      ? item.employeeId === candidate.employeeId
+      : item.accountId === candidate.accountId));
   if (!existing) {
     authorities.push({ ...candidate, sources: [candidate.source] });
     return;

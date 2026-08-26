@@ -47,7 +47,7 @@ function snapshot(memberships = true): OrganizationSnapshot {
 
 describe("admin-only authority readiness preview", () => {
   it("uses the explicitly selected validated snapshot and separates invited readiness", async () => {
-    const validate = vi.fn(async (employeeId: string): Promise<AuthorityEligibilityResult> =>
+    const validateActionability = vi.fn(async (employeeId: string): Promise<AuthorityEligibilityResult> =>
       employeeId === "director-employee"
         ? { eligible: false, reason: "ACCOUNT_NOT_ACTIVE" }
         : { eligible: true, reason: null });
@@ -56,8 +56,12 @@ describe("admin-only authority readiness preview", () => {
       { employeeId: "director-employee", employeeName: "Synthetic Director", employeeActive: true, accountStatus: "INVITED" as const, capabilityStatus: "NOT_REQUIRED" as const },
     ]);
     const service = new OrganizationAuthorityReadinessPreviewService(
-      { validate },
+      { validate: async () => ({ eligible: true, reason: null }) },
       { describeAuthorityReadiness },
+      {
+        validateEmployeeAuthority: validateActionability,
+        validateAccountAuthority: async () => ({ eligible: true, reason: null }),
+      },
     );
 
     const result = await service.preview(snapshot(), {
@@ -88,8 +92,8 @@ describe("admin-only authority readiness preview", () => {
     ]));
     expect(result.runtime.authorities).toEqual([]);
     expect(result.runtime.error).toMatchObject({
-      code: "AUTHORITY_INELIGIBLE",
-      details: { lastIneligibility: "ACCOUNT_NOT_ACTIVE" },
+      code: "AUTHORITY_ACCOUNT_NOT_ACTIVE",
+      details: { reason: "ACCOUNT_NOT_ACTIVE", employeeId: "director-employee" },
     });
   });
 

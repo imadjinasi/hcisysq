@@ -169,6 +169,23 @@ function resolver(
   );
 }
 
+function resolverWithActionability(
+  structure: OrganizationSnapshot,
+  failure: AuthorityEligibilityResult,
+): OrganizationAuthorityResolver {
+  return new OrganizationAuthorityResolver(
+    { loadEffectiveSnapshot: async () => structure },
+    {
+      eligibilityValidator: { validate: async () => ({ eligible: true, reason: null }) },
+      actionabilityValidator: {
+        validateEmployeeAuthority: async (employeeId) => employeeId === employeeIds.head
+          ? failure : { eligible: true, reason: null },
+        validateAccountAuthority: async () => failure,
+      },
+    },
+  );
+}
+
 describe("ORG-004 authority resolver", () => {
   it("keeps Nanda's SMPIT primary while allowing a concurrent SDIT secondary membership", async () => {
     const structure = snapshot({
@@ -429,6 +446,42 @@ describe("ORG-004 authority resolver", () => {
     })).resolves.toMatchObject({ employeeId: employeeIds.chair, source: "OVERSIGHT_PARENT" });
   });
 
+  it("resolves account-held Secretary and Chair only for governance semantics", async () => {
+    const structure = snapshot({
+      positions: [
+        position("position-director", "node-root", null),
+        { ...position("position-secretary", "node-root", null), holderSource: "ACCOUNT" as const },
+        { ...position("position-chair", "node-root", null), holderSource: "ACCOUNT" as const },
+      ],
+      memberships: [membership("director-membership", employeeIds.director)],
+      incumbencies: [
+        incumbency("director", "position-director", employeeIds.director, "PRIMARY"),
+        { ...incumbency("secretary", "position-secretary", employeeIds.secretary, "PRIMARY"), employeeId: null, accountId: "secretary-account" },
+        { ...incumbency("chair", "position-chair", employeeIds.chair, "PRIMARY"), employeeId: null, accountId: "chair-account" },
+      ],
+      authorityBindings: [
+        binding("governance", "POSITION", "position-director", "GOVERNANCE_APPROVER", "position-secretary"),
+        binding("oversight", "POSITION", "position-secretary", "OVERSIGHT_PARENT", "position-chair"),
+      ],
+    });
+    const subject = new OrganizationAuthorityResolver(
+      { loadEffectiveSnapshot: async () => structure },
+      {
+        eligibilityValidator: { validate: async () => ({ eligible: true, reason: null }) },
+        actionabilityValidator: {
+          validateEmployeeAuthority: async () => ({ eligible: true, reason: null }),
+          validateAccountAuthority: async () => ({ eligible: true, reason: null }),
+        },
+      },
+    );
+    await expect(subject.resolveGovernanceApprover({
+      requesterEmployeeId: employeeIds.director, effectiveDate: "2026-08-22",
+    })).resolves.toMatchObject({ principalType: "ACCOUNT", accountId: "secretary-account", employeeId: null });
+    await expect(subject.resolveOversightAbove({
+      approverAccountId: "secretary-account", effectiveDate: "2026-08-22",
+    })).resolves.toMatchObject({ principalType: "ACCOUNT", accountId: "chair-account", source: "OVERSIGHT_PARENT" });
+  });
+
   it("rejects self resolution", async () => {
     const structure = snapshot({
       reportingOverrides: [{
@@ -481,6 +534,20 @@ describe("Organization direct approval service", () => {
     ]);
   });
 
+  it.each([
+    ["invited account", { eligible: false, reason: "ACCOUNT_NOT_ACTIVE" } as const, "AUTHORITY_ACCOUNT_NOT_ACTIVE"],
+    ["missing account", { eligible: false, reason: "ACCOUNT_MISSING" } as const, "AUTHORITY_ACCOUNT_MISSING"],
+    ["missing capability", { eligible: false, reason: "CAPABILITY_MISSING" } as const, "AUTHORITY_CAPABILITY_MISSING"],
+  ])("does not substitute the parent when the selected manager has %s", async (_label, failure, code) => {
+    await expect(resolverWithActionability(snapshot(), failure).resolveDirectManager({
+      requesterEmployeeId: employeeIds.staff,
+      effectiveDate: "2026-08-22",
+    })).rejects.toMatchObject({
+      code,
+      details: { employeeId: employeeIds.head, positionKey: "position-head" },
+    });
+  });
+
   it("fails closed when an ACCOUNT-only governance holder is used as an actionable authority", async () => {
     const structure = snapshot();
     structure.positions = structure.positions.map((item) => item.stableKey === "position-head"
@@ -494,7 +561,7 @@ describe("Organization direct approval service", () => {
       requesterEmployeeId: employeeIds.staff,
       effectiveDate: "2026-08-22",
       requiredCapability: "leave.approve",
-    })).rejects.toMatchObject({ code: "ACCOUNT_HOLDER_NOT_ACTIONABLE" });
+    })).rejects.toMatchObject({ code: "INVALID_AUTHORITY_PRINCIPAL" });
   });
 
 });
@@ -545,7 +612,7 @@ describe("ORG-004 draft validation and impact", () => {
     await expect(repository.validate(employeeIds.head, {
       effectiveDate: "2026-08-22",
       requiredCapability: "leave.approve",
-    })).resolves.toEqual({ eligible: false, reason: "ACCOUNT_NOT_ACTIVE" });
+    })).resolves.toEqual({ eligible: false, reason: "ACCOUNT_MISSING" });
   });
 
   it("allows an active employee without a login account to be published as an incumbent", async () => {

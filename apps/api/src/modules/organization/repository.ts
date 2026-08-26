@@ -445,15 +445,14 @@ export class PostgresOrganizationRepository {
   ): Promise<AuthorityEligibilityResult> {
     const result = await this.db.query<{
       employeeActive: boolean;
-      accountActive: boolean;
+      accountStatus: string | null;
       capabilityValid: boolean;
     }>(
       `SELECT
          (e.status = 'active' AND e.removed_at IS NULL) AS "employeeActive",
-         EXISTS (
-           SELECT 1 FROM accounts a
-           WHERE a.employee_id = e.id AND a.principal_type = 'EMPLOYEE' AND a.status = 'active'
-         ) AS "accountActive",
+         (SELECT a.status FROM accounts a
+          WHERE a.employee_id = e.id AND a.principal_type = 'EMPLOYEE'
+          ORDER BY a.created_at DESC LIMIT 1) AS "accountStatus",
          CASE WHEN $3::text IS NULL THEN true ELSE EXISTS (
            SELECT 1
            FROM accounts a
@@ -470,7 +469,42 @@ export class PostgresOrganizationRepository {
     );
     const row = result.rows[0];
     if (!row?.employeeActive) return { eligible: false, reason: "EMPLOYEE_NOT_ACTIVE" };
-    if (!row.accountActive) return { eligible: false, reason: "ACCOUNT_NOT_ACTIVE" };
+    if (!row.accountStatus) return { eligible: false, reason: "ACCOUNT_MISSING" };
+    if (row.accountStatus !== "active") return { eligible: false, reason: "ACCOUNT_NOT_ACTIVE" };
+    if (!row.capabilityValid) return { eligible: false, reason: "CAPABILITY_MISSING" };
+    return { eligible: true, reason: null };
+  }
+
+  async validateEmployeeAuthority(
+    employeeId: string,
+    context: AuthorityEligibilityContext,
+  ): Promise<AuthorityEligibilityResult> {
+    return this.validate(employeeId, context);
+  }
+
+  async validateAccountAuthority(
+    accountId: string,
+    context: AuthorityEligibilityContext,
+  ): Promise<AuthorityEligibilityResult> {
+    const result = await this.db.query<{ accountStatus: string | null; principalType: string | null; capabilityValid: boolean }>(
+      `SELECT
+         a.status AS "accountStatus",
+         a.principal_type AS "principalType",
+         CASE WHEN $3::text IS NULL THEN true ELSE EXISTS (
+           SELECT 1 FROM account_role_assignments ara
+           JOIN role_permissions rp ON rp.role_id = ara.role_id
+           WHERE ara.account_id = a.id AND rp.permission_key = $3
+             AND (ara.starts_on IS NULL OR ara.starts_on <= $2::date)
+             AND (ara.ends_on IS NULL OR ara.ends_on >= $2::date)
+         ) END AS "capabilityValid"
+       FROM accounts a WHERE a.id = $1`,
+      [accountId, context.effectiveDate, context.requiredCapability ?? null],
+    );
+    const row = result.rows[0];
+    if (!row) return { eligible: false, reason: "ACCOUNT_MISSING" };
+    if (row.principalType !== "FOUNDATION_BOARD" || row.accountStatus !== "active") {
+      return { eligible: false, reason: "ACCOUNT_NOT_ACTIVE" };
+    }
     if (!row.capabilityValid) return { eligible: false, reason: "CAPABILITY_MISSING" };
     return { eligible: true, reason: null };
   }
@@ -526,6 +560,44 @@ export class PostgresOrganizationRepository {
       capabilityStatus: requiredCapability
         ? row.capabilityValid ? "READY" : "MISSING"
         : "NOT_REQUIRED",
+    }));
+  }
+
+  async describeAccountAuthorityReadiness(
+    accountIds: string[],
+    effectiveDate: string,
+    requiredCapability?: string,
+  ) {
+    if (accountIds.length === 0) return [];
+    assertIsoDate(effectiveDate);
+    const result = await this.db.query<{
+      accountId: string;
+      accountName: string;
+      accountStatus: "active" | "invited" | "suspended" | "inactive";
+      capabilityValid: boolean;
+    }>(
+      `SELECT
+         a.id AS "accountId",
+         a.email AS "accountName",
+         a.status AS "accountStatus",
+         CASE WHEN $3::text IS NULL THEN true ELSE EXISTS (
+           SELECT 1 FROM account_role_assignments ara
+           JOIN role_permissions rp ON rp.role_id = ara.role_id
+           WHERE ara.account_id = a.id AND rp.permission_key = $3
+             AND (ara.starts_on IS NULL OR ara.starts_on <= $2::date)
+             AND (ara.ends_on IS NULL OR ara.ends_on >= $2::date)
+         ) END AS "capabilityValid"
+       FROM accounts a
+       WHERE a.id = ANY($1::uuid[]) AND a.principal_type = 'FOUNDATION_BOARD'`,
+      [accountIds, effectiveDate, requiredCapability ?? null],
+    );
+    return result.rows.map((row) => ({
+      accountId: row.accountId,
+      accountName: row.accountName,
+      accountStatus: row.accountStatus.toUpperCase() as AuthorityReadinessState["accountStatus"],
+      capabilityStatus: requiredCapability
+        ? row.capabilityValid ? "READY" as const : "MISSING" as const
+        : "NOT_REQUIRED" as const,
     }));
   }
 

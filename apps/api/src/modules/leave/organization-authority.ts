@@ -34,7 +34,9 @@ export interface LeaveAuthorityResolution {
   context: {
     authoritativeSource: RolloutAuthorityResult["authoritativeSource"];
     authorities: Array<{
-      employeeId: string;
+      principalType: "EMPLOYEE" | "ACCOUNT";
+      employeeId: string | null;
+      accountId: string | null;
       source: LeaveApprovalSource;
       sources?: LeaveApprovalSource[] | undefined;
       path: string[];
@@ -124,7 +126,12 @@ export function snapshotLeaveRolloutAuthorities(
   const approvalChain = snapshotResolvedLeaveAuthorities({
     requesterEmployeeId: input.requesterEmployeeId,
     authorities: policyAuthorities.flatMap((authority) =>
-      sourcesOf(authority).map((source) => ({ employeeId: authority.employeeId, source })),
+      sourcesOf(authority).map((source) => ({
+        principalType: authority.principalType,
+        employeeId: authority.employeeId,
+        accountId: authority.accountId,
+        source,
+      })),
     ),
   });
 
@@ -133,7 +140,9 @@ export function snapshotLeaveRolloutAuthorities(
     context: {
       authoritativeSource: result.authoritativeSource,
       authorities: policyAuthorities.map((authority) => ({
+        principalType: authority.principalType,
         employeeId: authority.employeeId,
+        accountId: authority.accountId,
         source: authority.source,
         sources: sourcesOf(authority),
         path: authority.path,
@@ -146,9 +155,9 @@ export function snapshotLeaveRolloutAuthorities(
 async function finalLineOrGovernanceApprover(
   db: PoolClient,
   requestId: string,
-): Promise<string | null> {
-  const result = await db.query<{ employeeId: string }>(
-    `SELECT approver_employee_id AS "employeeId"
+): Promise<{ employeeId: string | null; accountId: string | null } | null> {
+  const result = await db.query<{ employeeId: string | null; accountId: string | null }>(
+    `SELECT approver_employee_id AS "employeeId", approver_account_id AS "accountId"
      FROM leave_request_approval_steps
      WHERE leave_request_id = $1
        AND sources && ARRAY[
@@ -158,7 +167,7 @@ async function finalLineOrGovernanceApprover(
      LIMIT 1`,
     [requestId],
   );
-  return result.rows[0]?.employeeId ?? null;
+  return result.rows[0] ?? null;
 }
 
 async function hasSnapshottedOrganizationAuthority(
@@ -189,6 +198,7 @@ export async function enqueueFinalApprovalOversight(
     workflowKey: string;
     effectiveDate: string;
     finalApproverEmployeeId?: string;
+    finalApproverAccountId?: string;
   },
   dependencies: {
     resolver?: Pick<OrganizationAuthorityResolver, "resolveOversightAbove">;
@@ -204,17 +214,19 @@ export async function enqueueFinalApprovalOversight(
       await db.query("RELEASE SAVEPOINT leave_oversight_notification");
       return;
     }
-    const finalApproverEmployeeId =
-      input.finalApproverEmployeeId ??
+    const finalApprover = input.finalApproverEmployeeId || input.finalApproverAccountId
+      ? { employeeId: input.finalApproverEmployeeId ?? null, accountId: input.finalApproverAccountId ?? null }
+      :
       (await finalLineOrGovernanceApprover(db, input.requestId));
-    if (!finalApproverEmployeeId) {
+    if (!finalApprover) {
       await db.query("RELEASE SAVEPOINT leave_oversight_notification");
       return;
     }
 
     const resolver = dependencies.resolver ?? organizationServices(db).resolver;
     const recipient = await resolver.resolveOversightAbove({
-      approverEmployeeId: finalApproverEmployeeId,
+      approverEmployeeId: finalApprover.employeeId ?? undefined,
+      approverAccountId: finalApprover.accountId ?? undefined,
       effectiveDate: input.effectiveDate,
       workflowKey: input.workflowKey,
     });
@@ -223,7 +235,7 @@ export async function enqueueFinalApprovalOversight(
         `INSERT INTO leave_notification_outbox (
           id, leave_request_id, event_type, target_type, target_key, payload
         )
-        SELECT $1, $2, 'leave.oversight.approved', 'employee', $3, $4::jsonb
+        SELECT $1, $2, 'leave.oversight.approved', $5, $3, $4::jsonb
         WHERE NOT EXISTS (
           SELECT 1
           FROM leave_notification_outbox
@@ -233,13 +245,16 @@ export async function enqueueFinalApprovalOversight(
         [
           randomUUID(),
           input.requestId,
-          recipient.employeeId,
+          recipient.employeeId ?? recipient.accountId,
           JSON.stringify({
-            finalLineApproverEmployeeId: finalApproverEmployeeId,
+            finalLineApproverEmployeeId: finalApprover.employeeId,
+            finalLineApproverAccountId: finalApprover.accountId,
             resolutionSource: recipient.source,
             resolutionPath: recipient.path,
             incumbentKind: recipient.incumbentKind,
+            recipientPrincipalType: recipient.principalType,
           }),
+          recipient.principalType === "ACCOUNT" ? "account" : "employee",
         ],
       );
     }

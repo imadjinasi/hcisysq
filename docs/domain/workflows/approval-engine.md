@@ -64,7 +64,11 @@ SPECIFIC_PERSON(user_id)
 
 Domain slices may also provide their own explicit resolver for concepts already implemented, such as the current Unit Approver.
 
-At submission, semantic resolvers become concrete people and those people are persisted in the request snapshot.
+At submission, semantic resolvers become concrete principals and those principals
+are persisted in the request snapshot. A principal is normally an Employee, but
+an explicit governance binding may select a `FOUNDATION_BOARD` Account. Each
+stored step contains exactly one of `approver_employee_id` or
+`approver_account_id`; existing employee-based steps remain valid unchanged.
 
 Example:
 
@@ -127,6 +131,12 @@ Director
 For a Social Staff requester, `STRUCTURAL_DIRECT_MANAGER` may resolve to the Director.
 
 Higher-risk authorities may require an acting assignment or fail closed instead of climbing.
+
+Vacancy fallback is structural only. Once an active, non-removed Employee
+incumbent—or an explicit governance Account incumbent—has been selected, login
+and capability checks cannot replace it by climbing. Account missing/not active
+and capability missing are explicit fail-closed readiness errors for the selected
+principal.
 
 ### Acting authority
 

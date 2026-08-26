@@ -809,6 +809,7 @@ export async function registerOrganizationAdminRoutes(
       const result = await new OrganizationAuthorityReadinessPreviewService(
         repository,
         repository,
+        repository,
       ).preview(snapshot, {
         requesterEmployeeId: body.data.employeeId,
         effectiveDate: body.data.effectiveDate,
@@ -816,16 +817,22 @@ export async function registerOrganizationAdminRoutes(
       });
       const ids = [...new Set([
         body.data.employeeId,
-        ...result.runtime.authorities.map((item) => item.employeeId),
+        ...result.runtime.authorities.flatMap((item) => item.employeeId ? [item.employeeId] : []),
       ])];
+      const accountIds = result.runtime.authorities.flatMap((item) => item.accountId ? [item.accountId] : []);
       const employees = await pool.query<{ id: string; employeeNumber: string; fullName: string }>(
         `SELECT id, employee_number AS "employeeNumber", full_name AS "fullName" FROM employees WHERE id = ANY($1::uuid[])`, [ids]);
       const byId = new Map(employees.rows.map((item) => [item.id, item]));
+      const accounts = await pool.query<{ id: string; email: string }>(
+        `SELECT id, email FROM accounts WHERE id = ANY($1::uuid[])`, [accountIds]);
+      const accountById = new Map(accounts.rows.map((item) => [item.id, item]));
       return reply.send({ employee: byId.get(body.data.employeeId) ?? { id: body.data.employeeId, fullName: "Unknown employee" },
         snapshot: result.snapshot, effectiveDate: result.effectiveDate, workflowKey: body.data.workflowKey,
         requiredCapability: result.requiredCapability,
-        steps: result.runtime.authorities.map((item) => ({ authorityType: (item.sources ?? [item.source]).join(" + "), employeeId: item.employeeId,
-          employeeName: byId.get(item.employeeId)?.fullName ?? "Unknown employee",
+        steps: result.runtime.authorities.map((item) => ({ authorityType: (item.sources ?? [item.source]).join(" + "),
+          principalType: item.principalType, employeeId: item.employeeId, accountId: item.accountId,
+          employeeName: item.employeeId ? byId.get(item.employeeId)?.fullName ?? "Unknown employee"
+            : item.accountId ? accountById.get(item.accountId)?.email ?? "Unknown governance account" : "Unknown authority",
           positionTitle: snapshot.positions.find((position) => position.stableKey === item.positionKey)?.title ?? null,
           source: item.incumbentKind })),
         runtime: result.runtime,

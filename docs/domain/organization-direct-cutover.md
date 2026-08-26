@@ -17,7 +17,28 @@ If Organization authority cannot be resolved, the workflow fails closed and the 
 
 ## Request snapshots
 
-A request snapshots its concrete approvers when submitted. Later Organization changes affect future requests only. Existing in-flight requests continue from their stored approval steps and are not re-resolved.
+A request snapshots its concrete approval principal when submitted. Ordinary
+authorities use an Employee principal; an explicitly bound governance authority
+may use a `FOUNDATION_BOARD` Account principal. Exactly one principal is stored
+per step. Later Organization or account changes affect future submissions only:
+existing in-flight steps keep their stored principal and are not re-resolved.
+
+## Structural selection and actionability
+
+The published Organization snapshot decides **who** holds an authority. Employee
+status and structural vacancy policy participate in that selection. Login and
+capability readiness are checked only after the structural incumbent has been
+selected. A missing, invited, suspended, or inactive account—or a missing
+workflow capability—fails the new request against that selected authority and
+must never trigger vacancy climbing to a different person.
+
+Account-held positions are valid only for explicit governance approval and
+oversight semantics. Director Leave therefore snapshots the configured Secretary
+board account as its approval step; the separately configured Chair board account
+receives the final informational notification and is not another approval step.
+Neither identity requires a synthetic Employee record. Governance approval uses
+the narrow `leave.governance.approve` capability and does not grant employee or
+administrative authority.
 
 ## Deployment gate
 

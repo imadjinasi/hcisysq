@@ -408,6 +408,9 @@ async function buildPreview(
       effectiveDate: jakartaToday(),
       workflowKey: `leave.${input.policyKey}`,
     });
+    if (!manager.employeeId) throw new OrganizationResolutionError(
+      "INVALID_AUTHORITY_PRINCIPAL", "Direct Manager must be an employee principal.",
+    );
     managerNotification = { employeeId: manager.employeeId, name: null };
   } catch (error) {
     if (!(error instanceof OrganizationResolutionError)) throw error;

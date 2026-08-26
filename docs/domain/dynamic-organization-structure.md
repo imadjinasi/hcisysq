@@ -123,7 +123,7 @@ legacy values are retained only as archived rollback/reference data. The admin
 experience must never present legacy and structure as two simultaneously
 authoritative routing configurations.
 
-Leave is the first consumer. Annual and Planned Leave preserve Direct Manager then Unit Approver semantics; Unpaid Leave preserves line/governance authority followed by actual HC approval; Special Leave retains its existing notification/administrative-validation rules. Concrete people and structural explanation metadata are snapshotted at submission.
+Leave is the first consumer. Annual and Planned Leave preserve Direct Manager then Unit Approver semantics; Unpaid Leave preserves line/governance authority followed by actual HC approval; Special Leave retains its existing notification/administrative-validation rules. Concrete Employee or explicitly configured governance Account principals and structural explanation metadata are snapshotted at submission.
 
 For a request submitted in `STRUCTURE`, final approval creates an idempotent informational intent for the configured oversight authority above the snapshotted final line/governance approver. The submission-time rollout mode is stored with the request and remains authoritative if rollout configuration changes while the request is in flight. `LEGACY`, `SHADOW`, and older requests without mode metadata never enqueue this structural side effect. The resolver is not based on a later HC validator/approver. Oversight resolution and outbox insertion are isolated so failure cannot roll back or repeat the approval decision.
 
@@ -543,10 +543,10 @@ At submission:
 
 1. load effective organization/authority configuration;
 2. resolve semantic workflow steps to concrete employees;
-3. apply effective acting, vacancy, and override rules;
+3. apply effective acting, structural vacancy, and override rules;
 4. reject self-approval;
 5. deduplicate repeated concrete approvers;
-6. validate account/capability;
+6. validate the selected principal's account/capability without resuming structural traversal;
 7. persist concrete ordered approval steps;
 8. persist enough structural resolution context for audit/explanation.
 

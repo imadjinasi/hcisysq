@@ -122,6 +122,7 @@ export interface AuthorityEligibilityResult {
   eligible: boolean;
   reason:
     | "EMPLOYEE_NOT_ACTIVE"
+    | "ACCOUNT_MISSING"
     | "ACCOUNT_NOT_ACTIVE"
     | "CAPABILITY_MISSING"
     | null;
@@ -130,6 +131,17 @@ export interface AuthorityEligibilityResult {
 export interface AuthorityEligibilityValidator {
   validate(
     employeeId: string,
+    context: AuthorityEligibilityContext,
+  ): Promise<AuthorityEligibilityResult>;
+}
+
+export interface AuthorityActionabilityValidator {
+  validateEmployeeAuthority(
+    employeeId: string,
+    context: AuthorityEligibilityContext,
+  ): Promise<AuthorityEligibilityResult>;
+  validateAccountAuthority(
+    accountId: string,
     context: AuthorityEligibilityContext,
   ): Promise<AuthorityEligibilityResult>;
 }
@@ -157,6 +169,16 @@ export interface AuthorityReadinessReader {
     effectiveDate: string,
     requiredCapability?: string | undefined,
   ): Promise<AuthorityReadinessState[]>;
+  describeAccountAuthorityReadiness?(
+    accountIds: string[],
+    effectiveDate: string,
+    requiredCapability?: string | undefined,
+  ): Promise<Array<{
+    accountId: string;
+    accountName: string;
+    accountStatus: AuthorityAccountStatus;
+    capabilityStatus: AuthorityCapabilityStatus;
+  }>>;
 }
 
 export interface AuthorityResolutionInput {
@@ -167,14 +189,17 @@ export interface AuthorityResolutionInput {
 }
 
 export interface OversightResolutionInput {
-  approverEmployeeId: string;
+  approverEmployeeId?: string | undefined;
+  approverAccountId?: string | undefined;
   effectiveDate?: string | undefined;
   workflowKey?: string | undefined;
   requiredCapability?: string | undefined;
 }
 
 export interface ResolvedAuthority {
-  employeeId: string;
+  principalType: "EMPLOYEE" | "ACCOUNT";
+  employeeId: string | null;
+  accountId: string | null;
   source: ResolvedAuthoritySource;
   /** All semantic sources represented by this concrete, deduplicated approver. */
   sources?: ResolvedAuthoritySource[] | undefined;
@@ -250,7 +275,10 @@ export type OrganizationResolutionErrorCode =
   | "AUTHORITY_VACANT"
   | "ACTING_AUTHORITY_REQUIRED"
   | "AUTHORITY_INELIGIBLE"
-  | "ACCOUNT_HOLDER_NOT_ACTIONABLE"
+  | "AUTHORITY_ACCOUNT_MISSING"
+  | "AUTHORITY_ACCOUNT_NOT_ACTIVE"
+  | "AUTHORITY_CAPABILITY_MISSING"
+  | "INVALID_AUTHORITY_PRINCIPAL"
   | "AUTHORITY_SELF_RESOLUTION"
   | "AUTHORITY_CYCLE"
   | "AUTHORITY_TRAVERSAL_LIMIT";
