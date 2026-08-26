@@ -75,6 +75,12 @@ Employee list read-only pada milestone ini. Editing manual employee sengaja ditu
 - `employee_import_jobs` menyimpan account pembuat preview dan account yang melakukan commit.
 - Session, login, dan MFA tetap mengikuti baseline auth yang sudah diterima.
 
+## Manual Employee Master lifecycle correction
+
+`SUPER_ADMIN` dapat mengubah status lifecycle employee menjadi `active`, `inactive`, atau `resigned` melalui Employee Master dengan alasan wajib dan audit before/after. Perubahan status tidak membuat `ended_on`, tidak mengubah email login account, dan tidak mengaktifkan account.
+
+Field tanggal Employee Master memakai kontrak canonical `YYYY-MM-DD`. Nilai tanggal legacy yang dibaca API sebagai timestamp dinormalisasi hanya untuk kontrol tanggal browser, tanpa mengubah hari atau mengosongkan field terkait. Bila payload tetap tidak valid, API mengembalikan `INVALID_EMPLOYEE_EDIT` beserta field yang perlu diperbaiki; error database tetap tidak membocorkan detail internal.
+
 ## Data safety
 
 Repository, tests, dan contoh hanya menggunakan data sintetis. Workbook pegawai asli tidak boleh dimasukkan ke repository, test fixture, log, screenshot, atau prompt.

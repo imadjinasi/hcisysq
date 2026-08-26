@@ -19,6 +19,7 @@ import {
   type EmployeeDetailResponse,
   type EmployeeSourceSnapshot,
 } from "@/lib/adminOrgAccess";
+import { employeeMasterEditState, employeeMasterUpdatePayload } from "@/lib/employeeMasterEdit";
 
 function accountStatusLabel(status: string | null) {
   if (status === "active") return "Aktif";
@@ -54,7 +55,7 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
     setData(result);
     setManagerId(result.employee.managerEmployeeId ?? "");
     setAccountEmail(result.employee.accountEmail ?? result.employee.email ?? "");
-    setEdit(Object.fromEntries(Object.entries(result.employee).map(([key, value]) => [key, value == null ? "" : String(value)])));
+    setEdit(employeeMasterEditState(result.employee));
   };
 
   const reload = async () => {
@@ -84,7 +85,7 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
 
   const loadRemovalPreview = async () => { try { setRemovalPreview(await previewEmployeeRemoval(employeeId)); } catch (cause) { setError(cause instanceof AdminApiError ? cause.message : "Dampak penghapusan tidak dapat dimuat."); } };
   const removeFromMaster = async () => { try { await removeEmployeeFromMaster(employeeId, removalName, removalReason); setNotice("Pegawai telah dikeluarkan dari Employee Master; riwayat tetap tersimpan dan account pegawai dinonaktifkan."); await reload(); } catch (cause) { setError(cause instanceof AdminApiError ? cause.message : "Penghapusan dari Employee Master gagal."); } };
-  const saveMaster = async (event: FormEvent) => { event.preventDefault(); try { await updateEmployeeMaster(employeeId, { fullName: edit.fullName, employeeNumber: edit.employeeNumber, status: edit.status, employmentStatus: edit.employmentStatus || null, organizationalUnitId: edit.unitId || null, positionId: edit.positionId || null, employmentType: edit.employmentType || null, functionalPosition: edit.functionalPosition || null, structuralPosition: edit.structuralPosition || null, email: edit.email || null, phone: edit.phone || null, education: edit.education || null, startedOn: edit.startedOn || null, endedOn: edit.endedOn || null, reason: editReason }); setNotice("Employee master diperbarui; email login account tidak berubah otomatis."); setEditing(false); await reload(); } catch (cause) { setError(cause instanceof AdminApiError ? cause.message : "Employee master gagal diperbarui."); } };
+  const saveMaster = async (event: FormEvent) => { event.preventDefault(); try { await updateEmployeeMaster(employeeId, employeeMasterUpdatePayload(edit, editReason)); setNotice("Employee master diperbarui; email login account tidak berubah otomatis."); setEditing(false); await reload(); } catch (cause) { setError(cause instanceof AdminApiError ? cause.message : "Employee master gagal diperbarui."); } };
 
   const saveManager = async (event: FormEvent) => {
     event.preventDefault();
