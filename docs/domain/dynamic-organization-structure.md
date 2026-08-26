@@ -5,6 +5,12 @@
 **Related:** ORG-001, ORG-002, AUTH-010, APR-001, LEAVE-003, LEAVE-004  
 **Decision date:** 2026-08-22
 
+> **Superseded routing decision:** The rollout sections below are historical
+> implementation record only. As of the active direct-cutover decision in
+> `organization-direct-cutover.md`, all new Organization-authority workflows
+> use the effective published structure. LEGACY and SHADOW are not operational
+> modes, and migration-era employee/unit fields are never a fallback.
+
 ## Implementation record
 
 ORG-004 is deployed as an additive successor to ORG-002. Deployment does not itself infer or activate a real YSQ hierarchy, does not rewrite existing employee reporting fields, and does not modify submitted Leave approval snapshots. Organization Designer UX refinements may be released independently without changing rollout authority.

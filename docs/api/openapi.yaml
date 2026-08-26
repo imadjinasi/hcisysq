@@ -277,7 +277,7 @@ paths:
     get:
       tags: [Leave]
       operationId: getAdminLeaveConfiguration
-      summary: Read Leave policy, legacy compatibility fields, and scope-aware rollout status
+      summary: Read Leave policy configuration and the Organization-structure approval source
       responses:
         '200':
           description: Leave administration configuration
@@ -287,32 +287,6 @@ paths:
                 $ref: '#/components/schemas/AdminLeaveConfiguration'
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
-
-  /admin/leave/units/{unitId}/approver:
-    patch:
-      tags: [Leave]
-      operationId: updateLegacyUnitLeaveApprover
-      summary: Update the legacy compatibility Unit Approver used only by LEGACY/SHADOW
-      parameters:
-        - name: unitId
-          in: path
-          required: true
-          schema: { type: string, format: uuid }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [employeeId]
-              properties:
-                employeeId: { type: [string, 'null'], format: uuid }
-      responses:
-        '200': { description: Legacy Unit Approver compatibility value updated }
-        '400': { $ref: '#/components/responses/ValidationError' }
-        '401': { $ref: '#/components/responses/Unauthenticated' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { description: Selected approver is not an active employee }
 
   /admin/leave/employees/{employeeId}/entitlement-group:
     patch:
@@ -357,7 +331,7 @@ paths:
           schema: { type: string, format: date }
       responses:
         '200':
-          description: Rollout-aware authority preview; SHADOW includes comparison diagnostics
+          description: Approval preview resolved from the effective published Organization structure
           content:
             application/json:
               schema:
@@ -798,35 +772,6 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { description: Draft has not passed validation }
 
-  /admin/organization/rollout:
-    get:
-      tags: [Organization]
-      operationId: getOrganizationRollout
-      responses:
-        '200': { description: Latest rollout configuration; LEGACY when none exists }
-        '403': { $ref: '#/components/responses/Forbidden' }
-    patch:
-      tags: [Organization]
-      operationId: updateOrganizationRollout
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [mode]
-              properties:
-                mode: { type: string, enum: [LEGACY, SHADOW, STRUCTURE] }
-                workflowKey: { type: string, default: LEAVE }
-                organizationalNodeKey: { type: [string, 'null'], format: uuid }
-                effectiveFrom: { type: string, format: date }
-                effectiveTo: { type: [string, 'null'], format: date }
-                reason: { type: string, minLength: 1, maxLength: 500 }
-      responses:
-        '200': { description: Additive effective rollout configuration created and audited }
-        '400': { $ref: '#/components/responses/ValidationError' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-
 components:
   parameters:
     Cursor:
@@ -975,10 +920,6 @@ components:
             requiresReview: { type: integer, minimum: 0 }
             failed: { type: integer, minimum: 0 }
 
-    OrganizationRolloutMode:
-      type: string
-      enum: [LEGACY, SHADOW, STRUCTURE]
-
     LeaveAuthorityStep:
       type: object
       required: [employeeId, sources]
@@ -993,28 +934,16 @@ components:
 
     AdminLeaveConfiguration:
       type: object
-      required: [policies, units, employees, summary, rollout]
+      required: [policies, employees, summary, approvalSource]
       properties:
         policies:
           type: array
           items: { type: object, additionalProperties: true }
-        units:
-          type: array
-          items:
-            type: object
-            required: [id, name, activeEmployeeCount, approverEmployeeId, rolloutState]
-            properties:
-              id: { type: string, format: uuid }
-              name: { type: string }
-              activeEmployeeCount: { type: integer, minimum: 0 }
-              approverEmployeeId: { type: [string, 'null'], format: uuid }
-              approverName: { type: [string, 'null'] }
-              rolloutState: { type: string, enum: [LEGACY, SHADOW, STRUCTURE, MIXED] }
         employees:
           type: array
           items:
             type: object
-            required: [id, fullName, employeeNumber, status, rolloutMode]
+            required: [id, fullName, employeeNumber, status]
             properties:
               id: { type: string, format: uuid }
               fullName: { type: string }
@@ -1023,67 +952,25 @@ components:
               unitId: { type: [string, 'null'], format: uuid }
               unitName: { type: [string, 'null'] }
               positionName: { type: [string, 'null'] }
-              directManagerEmployeeId: { type: [string, 'null'], format: uuid }
-              directManagerName: { type: [string, 'null'] }
               leaveEntitlementGroup: { type: [string, 'null'], enum: [education, non_education, null] }
-              rolloutMode: { $ref: '#/components/schemas/OrganizationRolloutMode' }
         summary:
           type: object
-          required: [activeUnits, unitApproverConfigured, activeEmployees, directManagerConfigured, entitlementGroupConfigured]
+          required: [activeEmployees, entitlementGroupConfigured]
           properties:
-            activeUnits: { type: integer, minimum: 0 }
-            unitApproverConfigured: { type: integer, minimum: 0 }
             activeEmployees: { type: integer, minimum: 0 }
-            directManagerConfigured: { type: integer, minimum: 0 }
             entitlementGroupConfigured: { type: integer, minimum: 0 }
-        rollout:
-          type: object
-          required: [workflowKey, effectiveDate, state, counts]
-          properties:
-            workflowKey: { type: string, const: leave.annual }
-            effectiveDate: { type: string, format: date }
-            state: { type: string, enum: [LEGACY, SHADOW, STRUCTURE, MIXED] }
-            counts:
-              type: object
-              required: [LEGACY, SHADOW, STRUCTURE]
-              properties:
-                LEGACY: { type: integer, minimum: 0 }
-                SHADOW: { type: integer, minimum: 0 }
-                STRUCTURE: { type: integer, minimum: 0 }
+        approvalSource: { type: string, const: organization_structure }
 
     AdminLeaveApprovalPreview:
       type: object
-      required: [employee, referenceDate, approvalChain, routing, annualLeave, warnings]
+      required: [employee, referenceDate, approvalChain, approvalSource, annualLeave, warnings]
       properties:
         employee: { type: object, additionalProperties: true }
         referenceDate: { type: string, format: date }
         approvalChain:
           type: array
           items: { $ref: '#/components/schemas/LeaveAuthorityStep' }
-        routing:
-          type: object
-          required: [mode, authoritativeSource, structuralCandidateChain, comparison]
-          properties:
-            mode: { $ref: '#/components/schemas/OrganizationRolloutMode' }
-            authoritativeSource: { type: string, enum: [LEGACY, STRUCTURE] }
-            structuralCandidateChain:
-              oneOf:
-                - type: 'null'
-                - type: array
-                  items: { $ref: '#/components/schemas/LeaveAuthorityStep' }
-            comparison:
-              oneOf:
-                - type: 'null'
-                - type: object
-                  required: [status, reasons]
-                  properties:
-                    status: { type: string, enum: [MATCH, MISMATCH] }
-                    reasons: { type: array, items: { type: string } }
-                    error:
-                      type: object
-                      properties:
-                        code: { type: string }
-                        message: { type: string }
+        approvalSource: { type: string, const: organization_structure }
         annualLeave:
           oneOf:
             - type: 'null'

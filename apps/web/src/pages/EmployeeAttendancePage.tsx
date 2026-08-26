@@ -41,12 +41,13 @@ function formatDate(value: string) {
 
 function formatTime(value: string | null) {
   if (!value) return "—";
-  return new Intl.DateTimeFormat("id-ID", {
+  const time = new Intl.DateTimeFormat("id-ID", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
     timeZone: "Asia/Jakarta",
   }).format(new Date(value));
+  return `${time} WIB`;
 }
 
 export function EmployeeAttendancePage() {

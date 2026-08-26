@@ -9,7 +9,6 @@ import {
   OrganizationRolloutService,
   PostgresOrganizationRepository,
   type AuthorityEligibilityResult,
-  type OrganizationRolloutMode,
   type OrganizationSnapshot,
 } from "../src/modules/organization/index.js";
 
@@ -449,47 +448,23 @@ describe("ORG-004 authority resolver", () => {
   });
 });
 
-describe("ORG-004 rollout service", () => {
-  function rollout(mode: OrganizationRolloutMode, structure = snapshot()) {
-    return new OrganizationRolloutService(
-      { getRolloutMode: async () => mode },
-      resolver(structure),
-    );
+describe("Organization direct approval service", () => {
+  function organizationAuthority(structure = snapshot()) {
+    return new OrganizationRolloutService(resolver(structure));
   }
   const input = {
     workflowKey: "leave.annual",
     requesterEmployeeId: employeeIds.staff,
     effectiveDate: "2026-08-22",
-    legacy: {
-      directManagerEmployeeId: employeeIds.director,
-      unitApproverEmployeeId: employeeIds.director,
-    },
   };
 
-  it("keeps LEGACY authoritative and deduplicates semantic sources", async () => {
-    const result = await rollout("LEGACY").resolveAuthorities(input);
-    expect(result.authoritativeSource).toBe("LEGACY");
-    expect(result.authorities).toHaveLength(1);
-    expect(result.authorities[0]).toMatchObject({
-      source: "DIRECT_MANAGER",
-      sources: ["DIRECT_MANAGER", "UNIT_APPROVER"],
-    });
-  });
-
-  it("reports SHADOW differences while keeping legacy authority", async () => {
-    const result = await rollout("SHADOW").resolveAuthorities(input);
-    expect(result.authoritativeSource).toBe("LEGACY");
-    expect(result.authorities.every((item) => item.employeeId === employeeIds.director)).toBe(true);
-    expect(result.shadow?.matches).toBe(false);
-  });
-
-  it("uses STRUCTURE authoritatively and fails closed without configuration", async () => {
-    const result = await rollout("STRUCTURE").resolveAuthorities(input);
+  it("uses the published structure authoritatively and fails closed without configuration", async () => {
+    const result = await organizationAuthority().resolveAuthorities(input);
     expect(result.authoritativeSource).toBe("STRUCTURE");
     expect(result.authorities[0]?.employeeId).toBe(employeeIds.head);
 
     const missing = snapshot({ authorityBindings: [] });
-    await expect(rollout("STRUCTURE", missing).resolveAuthorities(input))
+    await expect(organizationAuthority(missing).resolveAuthorities(input))
       .rejects.toMatchObject({ code: "AUTHORITY_NOT_CONFIGURED" });
   });
 
@@ -497,10 +472,9 @@ describe("ORG-004 rollout service", () => {
     const structure = snapshot({
       authorityBindings: [binding("unit", "NODE", "node-team", "UNIT_APPROVER", "position-director")],
     });
-    const result = await rollout("STRUCTURE", structure).resolveAuthorities({
+    const result = await organizationAuthority(structure).resolveAuthorities({
       ...input,
       authorityRequirement: "UNIT_ONLY",
-      legacy: { directManagerEmployeeId: null, unitApproverEmployeeId: employeeIds.director },
     });
     expect(result.authorities).toEqual([
       expect.objectContaining({ employeeId: employeeIds.director, source: "UNIT_APPROVER" }),
@@ -523,31 +497,6 @@ describe("ORG-004 rollout service", () => {
     })).rejects.toMatchObject({ code: "ACCOUNT_HOLDER_NOT_ACTIONABLE" });
   });
 
-  it("summarizes effective rollout modes per employee scope without claiming one global mode", async () => {
-    const query = vi.fn(async () => ({
-      rows: [
-        { nodeKey: "node-team", mode: "STRUCTURE" },
-        { nodeKey: null, mode: "LEGACY" },
-      ],
-      rowCount: 2,
-    }));
-    const repository = new PostgresOrganizationRepository({ query } as never);
-    vi.spyOn(repository, "loadEffectiveSnapshot").mockResolvedValue(snapshot());
-
-    const modes = await repository.getRolloutModes(
-      "leave.annual",
-      [employeeIds.staff, "employee-outside-structure"],
-      "2026-08-22",
-    );
-
-    expect(modes.get(employeeIds.staff)).toBe("STRUCTURE");
-    expect(modes.get("employee-outside-structure")).toBe("LEGACY");
-    expect(query).toHaveBeenCalledWith(expect.stringContaining("node_key = ANY"), [
-      "leave.annual",
-      "2026-08-22",
-      ["node-team"],
-    ]);
-  });
 });
 
 describe("ORG-004 draft validation and impact", () => {
@@ -696,7 +645,6 @@ describe("ORG-004 draft validation and impact", () => {
     };
     let accountReady = false;
     const subject = new OrganizationRolloutService(
-      { getRolloutMode: async () => "STRUCTURE" },
       new OrganizationAuthorityResolver(
         { loadEffectiveSnapshot: async () => structure },
         {
@@ -713,7 +661,6 @@ describe("ORG-004 draft validation and impact", () => {
       requesterEmployeeId: employeeIds.staff,
       effectiveDate: "2026-08-22",
       requiredCapability: "leave.approve",
-      legacy: { directManagerEmployeeId: employeeIds.director, unitApproverEmployeeId: employeeIds.director },
     };
 
     await expect(subject.resolveAuthorities(input)).rejects.toMatchObject({

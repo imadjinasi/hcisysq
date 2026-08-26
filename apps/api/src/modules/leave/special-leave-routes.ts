@@ -26,6 +26,11 @@ import {
   type IsoWeekday,
   type LeaveCalendarException,
 } from "./domain/working-calendar.js";
+import {
+  OrganizationAuthorityResolver,
+  OrganizationResolutionError,
+  PostgresOrganizationRepository,
+} from "../organization/index.js";
 
 const specialKeySchema = z.enum(SUPPORTED_SPECIAL_LEAVE_KEYS);
 const previewSchema = z.object({
@@ -62,9 +67,6 @@ interface EmployeeContextRow {
   status: "active" | "inactive" | "resigned";
   unitName: string | null;
   positionName: string | null;
-  directManagerEmployeeId: string | null;
-  directManagerName: string | null;
-  directManagerStatus: "active" | "inactive" | "resigned" | null;
 }
 
 interface CalendarSettingRow {
@@ -168,15 +170,11 @@ async function loadEmployeeContext(
       e.full_name AS "fullName",
       e.status,
       u.name AS "unitName",
-      p.name AS "positionName",
-      e.direct_manager_employee_id AS "directManagerEmployeeId",
-      manager.full_name AS "directManagerName",
-      manager.status AS "directManagerStatus"
+      p.name AS "positionName"
     FROM accounts a
     JOIN employees e ON e.id = a.employee_id
     LEFT JOIN organizational_units u ON u.id = e.organizational_unit_id
     LEFT JOIN positions p ON p.id = e.position_id
-    LEFT JOIN employees manager ON manager.id = e.direct_manager_employee_id
     WHERE a.id = $1
       AND a.principal_type = 'EMPLOYEE'
       AND a.status = 'active'
@@ -401,7 +399,18 @@ async function buildPreview(
     hasEvidence: input.hasEvidence,
   });
   const warnings = [...validation.warnings];
-  if (!employee.directManagerEmployeeId || employee.directManagerStatus !== "active") {
+  let managerNotification: { employeeId: string; name: string | null } | null = null;
+  try {
+    const manager = await new OrganizationAuthorityResolver(
+      new PostgresOrganizationRepository(db),
+    ).resolveDirectManager({
+      requesterEmployeeId: employee.id,
+      effectiveDate: jakartaToday(),
+      workflowKey: `leave.${input.policyKey}`,
+    });
+    managerNotification = { employeeId: manager.employeeId, name: null };
+  } catch (error) {
+    if (!(error instanceof OrganizationResolutionError)) throw error;
     warnings.push({
       code: "LINE_NOTIFICATION_UNRESOLVED",
       message:
@@ -412,9 +421,7 @@ async function buildPreview(
   return {
     calculation,
     validation: { ...validation, warnings },
-    managerNotification: employee.directManagerEmployeeId && employee.directManagerStatus === "active"
-      ? { employeeId: employee.directManagerEmployeeId, name: employee.directManagerName }
-      : null,
+    managerNotification,
   };
 }
 

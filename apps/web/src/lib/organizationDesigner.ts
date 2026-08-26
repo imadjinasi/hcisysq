@@ -218,16 +218,6 @@ export interface OrganizationResolutionPreview {
   warnings: Array<{ code: string; message: string }>;
 }
 
-export interface OrganizationRolloutConfiguration {
-  mode: "LEGACY" | "SHADOW" | "STRUCTURE";
-  workflowKey?: string | null;
-  organizationalNodeKey?: string | null;
-  effectiveFrom?: string;
-  effectiveTo?: string | null;
-  reason?: string;
-  updatedAt?: string;
-}
-
 async function readJson<T>(response: Response): Promise<T> {
   if (response.ok) {
     if (response.status === 204) return undefined as T;
@@ -545,24 +535,4 @@ export function configureOrganizationApprovalReporting(
 
 export function discardOrganizationDraft(draftId: string): Promise<void> {
   return request<void>(`/drafts/${draftId}`, { method: "DELETE" });
-}
-
-export async function getOrganizationRollout(): Promise<OrganizationRolloutConfiguration> {
-  const response = await fetch("/api/admin/organization/rollout", {
-    credentials: "include",
-    headers: { Accept: "application/json" },
-  });
-  return readJson<OrganizationRolloutConfiguration>(response);
-}
-
-export async function updateOrganizationRollout(
-  input: OrganizationRolloutConfiguration,
-): Promise<OrganizationRolloutConfiguration> {
-  const response = await fetch("/api/admin/organization/rollout", {
-    method: "PATCH",
-    credentials: "include",
-    headers: { Accept: "application/json", "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  return readJson<OrganizationRolloutConfiguration>(response);
 }

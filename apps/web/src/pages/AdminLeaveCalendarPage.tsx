@@ -128,7 +128,7 @@ export function AdminLeaveCalendarPage() {
             <CalendarDays className="h-5 w-5 text-brand-primary-deep" aria-hidden="true" />
             <div>
               <h2 className="text-base font-bold text-brand-heading">Hari kerja mingguan</h2>
-              <p className="mt-1 text-xs text-muted-foreground">Timezone: {data?.timezone ?? "Asia/Jakarta"}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Waktu kerja menggunakan WIB</p>
             </div>
           </div>
           <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-2">

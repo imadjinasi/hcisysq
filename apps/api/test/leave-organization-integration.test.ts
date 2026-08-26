@@ -33,63 +33,8 @@ describe("ORG-004 Leave rollout consumer", () => {
     expect(source).not.toContain("resolveLeaveLineApprovalChain");
   });
 
-  it("keeps LEGACY authorities authoritative by safe default", () => {
+  it("uses a data-driven Organization authority as the complete approval chain", () => {
     const result: RolloutAuthorityResult = {
-      mode: "LEGACY",
-      authoritativeSource: "LEGACY",
-      authorities: [authority("manager", "DIRECT_MANAGER"), authority("unit", "UNIT_APPROVER")],
-    };
-
-    const snapshot = snapshotLeaveRolloutAuthorities(result, {
-      requesterEmployeeId: "employee",
-      policyChain: "LINE_AND_UNIT",
-    });
-
-    expect(snapshot.context).toMatchObject({
-      mode: "LEGACY",
-      authoritativeSource: "LEGACY",
-    });
-    expect(snapshot.approvalChain.map((step) => step.employeeId)).toEqual(["manager", "unit"]);
-  });
-
-  it("records SHADOW mismatch diagnostics while preserving the legacy chain", () => {
-    const result: RolloutAuthorityResult = {
-      mode: "SHADOW",
-      authoritativeSource: "LEGACY",
-      authorities: [authority("legacy-manager", "DIRECT_MANAGER"), authority("legacy-unit", "UNIT_APPROVER")],
-      shadow: {
-        matches: false,
-        mismatchReasons: ["DIRECT_MANAGER_MISMATCH"],
-        structural: {
-          effectiveDate: "2026-08-22",
-          changeSetId: "published-structure",
-          governanceApplied: false,
-          authorities: [
-            authority("structural-manager", "DIRECT_MANAGER"),
-            authority("legacy-unit", "UNIT_APPROVER"),
-          ],
-        },
-      },
-    };
-
-    const snapshot = snapshotLeaveRolloutAuthorities(result, {
-      requesterEmployeeId: "employee",
-      policyChain: "LINE_AND_UNIT",
-    });
-
-    expect(snapshot.approvalChain.map((step) => step.employeeId)).toEqual([
-      "legacy-manager",
-      "legacy-unit",
-    ]);
-    expect(snapshot.context.shadow).toMatchObject({
-      matches: false,
-      mismatchReasons: ["DIRECT_MANAGER_MISMATCH"],
-    });
-  });
-
-  it("uses a data-driven governance authority as the complete STRUCTURE chain", () => {
-    const result: RolloutAuthorityResult = {
-      mode: "STRUCTURE",
       authoritativeSource: "STRUCTURE",
       authorities: [authority("secretary-incumbent", "GOVERNANCE_APPROVER")],
     };
@@ -107,9 +52,8 @@ describe("ORG-004 Leave rollout consumer", () => {
     ]);
   });
 
-  it("never appends legacy authorities to a STRUCTURE chain", () => {
+  it("snapshots concrete Organization authorities without a legacy fallback", () => {
     const result: RolloutAuthorityResult = {
-      mode: "STRUCTURE",
       authoritativeSource: "STRUCTURE",
       authorities: [authority("structural-manager", "DIRECT_MANAGER"), authority("structural-unit", "UNIT_APPROVER")],
     };
@@ -117,23 +61,16 @@ describe("ORG-004 Leave rollout consumer", () => {
     const snapshot = snapshotLeaveRolloutAuthorities(result, {
       requesterEmployeeId: "employee",
       policyChain: "LINE_AND_UNIT",
-      legacy: {
-        directManagerEmployeeId: "legacy-manager",
-        unitApproverEmployeeId: "legacy-unit",
-      },
     });
 
     expect(snapshot.approvalChain).toEqual([
       { employeeId: "structural-manager", sources: ["DIRECT_MANAGER"] },
       { employeeId: "structural-unit", sources: ["UNIT_APPROVER"] },
     ]);
-    expect(snapshot.approvalChain.map((step) => step.employeeId)).not.toContain("legacy-manager");
-    expect(snapshot.approvalChain.map((step) => step.employeeId)).not.toContain("legacy-unit");
   });
 
-  it("fails closed when STRUCTURE mode has no required authority", () => {
+  it("fails closed when the published structure has no required authority", () => {
     const result: RolloutAuthorityResult = {
-      mode: "STRUCTURE",
       authoritativeSource: "STRUCTURE",
       authorities: [],
     };
@@ -148,7 +85,6 @@ describe("ORG-004 Leave rollout consumer", () => {
 
   it("keeps Unpaid Leave on Unit Approver before HC actual approval", () => {
     const result: RolloutAuthorityResult = {
-      mode: "STRUCTURE",
       authoritativeSource: "STRUCTURE",
       authorities: [authority("manager", "DIRECT_MANAGER"), authority("unit", "UNIT_APPROVER")],
     };
@@ -163,12 +99,10 @@ describe("ORG-004 Leave rollout consumer", () => {
     ]);
   });
 
-  it.each(["LEGACY", "SHADOW"] as const)(
-    "does not create structural oversight for a %s submission snapshot",
-    async (mode) => {
+  it("does not create structural oversight for a historic request without Organization authority snapshot", async () => {
       const query = vi.fn(async (sql: string) => {
         if (sql.includes("FROM leave_requests")) {
-          return { rows: [{ mode }], rowCount: 1 };
+          return { rows: [{ source: null, mode: null }], rowCount: 1 };
         }
         return { rows: [], rowCount: 1 };
       });
@@ -189,14 +123,13 @@ describe("ORG-004 Leave rollout consumer", () => {
       expect(query.mock.calls.some(([sql]) =>
         String(sql).includes("INSERT INTO leave_notification_outbox"),
       )).toBe(false);
-    },
-  );
+  });
 
   it("bases planned/unpaid final oversight on the snapshotted line approver, not HC", async () => {
     const query = vi.fn(async (sql: string, values?: unknown[]) => {
       void values;
       if (sql.includes("FROM leave_requests")) {
-        return { rows: [{ mode: "STRUCTURE" }], rowCount: 1 };
+        return { rows: [{ source: "STRUCTURE", mode: null }], rowCount: 1 };
       }
       if (sql.includes("FROM leave_request_approval_steps")) {
         return { rows: [{ employeeId: "final-line-approver" }], rowCount: 1 };
@@ -228,10 +161,10 @@ describe("ORG-004 Leave rollout consumer", () => {
     expect(String(outboxInsert?.[0])).toContain("WHERE NOT EXISTS");
   });
 
-  it("keeps STRUCTURE oversight authoritative when rollout changes after submission", async () => {
+  it("keeps snapshotted Organization authority authoritative for an in-flight request", async () => {
     const query = vi.fn(async (sql: string) => {
       if (sql.includes("FROM leave_requests")) {
-        return { rows: [{ mode: "STRUCTURE" }], rowCount: 1 };
+        return { rows: [{ source: "STRUCTURE", mode: null }], rowCount: 1 };
       }
       return { rows: [], rowCount: 1 };
     });
@@ -262,7 +195,7 @@ describe("ORG-004 Leave rollout consumer", () => {
 
   it("isolates oversight resolution failure from the final approval transaction", async () => {
     const query = vi.fn(async (sql: string) => sql.includes("FROM leave_requests")
-      ? { rows: [{ mode: "STRUCTURE" }], rowCount: 1 }
+      ? { rows: [{ source: "STRUCTURE", mode: null }], rowCount: 1 }
       : { rows: [], rowCount: 1 });
     const resolveOversightAbove = vi.fn(async () => {
       throw new Error("notification resolver unavailable");

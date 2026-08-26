@@ -1,13 +1,11 @@
 import { useNavigate } from "@tanstack/react-router";
 import {
   AlertTriangle,
-  Building2,
   CalendarDays,
   CheckCircle2,
   Clock3,
   Loader2,
   LogOut,
-  ShieldCheck,
   UserRoundCheck,
   UsersRound,
   WalletCards,
@@ -28,7 +26,7 @@ function percent(value: number, total: number) {
 }
 
 function generatedLabel(value: string) {
-  return new Intl.DateTimeFormat("id-ID", {
+  const dateTime = new Intl.DateTimeFormat("id-ID", {
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -36,6 +34,7 @@ function generatedLabel(value: string) {
     minute: "2-digit",
     timeZone: "Asia/Jakarta",
   }).format(new Date(value));
+  return `${dateTime} WIB`;
 }
 
 export function FoundationBoardPage() {
@@ -67,12 +66,6 @@ export function FoundationBoardPage() {
     }
   };
 
-  const managerCoverage = data
-    ? percent(data.approvalReadiness.withDirectManager, data.approvalReadiness.activeEmployees)
-    : 0;
-  const unitApproverCoverage = data
-    ? percent(data.approvalReadiness.unitsWithApprover, data.approvalReadiness.activeUnits)
-    : 0;
   const entitlementCoverage = data
     ? percent(
         data.entitlementGroups.education + data.entitlementGroups.nonEducation,
@@ -141,15 +134,6 @@ export function FoundationBoardPage() {
               </article>
 
               <article className="rounded-3xl border border-border/75 bg-white p-5 shadow-[var(--shadow-soft)]">
-                <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-cyan/14 text-cyan-900">
-                  <Building2 className="h-5 w-5" aria-hidden="true" />
-                </span>
-                <p className="mt-5 text-3xl font-bold text-brand-heading">{data.approvalReadiness.activeUnits}</p>
-                <p className="mt-1 text-sm font-bold text-brand-heading">Unit dengan pegawai aktif</p>
-                <p className="mt-1 text-xs text-muted-foreground">{data.approvalReadiness.unitsWithApprover} sudah memiliki Approver Unit</p>
-              </article>
-
-              <article className="rounded-3xl border border-border/75 bg-white p-5 shadow-[var(--shadow-soft)]">
                 <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-yellow/16 text-amber-950">
                   <CalendarDays className="h-5 w-5" aria-hidden="true" />
                 </span>
@@ -172,33 +156,14 @@ export function FoundationBoardPage() {
               <article className="rounded-[2rem] border border-border/80 bg-white p-5 shadow-[var(--shadow-raised)] sm:p-6">
                 <div className="flex items-center justify-between gap-4">
                   <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Kesiapan approval</p>
-                    <h2 className="mt-1 text-lg font-bold text-brand-heading">Konfigurasi organisasi</h2>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Persetujuan cuti</p>
+                    <h2 className="mt-1 text-lg font-bold text-brand-heading">Struktur Organisasi</h2>
                   </div>
-                  <ShieldCheck className="h-5 w-5 text-brand-primary-deep" aria-hidden="true" />
                 </div>
 
                 <div className="mt-5 space-y-5">
                   <div>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-semibold text-brand-heading">Atasan langsung pegawai aktif</span>
-                      <span className="font-bold text-brand-heading">{managerCoverage}%</span>
-                    </div>
-                    <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-muted">
-                      <div className="h-full rounded-full bg-brand-primary" style={{ width: `${managerCoverage}%` }} />
-                    </div>
-                    <p className="mt-2 text-[11px] text-muted-foreground">{data.approvalReadiness.withDirectManager} terisi · {data.approvalReadiness.withoutDirectManager} belum terisi</p>
-                  </div>
-
-                  <div>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-semibold text-brand-heading">Approver Unit</span>
-                      <span className="font-bold text-brand-heading">{unitApproverCoverage}%</span>
-                    </div>
-                    <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-muted">
-                      <div className="h-full rounded-full bg-brand-primary" style={{ width: `${unitApproverCoverage}%` }} />
-                    </div>
-                    <p className="mt-2 text-[11px] text-muted-foreground">{data.approvalReadiness.unitsWithApprover} unit terisi · {data.approvalReadiness.unitsWithoutApprover} belum terisi</p>
+                    <p className="text-sm leading-6 text-muted-foreground">Permohonan baru menggunakan Struktur Organisasi yang sudah diterbitkan. Perubahan struktur hanya berlaku untuk permohonan berikutnya.</p>
                   </div>
 
                   <div>

@@ -15,7 +15,6 @@ import {
   removeEmployeeFromMaster,
   updateEmployeeMaster,
   prepareEmployeeAccount,
-  updateDirectManager,
   type EmployeeDetailResponse,
   type EmployeeSourceSnapshot,
 } from "@/lib/adminOrgAccess";
@@ -29,15 +28,18 @@ function accountStatusLabel(status: string | null) {
   return "Belum ada account";
 }
 
+function formatWibDateTime(value: string) {
+  const dateTime = new Intl.DateTimeFormat("id-ID", { dateStyle: "long", timeStyle: "short", timeZone: "Asia/Jakarta" }).format(new Date(value));
+  return `${dateTime} WIB`;
+}
+
 export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) {
   const [data, setData] = useState<EmployeeDetailResponse | null>(null);
-  const [managerId, setManagerId] = useState("");
   const [accountEmail, setAccountEmail] = useState("");
   const [activationLink, setActivationLink] = useState<{
     url: string;
     expiresAt: string;
   } | null>(null);
-  const [savingManager, setSavingManager] = useState(false);
   const [preparingAccount, setPreparingAccount] = useState(false);
   const [issuingActivation, setIssuingActivation] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -53,7 +55,6 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
 
   const applyResult = (result: EmployeeDetailResponse) => {
     setData(result);
-    setManagerId(result.employee.managerEmployeeId ?? "");
     setAccountEmail(result.employee.accountEmail ?? result.employee.email ?? "");
     setEdit(employeeMasterEditState(result.employee));
   };
@@ -86,22 +87,6 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
   const loadRemovalPreview = async () => { try { setRemovalPreview(await previewEmployeeRemoval(employeeId)); } catch (cause) { setError(cause instanceof AdminApiError ? cause.message : "Dampak penghapusan tidak dapat dimuat."); } };
   const removeFromMaster = async () => { try { await removeEmployeeFromMaster(employeeId, removalName, removalReason); setNotice("Pegawai telah dikeluarkan dari Employee Master; riwayat tetap tersimpan dan account pegawai dinonaktifkan."); await reload(); } catch (cause) { setError(cause instanceof AdminApiError ? cause.message : "Penghapusan dari Employee Master gagal."); } };
   const saveMaster = async (event: FormEvent) => { event.preventDefault(); try { await updateEmployeeMaster(employeeId, employeeMasterUpdatePayload(edit, editReason)); setNotice("Employee master diperbarui; email login account tidak berubah otomatis."); setEditing(false); await reload(); } catch (cause) { setError(cause instanceof AdminApiError ? cause.message : "Employee master gagal diperbarui."); } };
-
-  const saveManager = async (event: FormEvent) => {
-    event.preventDefault();
-    setSavingManager(true);
-    setError(null);
-    setNotice(null);
-    try {
-      await updateDirectManager(employeeId, managerId || null);
-      setNotice("Atasan langsung berhasil diperbarui.");
-      await reload();
-    } catch (cause) {
-      setError(cause instanceof AdminApiError ? cause.message : "Atasan langsung gagal diperbarui.");
-    } finally {
-      setSavingManager(false);
-    }
-  };
 
   const issueActivation = async (accountId: string) => {
     setIssuingActivation(true);
@@ -177,13 +162,13 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
 
       {error ? <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div> : null}
       {notice ? <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{notice}</div> : null}
-      {employee?.removedAt ? <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-900">Dikeluarkan dari HCIS · {new Date(employee.removedAt).toLocaleString("id-ID")} · Alasan: {employee.removalReason}</div> : null}
+      {employee?.removedAt ? <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-900">Dikeluarkan dari HCIS · {formatWibDateTime(employee.removedAt)} · Alasan: {employee.removalReason}</div> : null}
 
       {activationLink ? (
         <section className="mb-5 rounded-2xl border border-brand-primary/30 bg-brand-primary-pale p-4">
           <p className="text-sm font-bold text-brand-heading">Link aktivasi</p>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            Berlaku sampai {new Date(activationLink.expiresAt).toLocaleString("id-ID")}. Link hanya ditampilkan pada sesi halaman ini.
+            Berlaku sampai {formatWibDateTime(activationLink.expiresAt)}. Link hanya ditampilkan pada sesi halaman ini.
           </p>
           <div className="mt-3 flex flex-col gap-2 sm:flex-row">
             <input
@@ -241,32 +226,14 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
         <article className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
           <div className="flex items-center gap-3">
             <Network className="h-5 w-5 text-brand-primary-deep" aria-hidden="true" />
-            <h2 className="text-base font-bold text-brand-heading">Reporting line</h2>
+            <h2 className="text-base font-bold text-brand-heading">Persetujuan & Pelaporan</h2>
           </div>
           <p className="mt-2 text-sm text-muted-foreground">
-            Atasan langsung ini nanti menjadi input resolver approval. Siklus reporting line ditolak oleh backend.
+            Atasan langsung dan jalur persetujuan untuk permohonan baru ditentukan oleh Struktur Organisasi yang sudah diterbitkan.
           </p>
-          {employee?.removedAt ? <p className="mt-4 rounded-xl bg-slate-100 p-3 text-sm text-muted-foreground">Reporting line historis tetap terbaca; pegawai yang dikeluarkan tidak dapat diubah lagi.</p> : <form onSubmit={saveManager} className="mt-4 space-y-3">
-            <select
-              value={managerId}
-              onChange={(event) => setManagerId(event.target.value)}
-              className="h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm outline-none focus:border-brand-primary"
-            >
-              <option value="">Belum ditetapkan</option>
-              {data?.managerCandidates.map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
-                  {candidate.fullName} · {candidate.employeeNumber} · {candidate.unitName ?? "Tanpa unit"}
-                </option>
-              ))}
-            </select>
-            <button
-              type="submit"
-              disabled={savingManager || !employee}
-              className="h-10 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white disabled:opacity-50"
-            >
-              {savingManager ? "Menyimpan..." : "Simpan atasan langsung"}
-            </button>
-          </form>}
+          <a href="/admin/organization" className="mt-4 inline-flex h-10 items-center rounded-xl bg-brand-primary px-4 text-sm font-bold text-white">
+            Buka Struktur Organisasi
+          </a>
         </article>
       </section>
 
@@ -345,7 +312,7 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
       <section className="mt-5 rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
         <h2 className="text-base font-bold text-brand-heading">Data Sumber</h2>
         <p className="mt-1 text-xs text-muted-foreground">Hanya Super Admin. Nilai sumber bersifat administratif/audit dan tidak tersedia pada employee self-service.</p>
-        {sourceSnapshots.length ? sourceSnapshots.map((snapshot) => <details key={snapshot.id} className="mt-3 rounded-xl border border-border/70 p-3"><summary className="cursor-pointer text-sm font-semibold">{snapshot.sourceFilename} · {snapshot.sourceSheet} · {new Date(snapshot.importedAt).toLocaleString("id-ID")}</summary><dl className="mt-3 grid gap-2 sm:grid-cols-2">{Object.entries(snapshot.unmodeledSourceData).map(([key, value]) => <div key={key}><dt className="text-xs text-muted-foreground">{key}</dt><dd className="break-words text-sm">{String(value ?? "")}</dd></div>)}</dl></details>) : <p className="mt-3 text-sm text-muted-foreground">Belum ada snapshot import yang tersedia.</p>}
+        {sourceSnapshots.length ? sourceSnapshots.map((snapshot) => <details key={snapshot.id} className="mt-3 rounded-xl border border-border/70 p-3"><summary className="cursor-pointer text-sm font-semibold">{snapshot.sourceFilename} · {snapshot.sourceSheet} · {formatWibDateTime(snapshot.importedAt)}</summary><dl className="mt-3 grid gap-2 sm:grid-cols-2">{Object.entries(snapshot.unmodeledSourceData).map(([key, value]) => <div key={key}><dt className="text-xs text-muted-foreground">{key}</dt><dd className="break-words text-sm">{String(value ?? "")}</dd></div>)}</dl></details>) : <p className="mt-3 text-sm text-muted-foreground">Belum ada snapshot import yang tersedia.</p>}
       </section>
 
       {!employee?.removedAt ? <section className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-5">

@@ -12,7 +12,6 @@ import {
 } from "../organization/index.js";
 import {
   LeaveApprovalConfigurationError,
-  resolveLeaveLineApprovalChain,
   snapshotResolvedLeaveAuthorities,
   type LeaveApprovalStep,
   type LeaveApprovalSource,
@@ -33,7 +32,6 @@ export class LeaveOrganizationAuthorityError extends Error {
 export interface LeaveAuthorityResolution {
   approvalChain: LeaveApprovalStep[];
   context: {
-    mode: RolloutAuthorityResult["mode"];
     authoritativeSource: RolloutAuthorityResult["authoritativeSource"];
     authorities: Array<{
       employeeId: string;
@@ -42,7 +40,6 @@ export interface LeaveAuthorityResolution {
       path: string[];
       incumbentKind: string;
     }>;
-    shadow?: RolloutAuthorityResult["shadow"];
   };
 }
 
@@ -50,10 +47,6 @@ export interface ResolveLeaveAuthoritiesInput {
   workflowKey: string;
   requesterEmployeeId: string;
   effectiveDate: string;
-  legacy: {
-    directManagerEmployeeId: string | null;
-    unitApproverEmployeeId: string | null;
-  };
   policyChain: "LINE_AND_UNIT" | "UNIT_ONLY";
 }
 
@@ -62,7 +55,7 @@ function organizationServices(db: Queryable) {
   const resolver = new OrganizationAuthorityResolver(repository);
   return {
     resolver,
-    rollout: new OrganizationRolloutService(repository, resolver),
+    rollout: new OrganizationRolloutService(resolver),
   };
 }
 
@@ -77,7 +70,6 @@ export async function resolveLeaveAuthorities(
       workflowKey: input.workflowKey,
       requesterEmployeeId: input.requesterEmployeeId,
       effectiveDate: input.effectiveDate,
-      legacy: input.legacy,
       authorityRequirement: input.policyChain,
     });
   } catch (error) {
@@ -92,28 +84,8 @@ export async function resolveLeaveAuthorities(
 
 export function snapshotLeaveRolloutAuthorities(
   result: RolloutAuthorityResult,
-  input: Pick<ResolveLeaveAuthoritiesInput, "requesterEmployeeId" | "policyChain"> &
-    Partial<Pick<ResolveLeaveAuthoritiesInput, "legacy">>,
+  input: Pick<ResolveLeaveAuthoritiesInput, "requesterEmployeeId" | "policyChain">,
 ): LeaveAuthorityResolution {
-
-  if (result.authoritativeSource === "LEGACY" && input.legacy) {
-    if (input.policyChain === "LINE_AND_UNIT") {
-      resolveLeaveLineApprovalChain({
-        requesterEmployeeId: input.requesterEmployeeId,
-        ...input.legacy,
-      });
-    } else if (!input.legacy.unitApproverEmployeeId) {
-      throw new LeaveApprovalConfigurationError(
-        "UNIT_APPROVER_MISSING",
-        "Kepala Satuan Kerja / Unit Approver belum dikonfigurasi.",
-      );
-    } else if (input.legacy.unitApproverEmployeeId === input.requesterEmployeeId) {
-      throw new LeaveApprovalConfigurationError(
-        "UNIT_APPROVER_SELF",
-        "Cuti Tanpa Gaji memerlukan Unit Approver yang berbeda dari pemohon.",
-      );
-    }
-  }
 
   const sourcesOf = (authority: ResolvedAuthority): LeaveApprovalSource[] =>
     (authority.sources ?? [authority.source]).filter(
@@ -159,7 +131,6 @@ export function snapshotLeaveRolloutAuthorities(
   return {
     approvalChain,
     context: {
-      mode: result.mode,
       authoritativeSource: result.authoritativeSource,
       authorities: policyAuthorities.map((authority) => ({
         employeeId: authority.employeeId,
@@ -168,7 +139,6 @@ export function snapshotLeaveRolloutAuthorities(
         path: authority.path,
         incumbentKind: authority.incumbentKind,
       })),
-      ...(result.shadow ? { shadow: result.shadow } : {}),
     },
   };
 }
@@ -191,18 +161,20 @@ async function finalLineOrGovernanceApprover(
   return result.rows[0]?.employeeId ?? null;
 }
 
-async function snapshottedRolloutMode(
+async function hasSnapshottedOrganizationAuthority(
   db: PoolClient,
   requestId: string,
-): Promise<"LEGACY" | "SHADOW" | "STRUCTURE" | null> {
-  const result = await db.query<{ mode: string | null }>(
-    `SELECT validation_summary #>> '{authorityResolution,mode}' AS mode
+): Promise<boolean> {
+  const result = await db.query<{ source: string | null; mode: string | null }>(
+    `SELECT
+       validation_summary #>> '{authorityResolution,authoritativeSource}' AS source,
+       validation_summary #>> '{authorityResolution,mode}' AS mode
      FROM leave_requests
      WHERE id = $1`,
     [requestId],
   );
-  const mode = result.rows[0]?.mode;
-  return mode === "LEGACY" || mode === "SHADOW" || mode === "STRUCTURE" ? mode : null;
+  const snapshot = result.rows[0];
+  return snapshot?.source === "STRUCTURE" || snapshot?.mode === "STRUCTURE";
 }
 
 /**
@@ -226,9 +198,9 @@ export async function enqueueFinalApprovalOversight(
   try {
     await db.query("SAVEPOINT leave_oversight_notification");
     savepointCreated = true;
-    // Behavioral mode is immutable for an in-flight request. Missing mode
-    // metadata identifies pre-ORG-004/legacy submissions and is side-effect safe.
-    if (await snapshottedRolloutMode(db, input.requestId) !== "STRUCTURE") {
+    // New submissions snapshot their Organization authority. Historic requests
+    // without that snapshot remain side-effect safe and are never re-resolved.
+    if (!(await hasSnapshottedOrganizationAuthority(db, input.requestId))) {
       await db.query("RELEASE SAVEPOINT leave_oversight_notification");
       return;
     }

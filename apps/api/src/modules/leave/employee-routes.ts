@@ -70,8 +70,6 @@ interface EmployeeContextRow {
   unitId: string | null;
   unitName: string | null;
   positionName: string | null;
-  directManagerEmployeeId: string | null;
-  unitApproverEmployeeId: string | null;
 }
 
 interface CalendarSettingRow {
@@ -158,9 +156,7 @@ async function loadEmployeeContext(
       e.leave_entitlement_group AS "leaveEntitlementGroup",
       u.id AS "unitId",
       u.name AS "unitName",
-      p.name AS "positionName",
-      e.direct_manager_employee_id AS "directManagerEmployeeId",
-      u.leave_approver_employee_id AS "unitApproverEmployeeId"
+      p.name AS "positionName"
     FROM accounts a
     JOIN employees e ON e.id = a.employee_id
     LEFT JOIN organizational_units u ON u.id = e.organizational_unit_id
@@ -314,10 +310,6 @@ async function buildAnnualPreview(
     workflowKey: "leave.annual",
     requesterEmployeeId: employee.id,
     effectiveDate: submittedOn,
-    legacy: {
-      directManagerEmployeeId: employee.directManagerEmployeeId,
-      unitApproverEmployeeId: employee.unitApproverEmployeeId,
-    },
     policyChain: "LINE_AND_UNIT",
   });
   const approvalChain = await hydrateApprovalChain(db, authorityResolution.approvalChain);

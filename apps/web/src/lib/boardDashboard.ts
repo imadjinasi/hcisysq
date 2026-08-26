@@ -15,14 +15,6 @@ export interface BoardDashboardData {
     nonEducation: number;
     unclassified: number;
   };
-  approvalReadiness: {
-    activeEmployees: number;
-    withDirectManager: number;
-    withoutDirectManager: number;
-    activeUnits: number;
-    unitsWithApprover: number;
-    unitsWithoutApprover: number;
-  };
   workflow: {
     leaveInReview: number;
     hcValidationPending: number;

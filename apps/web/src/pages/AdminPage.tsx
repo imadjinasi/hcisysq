@@ -10,7 +10,6 @@ interface OverviewState {
   activeEmployees: number;
   imports: number;
   units: number;
-  missingManagers: number;
   accounts: number;
   invitedAccounts: number;
 }
@@ -33,7 +32,6 @@ export function AdminPage() {
           activeEmployees: employees.summary.active,
           imports: imports.items.length,
           units: organization.units.length,
-          missingManagers: organization.reportingLines.missingManagers,
           accounts: access.summary.accounts,
           invitedAccounts: access.summary.invited,
         });
@@ -45,7 +43,6 @@ export function AdminPage() {
             activeEmployees: 0,
             imports: 0,
             units: 0,
-            missingManagers: 0,
             accounts: 0,
             invitedAccounts: 0,
           });
@@ -59,7 +56,7 @@ export function AdminPage() {
   const cards = [
     {
       title: "Data Pegawai",
-      description: "Cari, filter, review detail pegawai, dan tetapkan atasan langsung.",
+      description: "Cari, filter, dan review detail pegawai.",
       href: "/admin/employees",
       icon: UsersRound,
       metric: overview ? `${overview.totalEmployees} pegawai` : "Memuat...",
@@ -67,11 +64,11 @@ export function AdminPage() {
     },
     {
       title: "Struktur Organisasi",
-      description: "Review unit, jabatan, serta coverage reporting line untuk fondasi approval.",
+      description: "Kelola struktur, jabatan, dan hubungan persetujuan yang berlaku.",
       href: "/admin/organization",
       icon: Building2,
       metric: overview ? `${overview.units} unit` : "Memuat...",
-      detail: overview ? `${overview.missingManagers} atasan langsung belum terisi` : "",
+      detail: "Persetujuan mengikuti Struktur Organisasi",
     },
     {
       title: "Account & Akses",
@@ -103,7 +100,7 @@ export function AdminPage() {
     <AdminShell
       active="overview"
       title="Ringkasan Super Admin"
-      description="Employee master, struktur organisasi, reporting line, account, role, dan scope sekarang dikelola sebagai domain terpisah tetapi terhubung."
+      description="Employee master, Struktur Organisasi, persetujuan dan pelaporan, account, role, dan scope dikelola sebagai domain terpisah tetapi terhubung."
     >
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {cards.map((card) => {

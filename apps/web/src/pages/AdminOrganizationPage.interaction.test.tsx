@@ -34,7 +34,6 @@ vi.mock("@/lib/organizationDesigner", async () => {
     listOrganizationRevisions: vi.fn(),
     listOrganizationEmployees: vi.fn(),
     listFoundationBoardAccounts: vi.fn(),
-    getOrganizationRollout: vi.fn(),
     previewOrganizationResolution: vi.fn(),
     discardOrganizationDraft: vi.fn(),
     reopenOrganizationDraft: vi.fn(),
@@ -48,7 +47,6 @@ import {
   listFoundationBoardAccounts,
   listOrganizationEmployees,
   listOrganizationRevisions,
-  getOrganizationRollout,
   previewOrganizationResolution,
   reopenOrganizationDraft,
   type OrganizationDesignerView,
@@ -98,7 +96,6 @@ beforeEach(() => {
   vi.mocked(listOrganizationRevisions).mockResolvedValue(revisions);
   vi.mocked(listOrganizationEmployees).mockResolvedValue([{ id: "employee", employeeNumber: "SYN-1", fullName: "Pegawai Sintetis", unitName: null, positionName: null }]);
   vi.mocked(listFoundationBoardAccounts).mockResolvedValue([]);
-  vi.mocked(getOrganizationRollout).mockResolvedValue({ mode: "LEGACY" });
   vi.mocked(getOrganizationDesignerView).mockImplementation(async ({ revisionId }) => viewFor(revisions.find((item) => item.id === revisionId)));
   vi.mocked(previewOrganizationResolution).mockResolvedValue({ employee: { id: "employee", fullName: "Hasil Preview Sintetis" }, effectiveDate: "2026-08-25", workflowKey: "LEAVE", steps: [], warnings: [] });
   vi.mocked(discardOrganizationDraft).mockResolvedValue(undefined);

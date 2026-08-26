@@ -167,7 +167,7 @@ describe("guided organization administration", () => {
     expect(html).toContain("Pegawai Sintetis");
     expect(html).toContain("Pertahankan pejabat saat ini");
     expect(html).toContain("Organ Yayasan");
-    expect(html).toContain("VACANT · belum ada pejabat");
+    expect(html).toContain("Posisi kosong · belum ada pejabat");
     expect(html).toContain("Atasan struktural belum ditetapkan");
   });
 });

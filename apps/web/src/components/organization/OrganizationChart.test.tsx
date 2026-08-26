@@ -294,7 +294,7 @@ describe("Organization Designer chart", () => {
       />,
     );
 
-    expect(html).toContain("VACANT · Belum ada pejabat");
+    expect(html).toContain("Posisi kosong · Belum ada pejabat");
     expect(html).not.toContain('aria-label="Tampilan +2"');
     expect(html).not.toContain(">+2</span>");
   });
@@ -476,7 +476,7 @@ describe("Organization Designer chart", () => {
 
     expect(html).toContain("secretary@example.test");
     expect(html).toContain(">ORGAN YAYASAN</span>");
-    expect(html).not.toContain("VACANT · Belum ada pejabat");
+    expect(html).not.toContain("Posisi kosong · Belum ada pejabat");
   });
 
   it("localizes node types, keeps cards compact, and de-emphasizes zero members", () => {

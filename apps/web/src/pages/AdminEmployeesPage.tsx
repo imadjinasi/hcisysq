@@ -65,7 +65,7 @@ export function AdminEmployeesPage() {
     <AdminShell
       active="employees"
       title="Data Pegawai"
-      description="Kelola data kanonis pegawai, riwayat sumber, reporting line, kesiapan account, dan lifecycle Employee Master."
+      description="Kelola data kanonis pegawai, riwayat sumber, persetujuan dan pelaporan, kesiapan account, serta status Employee Master."
     >
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[

@@ -18,17 +18,12 @@ import {
 import {
   assertAssignmentDates,
   assertAssignmentScope,
-  assertManagerAssignment,
   OrgAccessPolicyError,
 } from "./org-access-policy.js";
 
 const employeeIdSchema = z.object({ employeeId: z.string().uuid() });
 const accountIdSchema = z.object({ accountId: z.string().uuid() });
 const assignmentIdSchema = z.object({ assignmentId: z.string().uuid() });
-
-const managerSchema = z.object({
-  managerEmployeeId: z.string().uuid().nullable(),
-});
 
 const createEmployeeAccountSchema = z.object({
   employeeId: z.string().uuid(),
@@ -69,11 +64,6 @@ interface PositionRow {
   activeCount: number;
 }
 
-interface CoverageRow {
-  activeEmployees: number;
-  assignedManagers: number;
-}
-
 interface EmployeeDetailRow {
   id: string;
   employeeNumber: string;
@@ -94,20 +84,9 @@ interface EmployeeDetailRow {
   structuralPosition: string | null;
   removedAt: Date | null;
   removalReason: string | null;
-  managerEmployeeId: string | null;
-  managerEmployeeNumber: string | null;
-  managerFullName: string | null;
   accountId: string | null;
   accountEmail: string | null;
   accountStatus: "invited" | "active" | "suspended" | "inactive" | null;
-}
-
-interface ManagerCandidateRow {
-  id: string;
-  employeeNumber: string;
-  fullName: string;
-  unitName: string | null;
-  positionName: string | null;
 }
 
 interface AssignmentRow {
@@ -223,7 +202,7 @@ export async function registerOrgAccessAdminRoutes(
     const principal = await authenticateAdmin(request, reply);
     if (!principal) return;
 
-    const [units, positions, coverage] = await Promise.all([
+    const [units, positions] = await Promise.all([
       pool.query<UnitRow>(
         `
           SELECT
@@ -250,27 +229,12 @@ export async function registerOrgAccessAdminRoutes(
           ORDER BY p.name ASC
         `,
       ),
-      pool.query<CoverageRow>(
-        `
-          SELECT
-            count(*) FILTER (WHERE status = 'active')::int AS "activeEmployees",
-            count(*) FILTER (
-              WHERE status = 'active' AND removed_at IS NULL AND direct_manager_employee_id IS NOT NULL
-            )::int AS "assignedManagers"
-          FROM employees WHERE removed_at IS NULL
-        `,
-      ),
     ]);
 
-    const summary = coverage.rows[0] ?? { activeEmployees: 0, assignedManagers: 0 };
     reply.header("Cache-Control", "no-store");
     return reply.send({
       units: units.rows,
       positions: positions.rows,
-      reportingLines: {
-        ...summary,
-        missingManagers: Math.max(0, summary.activeEmployees - summary.assignedManagers),
-      },
     });
   });
 
@@ -284,7 +248,7 @@ export async function registerOrgAccessAdminRoutes(
     }
 
     const employeeId = parsed.data.employeeId;
-    const [employee, candidates, assignments] = await Promise.all([
+    const [employee, assignments] = await Promise.all([
       pool.query<EmployeeDetailRow>(
         `
           SELECT
@@ -307,35 +271,15 @@ export async function registerOrgAccessAdminRoutes(
             e.structural_position AS "structuralPosition",
             e.removed_at AS "removedAt",
             e.removal_reason AS "removalReason",
-            manager.id AS "managerEmployeeId",
-            manager.employee_number AS "managerEmployeeNumber",
-            manager.full_name AS "managerFullName",
             a.id AS "accountId",
             a.email AS "accountEmail",
             a.status AS "accountStatus"
           FROM employees e
           LEFT JOIN organizational_units u ON u.id = e.organizational_unit_id
           LEFT JOIN positions p ON p.id = e.position_id
-          LEFT JOIN employees manager ON manager.id = e.direct_manager_employee_id
           LEFT JOIN accounts a ON a.employee_id = e.id AND a.principal_type = 'EMPLOYEE'
           WHERE e.id = $1
           LIMIT 1
-        `,
-        [employeeId],
-      ),
-      pool.query<ManagerCandidateRow>(
-        `
-          SELECT
-            e.id,
-            e.employee_number AS "employeeNumber",
-            e.full_name AS "fullName",
-            u.name AS "unitName",
-            p.name AS "positionName"
-          FROM employees e
-          LEFT JOIN organizational_units u ON u.id = e.organizational_unit_id
-          LEFT JOIN positions p ON p.id = e.position_id
-          WHERE e.status = 'active' AND e.removed_at IS NULL AND e.id <> $1
-          ORDER BY e.full_name ASC
         `,
         [employeeId],
       ),
@@ -373,90 +317,11 @@ export async function registerOrgAccessAdminRoutes(
     reply.header("Cache-Control", "no-store");
     return reply.send({
       employee: row,
-      managerCandidates: candidates.rows,
       assignments: assignments.rows.map((item) => ({
         ...item,
         createdAt: item.createdAt.toISOString(),
       })),
     });
-  });
-
-  app.patch("/admin/employees/:employeeId/manager", async (request, reply) => {
-    const principal = await authenticateAdmin(request, reply);
-    if (!principal) return;
-
-    const params = employeeIdSchema.safeParse(request.params);
-    const body = managerSchema.safeParse(request.body);
-    if (!params.success || !body.success) {
-      return reply.status(400).send({ code: "INVALID_MANAGER_ASSIGNMENT", message: "Data atasan langsung tidak valid." });
-    }
-
-    const employeeId = params.data.employeeId;
-    const managerId = body.data.managerEmployeeId;
-
-    try {
-      assertManagerAssignment(employeeId, managerId);
-    } catch (error) {
-      if (error instanceof OrgAccessPolicyError) {
-        return reply.status(400).send({ code: error.code, message: error.message });
-      }
-      throw error;
-    }
-
-    const employee = await pool.query<{ id: string }>(
-      "SELECT id FROM employees WHERE id = $1 AND removed_at IS NULL",
-      [employeeId],
-    );
-    if (!employee.rows[0]) {
-      return reply.status(404).send({ code: "EMPLOYEE_NOT_FOUND", message: "Pegawai tidak ditemukan." });
-    }
-
-    if (managerId) {
-      const manager = await pool.query<{ id: string }>(
-        "SELECT id FROM employees WHERE id = $1 AND status = 'active' AND removed_at IS NULL",
-        [managerId],
-      );
-      if (!manager.rows[0]) {
-        return reply.status(409).send({
-          code: "MANAGER_NOT_ACTIVE",
-          message: "Atasan langsung harus merupakan pegawai aktif.",
-        });
-      }
-
-      const cycle = await pool.query<{ found: number }>(
-        `
-          WITH RECURSIVE manager_chain AS (
-            SELECT id, direct_manager_employee_id
-            FROM employees
-            WHERE id = $2
-            UNION ALL
-            SELECT e.id, e.direct_manager_employee_id
-            FROM employees e
-            JOIN manager_chain chain ON e.id = chain.direct_manager_employee_id
-          )
-          SELECT 1 AS found FROM manager_chain WHERE id = $1 LIMIT 1
-        `,
-        [employeeId, managerId],
-      );
-      if (cycle.rows[0]) {
-        return reply.status(409).send({
-          code: "REPORTING_LINE_CYCLE",
-          message: "Assignment ini akan membentuk siklus pada reporting line.",
-        });
-      }
-    }
-
-    await pool.query(
-      `UPDATE employees
-       SET direct_manager_employee_id = $2, updated_at = now()
-       WHERE id = $1`,
-      [employeeId, managerId],
-    );
-    await audit(pool, principal, "employee.manager.updated", "employee", employeeId, {
-      managerEmployeeId: managerId,
-    });
-
-    return reply.send({ employeeId, managerEmployeeId: managerId });
   });
 
   app.get("/admin/access", async (request, reply) => {

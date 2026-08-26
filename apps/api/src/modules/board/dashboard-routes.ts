@@ -22,15 +22,6 @@ interface EntitlementCounts {
   unclassified: number;
 }
 
-interface ReadinessCounts {
-  activeEmployees: number;
-  withDirectManager: number;
-  withoutDirectManager: number;
-  activeUnits: number;
-  unitsWithApprover: number;
-  unitsWithoutApprover: number;
-}
-
 interface WorkflowCounts {
   leaveInReview: number;
   hcValidationPending: number;
@@ -98,7 +89,6 @@ export async function registerBoardDashboardRoutes(
     const [
       employeeStatus,
       entitlement,
-      readiness,
       workflow,
       movements,
       unitDistribution,
@@ -124,26 +114,6 @@ export async function registerBoardDashboardRoutes(
             WHERE status = 'active' AND leave_entitlement_group IS NULL
           )::int AS unclassified
         FROM employees`,
-      ),
-      pool.query<ReadinessCounts>(
-        `WITH active_units AS (
-          SELECT DISTINCT organizational_unit_id AS id
-          FROM employees
-          WHERE status = 'active' AND organizational_unit_id IS NOT NULL
-        )
-        SELECT
-          (SELECT count(*)::int FROM employees WHERE status = 'active') AS "activeEmployees",
-          (SELECT count(*)::int FROM employees WHERE status = 'active' AND direct_manager_employee_id IS NOT NULL) AS "withDirectManager",
-          (SELECT count(*)::int FROM employees WHERE status = 'active' AND direct_manager_employee_id IS NULL) AS "withoutDirectManager",
-          (SELECT count(*)::int FROM active_units) AS "activeUnits",
-          (SELECT count(*)::int
-             FROM organizational_units unit
-             JOIN active_units active_unit ON active_unit.id = unit.id
-            WHERE unit.leave_approver_employee_id IS NOT NULL) AS "unitsWithApprover",
-          (SELECT count(*)::int
-             FROM organizational_units unit
-             JOIN active_units active_unit ON active_unit.id = unit.id
-            WHERE unit.leave_approver_employee_id IS NULL) AS "unitsWithoutApprover"`,
       ),
       pool.query<WorkflowCounts>(
         `SELECT
@@ -205,14 +175,6 @@ export async function registerBoardDashboardRoutes(
         education: 0,
         nonEducation: 0,
         unclassified: 0,
-      },
-      approvalReadiness: readiness.rows[0] ?? {
-        activeEmployees: 0,
-        withDirectManager: 0,
-        withoutDirectManager: 0,
-        activeUnits: 0,
-        unitsWithApprover: 0,
-        unitsWithoutApprover: 0,
       },
       workflow: workflow.rows[0] ?? {
         leaveInReview: 0,

@@ -10,10 +10,12 @@ import {
 
 function formatDate(value: string | null) {
   if (!value) return "—";
-  return new Intl.DateTimeFormat("id-ID", {
+  const dateTime = new Intl.DateTimeFormat("id-ID", {
     dateStyle: "medium",
     timeStyle: "short",
+    timeZone: "Asia/Jakarta",
   }).format(new Date(value));
+  return `${dateTime} WIB`;
 }
 
 function statusClass(status: EmployeeImportHistoryItem["status"]) {

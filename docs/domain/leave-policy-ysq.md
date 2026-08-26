@@ -1,6 +1,12 @@
 # Leave Policy YSQ
 
 **Status:** VERIFIED MVP BASELINE — ORG-004 EXTENSION DEPLOYED WITH CONTROLLED ROLLOUT — POLICY SOURCE STILL REQUIRES LEGAL REVIEW
+
+> **Direct cutover override:** `organization-direct-cutover.md` is the active
+> decision for routing. References in this historical ORG-004 record to
+> LEGACY, SHADOW, STRUCTURE rollout selection, or legacy manager/unit fields
+> no longer describe a supported operational path. New Leave requests resolve
+> only from the effective published Organization structure and fail closed.
 **Specification:** LEAVE-003  
 **Related:** LEAVE-001, LEAVE-002, APR-001, ORG-002, ORG-004
 

@@ -244,12 +244,6 @@ export async function registerLeaveAdminRoutes(
         workflowKey: "leave.annual",
         requesterEmployeeId: employee.id,
         effectiveDate: query.data.date ?? jakartaToday(),
-        // Kept only for the compatibility shape of the resolver input. The
-        // direct-cutover service ignores these migration-era values.
-        legacy: {
-          directManagerEmployeeId: null,
-          unitApproverEmployeeId: null,
-        },
         policyChain: "LINE_AND_UNIT",
       });
       approvalChain = authorityResolution.approvalChain;

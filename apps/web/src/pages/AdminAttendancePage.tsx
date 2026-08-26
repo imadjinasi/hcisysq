@@ -44,12 +44,20 @@ function formatDate(value: string) {
 
 function formatTime(value: string | null) {
   if (!value) return "—";
-  return new Intl.DateTimeFormat("id-ID", {
+  const time = new Intl.DateTimeFormat("id-ID", {
     hour: "2-digit",
     minute: "2-digit",
     hourCycle: "h23",
     timeZone: "Asia/Jakarta",
   }).format(new Date(value));
+  return `${time} WIB`;
+}
+
+function formatDateTime(value: string) {
+  const dateTime = new Intl.DateTimeFormat("id-ID", {
+    day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Asia/Jakarta",
+  }).format(new Date(value));
+  return `${dateTime} WIB`;
 }
 
 function toJakartaLocalInput(value: string | null) {
@@ -356,7 +364,7 @@ export function AdminAttendancePage() {
               </label>
             </div>
             <p className="text-[11px] leading-5 text-muted-foreground">
-              Jam pada formulir selalu diperlakukan sebagai Waktu Indonesia Barat (Asia/Jakarta), terlepas dari zona waktu perangkat Admin.
+              Jam pada formulir selalu diperlakukan sebagai Waktu Indonesia Barat (WIB), terlepas dari zona waktu perangkat Admin.
             </p>
             <label className="block text-xs font-semibold text-muted-foreground">
               Catatan internal opsional
@@ -442,7 +450,7 @@ export function AdminAttendancePage() {
                   <p className="mt-1 text-sm font-semibold">{formatTime(record.checkOutAt)}</p>
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  Diubah {new Date(record.updatedAt).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })}
+                  Diubah {formatDateTime(record.updatedAt)}
                 </div>
                 <div className="flex gap-2">
                   {record.source === "manual" ? (

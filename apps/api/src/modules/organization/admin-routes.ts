@@ -116,14 +116,6 @@ const resolutionInput = z.object({
   workflowKey: z.string().trim().min(1).max(100),
   effectiveDate: date,
 });
-const rolloutInput = z.object({
-  mode: z.enum(["LEGACY", "SHADOW", "STRUCTURE"]),
-  workflowKey: z.string().trim().min(1).max(100).default("LEAVE"),
-  organizationalNodeKey: uuid.nullable().optional(),
-  effectiveFrom: date.optional(),
-  effectiveTo: date.nullable().optional(),
-  reason: z.string().trim().min(1).max(500).optional(),
-});
 
 function invalid(reply: FastifyReply, code: string, message: string) {
   return reply.status(400).send({ code, message });
@@ -969,34 +961,4 @@ export async function registerOrganizationAdminRoutes(
     return reply.status(204).send();
   });
 
-  app.get("/admin/organization/rollout", async (request, reply) => {
-    if (!(await authenticate(request, reply))) return;
-    const result = await pool.query(
-      `SELECT mode, workflow_key AS "workflowKey", node_key AS "organizationalNodeKey",
-        effective_from AS "effectiveFrom", effective_to AS "effectiveTo", reason, updated_at AS "updatedAt"
-       FROM organization_rollout_settings ORDER BY created_at DESC LIMIT 1`,
-    );
-    return reply.send(result.rows[0] ?? { mode: "LEGACY", workflowKey: "LEAVE", organizationalNodeKey: null });
-  });
-
-  app.patch("/admin/organization/rollout", async (request, reply) => {
-    const principal = await authenticate(request, reply); if (!principal) return;
-    const body = rolloutInput.safeParse(request.body);
-    if (!body.success) return invalid(reply, "INVALID_ORGANIZATION_ROLLOUT", "Invalid rollout configuration.");
-    const item = { id: randomUUID(), ...body.data, organizationalNodeKey: body.data.organizationalNodeKey ?? null,
-      effectiveFrom: body.data.effectiveFrom ?? jakartaBusinessDate(), effectiveTo: body.data.effectiveTo ?? null,
-      reason: body.data.reason ?? "Organization Designer rollout update" };
-    await atomicOrganizationMutation(pool, principal, async (transaction) => {
-      await transaction.client.query(
-        `INSERT INTO organization_rollout_settings
-          (id, workflow_key, node_key, mode, effective_from, effective_to, reason, changed_by_account_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [item.id, item.workflowKey, item.organizationalNodeKey, item.mode, item.effectiveFrom, item.effectiveTo, item.reason, principal.id],
-      );
-      await transaction.audit("organization.rollout.changed", "organization_rollout_setting", item.id, null,
-        { workflowKey: item.workflowKey, organizationalNodeKey: item.organizationalNodeKey, mode: item.mode,
-          effectiveFrom: item.effectiveFrom, effectiveTo: item.effectiveTo, reason: item.reason });
-    });
-    return reply.send({ ...item, updatedAt: new Date().toISOString() });
-  });
 }

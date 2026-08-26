@@ -374,7 +374,7 @@ function createUnpaidPreviewPool() {
 }
 
 describe("unpaid organizational approval routing", () => {
-  it("uses Unit Approver only and does not insert the Direct Manager into unpaid approval", async () => {
+  it("fails closed for unpaid leave when the published Organization structure is unavailable", async () => {
     const { pool } = createUnpaidPreviewPool();
     const app = Fastify({ logger: false });
     await registerPlannedLeaveRoutes(app, pool, config);
@@ -389,14 +389,8 @@ describe("unpaid organizational approval routing", () => {
         hasEvidence: false,
       },
     });
-    expect(response.statusCode).toBe(200);
-    expect(response.json().approvalChain).toEqual([
-      {
-        employeeId: U,
-        name: "Kepala Satuan Kerja",
-        sources: ["UNIT_APPROVER"],
-      },
-    ]);
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ code: "STRUCTURE_NOT_CONFIGURED" });
     await app.close();
   });
 });

@@ -106,7 +106,7 @@ function PositionCard({
               ? `${acting.employeeName} · Pelaksana tugas`
               : ((account
                   ? (primary?.accountEmail ?? primary?.employeeName)
-                  : primary?.employeeName) ?? "VACANT · Belum ada pejabat")}
+                  : primary?.employeeName) ?? "Posisi kosong · Belum ada pejabat")}
           </span>
         </span>
         {vacant ? (

@@ -13,7 +13,7 @@ const ids = Object.fromEntries([
   "directorPosition", "managerPosition", "unitPosition", "invitedPosition", "vacantPosition",
   "requester", "invitedRequester", "vacancyRequester", "manager", "unitApprover", "director", "invitedApprover",
   "requesterAccount", "invitedRequesterAccount", "vacancyRequesterAccount", "managerAccount",
-  "unitAccount", "directorAccount", "invitedAccount", "rollout",
+  "unitAccount", "directorAccount", "invitedAccount",
 ].map((key) => [key, randomUUID()])) as Record<string, string>;
 const suffix = ids.changeSet.slice(0, 8);
 
@@ -77,10 +77,6 @@ integration("ORG-007 disposable PostgreSQL Leave UAT", () => {
     pool = new Pool({ connectionString: databaseUrl });
     await pool.query("BEGIN");
     try {
-      // This suite is explicitly restricted to HCIS_TEST_DATABASE_URL. Remove
-      // only a prior interrupted run's synthetic global rollout row.
-      await pool.query(`DELETE FROM organization_rollout_settings
-        WHERE workflow_key='leave.annual' AND reason='Synthetic disposable UAT'`);
       await pool.query(`INSERT INTO organizational_units (id, normalized_name, name)
         VALUES ($1,$2,'Synthetic ORG-007')`, [ids.unit, `synthetic-org007-${suffix}`]);
       await pool.query(`INSERT INTO positions (id, normalized_name, name)
@@ -101,10 +97,6 @@ integration("ORG-007 disposable PostgreSQL Leave UAT", () => {
         ) VALUES ($1,$2,$3,'active',$4,$5,'2024-01-01','non_education')`,
         [id, number, name, ids.unit, ids.legacyPosition]);
       }
-      await pool.query(`UPDATE employees SET direct_manager_employee_id=$1
-        WHERE id IN ($2,$3,$4)`, [ids.manager, ids.requester, ids.invitedRequester, ids.vacancyRequester]);
-      await pool.query(`UPDATE organizational_units SET leave_approver_employee_id=$1 WHERE id=$2`,
-        [ids.unitApprover, ids.unit]);
 
       const accounts = [
         [ids.requesterAccount, ids.requester, `requester-${suffix}@example.test`, "active"],
@@ -185,10 +177,6 @@ integration("ORG-007 disposable PostgreSQL Leave UAT", () => {
         ) VALUES ($1,$2,'NODE',$3,$4,$5,$6,'2026-01-01')`,
         [randomUUID(), ids.changeSet, subjectKey, type, target, policy]);
       }
-      await pool.query(`INSERT INTO organization_rollout_settings (
-        id,workflow_key,node_key,mode,effective_from,reason,changed_by_account_id
-      ) VALUES ($1,'leave.annual',null,'STRUCTURE','2026-01-01','Synthetic disposable UAT',$2)`,
-      [ids.rollout, ids.requesterAccount]);
       await pool.query("COMMIT");
     } catch (error) {
       await pool.query("ROLLBACK");
@@ -198,7 +186,6 @@ integration("ORG-007 disposable PostgreSQL Leave UAT", () => {
 
   afterAll(async () => {
     if (pool) {
-      await pool.query(`DELETE FROM organization_rollout_settings WHERE id=$1`, [ids.rollout]);
       await pool.end();
     }
   });
@@ -210,7 +197,7 @@ integration("ORG-007 disposable PostgreSQL Leave UAT", () => {
     expect(body.approvalChain.map((item) => item.employeeId)).toEqual([ids.manager, ids.unitApprover]);
     const snapshot = await pool.query(`SELECT validation_summary, status FROM leave_requests WHERE id=$1`, [body.id]);
     expect(snapshot.rows[0].validation_summary.authorityResolution).toMatchObject({
-      mode: "STRUCTURE", authoritativeSource: "STRUCTURE",
+      authoritativeSource: "STRUCTURE",
     });
     expect(await approve(tokens.manager, body.approvalChain[0]!.id)).toMatchObject({ statusCode: 200 });
     expect(await approve(tokens.unit, body.approvalChain[1]!.id)).toMatchObject({ statusCode: 200 });

@@ -17,11 +17,6 @@ export interface PositionSummary {
 export interface OrganizationAdminResponse {
   units: OrganizationUnitSummary[];
   positions: PositionSummary[];
-  reportingLines: {
-    activeEmployees: number;
-    assignedManagers: number;
-    missingManagers: number;
-  };
 }
 
 export interface RoleAssignment {
@@ -60,20 +55,10 @@ export interface EmployeeDetailResponse {
     structuralPosition: string | null;
     removedAt: string | null;
     removalReason: string | null;
-    managerEmployeeId: string | null;
-    managerEmployeeNumber: string | null;
-    managerFullName: string | null;
     accountId: string | null;
     accountEmail: string | null;
     accountStatus: "invited" | "active" | "suspended" | "inactive" | null;
   };
-  managerCandidates: Array<{
-    id: string;
-    employeeNumber: string;
-    fullName: string;
-    unitName: string | null;
-    positionName: string | null;
-  }>;
   assignments: RoleAssignment[];
 }
 
@@ -239,19 +224,6 @@ export async function getEmployeeDetail(employeeId: string): Promise<EmployeeDet
   return readJson<EmployeeDetailResponse>(response);
 }
 
-
-export async function updateDirectManager(
-  employeeId: string,
-  managerEmployeeId: string | null,
-): Promise<{ employeeId: string; managerEmployeeId: string | null }> {
-  const response = await fetch(`/api/admin/employees/${employeeId}/manager`, {
-    method: "PATCH",
-    credentials: "include",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({ managerEmployeeId }),
-  });
-  return readJson(response);
-}
 
 export async function getAccessAdmin(): Promise<AccessAdminResponse> {
   const response = await fetch("/api/admin/access", {

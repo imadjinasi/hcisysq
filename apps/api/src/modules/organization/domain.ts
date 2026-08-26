@@ -8,6 +8,7 @@ export type AuthorityBindingType =
   | "UNIT_APPROVER"
   | "GOVERNANCE_APPROVER"
   | "OVERSIGHT_PARENT";
+/** Compatibility-only persistence vocabulary. It is not an operational routing mode. */
 export type OrganizationRolloutMode = "LEGACY" | "SHADOW" | "STRUCTURE";
 export type ResolvedAuthoritySource =
   | "DIRECT_MANAGER"
@@ -189,30 +190,14 @@ export interface ResolvedLineAuthorities {
   authorities: ResolvedAuthority[];
 }
 
-export interface LegacyAuthorityInput {
-  directManagerEmployeeId: string | null;
-  unitApproverEmployeeId: string | null;
-}
-
 export interface RolloutAuthorityInput extends AuthorityResolutionInput {
   workflowKey: string;
-  legacy: LegacyAuthorityInput;
   authorityRequirement?: "LINE_AND_UNIT" | "UNIT_ONLY" | undefined;
 }
 
-export interface StructuralResolutionDiagnostic {
-  matches: boolean;
-  mismatchReasons: string[];
-  structural?: ResolvedLineAuthorities | undefined;
-  error?: { code: string; message: string } | undefined;
-}
-
 export interface RolloutAuthorityResult {
-  mode: OrganizationRolloutMode;
-  authoritativeSource: "LEGACY" | "STRUCTURE";
+  authoritativeSource: "STRUCTURE";
   authorities: ResolvedAuthority[];
-  structure?: ResolvedLineAuthorities | undefined;
-  shadow?: StructuralResolutionDiagnostic | undefined;
 }
 
 export interface OrganizationValidationIssue {

@@ -75,8 +75,6 @@ interface EmployeeContextRow {
   unitId: string | null;
   unitName: string | null;
   positionName: string | null;
-  directManagerEmployeeId: string | null;
-  unitApproverEmployeeId: string | null;
 }
 
 interface CalendarSettingRow {
@@ -190,9 +188,7 @@ async function loadEmployeeContext(
       employee.status,
       unit.id AS "unitId",
       unit.name AS "unitName",
-      position.name AS "positionName",
-      employee.direct_manager_employee_id AS "directManagerEmployeeId",
-      unit.leave_approver_employee_id AS "unitApproverEmployeeId"
+      position.name AS "positionName"
     FROM accounts account
     JOIN employees employee ON employee.id = account.employee_id
     LEFT JOIN organizational_units unit ON unit.id = employee.organizational_unit_id
@@ -295,10 +291,6 @@ async function resolveApprovalChain(
     workflowKey: `leave.${policyKey}`,
     requesterEmployeeId: employee.id,
     effectiveDate,
-    legacy: {
-      directManagerEmployeeId: employee.directManagerEmployeeId,
-      unitApproverEmployeeId: employee.unitApproverEmployeeId,
-    },
     policyChain: policyKey === "unpaid" ? "UNIT_ONLY" : "LINE_AND_UNIT",
   });
   return {

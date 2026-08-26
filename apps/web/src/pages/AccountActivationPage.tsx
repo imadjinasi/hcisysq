@@ -18,6 +18,11 @@ function accessLabel(principalType: Preview["principalType"]) {
   return principalType === "FOUNDATION_BOARD" ? "Dashboard Organ Yayasan" : "Portal Pegawai";
 }
 
+function formatWibDateTime(value: string) {
+  const dateTime = new Intl.DateTimeFormat("id-ID", { dateStyle: "long", timeStyle: "short", timeZone: "Asia/Jakarta" }).format(new Date(value));
+  return `${dateTime} WIB`;
+}
+
 export function AccountActivationPage() {
   const [token, setToken] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -144,7 +149,7 @@ export function AccountActivationPage() {
                 <p className="text-sm font-bold text-foreground">{accessLabel(preview.principalType)}</p>
                 <p className="mt-1 text-sm text-muted-foreground">{preview.maskedEmail}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Link berlaku sampai {new Date(preview.expiresAt).toLocaleString("id-ID")}.
+                  Link berlaku sampai {formatWibDateTime(preview.expiresAt)}.
                 </p>
               </div>
             </div>

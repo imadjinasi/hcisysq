@@ -1,8 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { modeCopy, routingSource } from "@/lib/adminLeaveRouting";
-
 const organizationSource = readFileSync(
   new URL("./AdminOrganizationPage.tsx", import.meta.url),
   "utf8",
@@ -81,7 +79,7 @@ describe("Organization Designer administration UX contracts", () => {
     expect(organizationSource).toContain('name="targetPositionKey"');
   });
 
-  it("offers explicit legacy-unit membership preview without authority inference", () => {
+  it("offers explicit unit membership preview without authority inference", () => {
     expect(organizationSource).toContain("Bantuan migrasi unit lama");
     expect(organizationSource).toContain("Preview: {legacyCandidates.length} pegawai aktif");
     expect(organizationSource).toMatch(/Posisi, pimpinan, hierarchy,\s*dan kewenangan tidak dibuat otomatis/);
@@ -103,36 +101,26 @@ describe("Organization Designer administration UX contracts", () => {
     expect(organizationSource).toContain("Atur Approval & Reporting");
     expect(organizationSource).toContain("Pimpinan struktur");
     expect(organizationSource).toContain("Penyetuju unit");
-    expect(organizationSource).toContain("Penyetuju governance");
+    expect(organizationSource).toContain("Penyetuju Pengurus Yayasan");
     expect(organizationSource).toContain("Editor authority mentah");
     expect(organizationSource).toContain("tidak membuat authority dari nama jabatan");
   });
 });
 
 describe("Leave administration transition UX contracts", () => {
-  it("labels the active authority honestly for every rollout state", () => {
-    expect(routingSource("LEGACY")).toBe("Legacy");
-    expect(routingSource("SHADOW")).toBe("Legacy");
-    expect(routingSource("STRUCTURE")).toBe("Struktur Organisasi");
-    expect(routingSource("MIXED")).toBe("Bervariasi per cakupan");
-    expect(modeCopy("SHADOW")).toContain("diagnosis");
-    expect(modeCopy("STRUCTURE")).toContain("tidak menjadi fallback");
-  });
-
-  it("archives STRUCTURE legacy controls while keeping entitlement independent", () => {
-    expect(leaveSource).toContain("Legacy approval routing");
-    expect(leaveSource).toContain('unit.rolloutState === "STRUCTURE"');
-    expect(leaveSource).toContain("Diarsipkan / read-only");
+  it("uses Organization structure as the only approval source while keeping entitlement independent", () => {
+    expect(leaveSource).toContain("Struktur Organisasi");
+    expect(leaveSource).toContain("Tidak ada konfigurasi persetujuan kedua");
+    expect(leaveSource).not.toContain("Legacy approval routing");
+    expect(leaveSource).not.toContain("Sumber authoritative");
     expect(leaveSource).toContain("Klasifikasi Hak Cuti Pegawai Aktif");
     expect(leaveSource).toContain("updateLeaveEntitlementGroup");
   });
 
-  it("renders rollout-aware preview metadata and SHADOW comparison", () => {
-    expect(leaveSource).toContain("Sumber authoritative");
-    expect(leaveSource).toContain("Resolved chain authoritative");
-    expect(leaveSource).toContain('preview.routing.mode === "SHADOW"');
-    expect(leaveSource).toContain("Kandidat Struktur Organisasi");
-    expect(leaveSource).toContain("side effect oversight struktural");
+  it("renders only the Organization-sourced approval preview", () => {
+    expect(leaveSource).toContain("Sumber persetujuan");
+    expect(leaveSource).toContain("Urutan persetujuan");
+    expect(leaveSource).toContain("Pratinjau alur persetujuan");
   });
 });
 

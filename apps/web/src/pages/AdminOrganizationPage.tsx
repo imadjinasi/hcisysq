@@ -50,7 +50,6 @@ import {
   discardOrganizationDraft,
   getOrganizationDesignerView,
   getOrganizationImpact,
-  getOrganizationRollout,
   listFoundationBoardAccounts,
   listOrganizationEmployees,
   listOrganizationRevisions,
@@ -71,7 +70,6 @@ import {
   type OrganizationPosition,
   type OrganizationResolutionPreview,
   type OrganizationRevision,
-  type OrganizationRolloutConfiguration,
   type OrganizationValidationReport,
   type OrganizationVacancyPolicy,
 } from "@/lib/organizationDesigner";
@@ -269,7 +267,7 @@ function SubmitRow({
 function readinessVerdictCopy(value: string) {
   if (value === "READY") return "Siap";
   if (value === "PENDING_USER_ACTIVATION") return "Menunggu aktivasi pengguna";
-  if (value === "VACANT_FALLBACK") return "Siap melalui fallback posisi kosong";
+  if (value === "VACANT_FALLBACK") return "Siap melalui jalur posisi kosong";
   if (value === "BUSINESS_DECISION_REQUIRED") return "Memerlukan keputusan bisnis";
   return "Konfigurasi belum siap";
 }
@@ -286,8 +284,8 @@ function accountStatusCopy(value: string | null) {
 function authorityTypeCopy(value: string) {
   if (value === "DIRECT_MANAGER") return "Atasan langsung";
   if (value === "UNIT_APPROVER") return "Penyetuju unit";
-  if (value === "GOVERNANCE_APPROVER") return "Penyetuju governance";
-  if (value === "OVERSIGHT_PARENT") return "Penerima pemberitahuan oversight";
+  if (value === "GOVERNANCE_APPROVER") return "Penyetuju Pengurus Yayasan";
+  if (value === "OVERSIGHT_PARENT") return "Penerima pemberitahuan";
   if (value === "SUPERVISORY_PARENT") return "Atasan struktural";
   if (value === "LEADER") return "Pimpinan struktur";
   return "Kewenangan organisasi";
@@ -307,7 +305,7 @@ function validationIssueCopy(code: string) {
     return "Pejabat yang dipilih belum memenuhi konfigurasi struktur yang diperlukan.";
   }
   if (code.includes("MEMBERSHIP")) {
-    return "Keanggotaan utama perlu diperiksa agar reporting tidak ambigu.";
+    return "Keanggotaan utama perlu diperiksa agar pelaporan tidak ambigu.";
   }
   return "Konfigurasi ini perlu diperiksa sebelum draft dapat diterbitkan.";
 }
@@ -936,7 +934,7 @@ export function ApprovalReportingEditor({
         </Field>
       ) : null}
 
-      <Field label="Atasan posisi" hint="hubungan reporting; tidak mengikuti tampilan chart">
+      <Field label="Atasan posisi" hint="hubungan pelaporan; tidak mengikuti tampilan bagan">
         <PositionPicker
           name="reportsToPositionKey"
           value={reportsToKey}
@@ -955,7 +953,7 @@ export function ApprovalReportingEditor({
       ) : null}
 
       {node ? (
-        <Field label="Penyetuju unit" hint="posisi authority untuk permintaan baru saat Struktur aktif">
+        <Field label="Penyetuju unit" hint="jabatan penyetuju untuk permohonan baru">
           <PositionPicker
             name="unitApproverPositionKey"
             value={unitApproverKey}
@@ -971,7 +969,7 @@ export function ApprovalReportingEditor({
             Governance
           </summary>
           <div className="mt-4 space-y-4">
-            <Field label="Penyetuju governance" hint="opsional dan selalu dipilih eksplisit">
+            <Field label="Penyetuju Pengurus Yayasan" hint="opsional dan selalu dipilih eksplisit">
               <PositionPicker
                 name="governanceApproverPositionKey"
                 value={governanceApproverKey}
@@ -981,7 +979,7 @@ export function ApprovalReportingEditor({
                 emptyLabel="Belum ditetapkan"
               />
             </Field>
-            <Field label="Atasan / oversight governance" hint="penerima informasi di atas authority ini">
+            <Field label="Penerima pemberitahuan" hint="penerima informasi pada jenjang di atasnya">
               <PositionPicker
                 name="oversightParentPositionKey"
                 value={oversightParentKey}
@@ -998,7 +996,7 @@ export function ApprovalReportingEditor({
       <p className="text-xs leading-5 text-muted-foreground">
         Hanya hubungan yang Anda pilih yang disimpan. Sistem tidak membuat authority dari nama jabatan, hierarchy, atau rank visual.
       </p>
-      <SubmitRow saving={saving} onCancel={onCancel} label="Simpan Approval & Reporting" />
+      <SubmitRow saving={saving} onCancel={onCancel} label="Simpan Persetujuan & Pelaporan" />
     </form>
   );
 }
@@ -1098,7 +1096,7 @@ export function LeaderEditor({
           {leaderMode === "existing" ? <option value="KEEP">Pertahankan pejabat saat ini</option> : null}
           <option value="EMPLOYEE">Pegawai</option>
           <option value="ACCOUNT">Organ Yayasan</option>
-          <option value="VACANT">VACANT · belum ada pejabat</option>
+          <option value="VACANT">Posisi kosong · belum ada pejabat</option>
         </select>
       </Field>
       <input
@@ -1121,7 +1119,7 @@ export function LeaderEditor({
         </Field>
       ) : null}
       {holderMode === "ACCOUNT" ? (
-        <Field label="Pilih Organ Yayasan" hint="account governance yang sudah ada">
+        <Field label="Pilih Organ Yayasan" hint="account Pengurus Yayasan yang sudah ada">
           <select name="accountId" required className={inputClass}>
             <option value="">Pilih berdasarkan email...</option>
             {accounts.map((account) => (
@@ -1272,7 +1270,7 @@ export function HolderAssignmentEditor({
       {!acting && holderSource === "EMPLOYEE" ? (
         <Field
           label="Jenis penugasan"
-          hint="Jabatan utama menjadi jangkar reporting pemohon; rangkap tetap dapat membawa kewenangan."
+          hint="Jabatan utama menjadi dasar pelaporan pemohon; rangkap tetap dapat membawa kewenangan."
         >
           <select
             name="assignmentType"
@@ -1363,7 +1361,6 @@ export function AdminOrganizationPage() {
   const [previewStale, setPreviewStale] = useState(false);
   const [discardConfirmation, setDiscardConfirmation] = useState("");
   const [membershipDirty, setMembershipDirty] = useState(false);
-  const [rollout, setRollout] = useState<OrganizationRolloutConfiguration | null>(null);
 
   const reload = async () => {
     setLoading(true);
@@ -1445,11 +1442,6 @@ export function AdminOrganizationPage() {
     void listFoundationBoardAccounts()
       .then(setBoardAccounts)
       .catch(() => setBoardAccounts([]));
-  }, []);
-  useEffect(() => {
-    void getOrganizationRollout()
-      .then(setRollout)
-      .catch(() => setRollout(null));
   }, []);
 
   const selectedNode = useMemo(
@@ -1848,7 +1840,7 @@ export function AdminOrganizationPage() {
           actingTo: position.actingIncumbent?.effectiveTo ?? null,
           effectiveFrom: data.draft!.effectiveOn,
         }),
-      "Posisi ditandai vacant. Kebijakan vacancy tetap diproses oleh resolver server.",
+      "Posisi ditandai kosong. Kebijakan posisi kosong tetap diproses oleh server.",
     );
   };
 
@@ -1962,7 +1954,7 @@ export function AdminOrganizationPage() {
         }),
         effectiveFrom: data.draft!.effectiveOn,
       }),
-      "Approval & Reporting diperbarui tanpa inferensi authority.",
+      "Persetujuan & Pelaporan diperbarui tanpa tebakan kewenangan.",
     );
   };
 
@@ -2414,12 +2406,6 @@ export function AdminOrganizationPage() {
                           Oversight: {selectedOversightPosition.title} · {organizationPositionHolder(selectedOversightPosition)}
                         </span>
                       ) : null}
-                    </span>
-                    <span className="block">
-                      <span className="block text-xs text-muted-foreground">Rollout</span>
-                      <span className="block font-bold">
-                        {rollout?.mode === "STRUCTURE" ? "Struktur" : rollout?.mode === "SHADOW" ? "Shadow" : rollout?.mode === "LEGACY" ? "Legacy" : "Tidak dapat dimuat"}
-                      </span>
                     </span>
                   </dd>
                 </div>
@@ -2990,7 +2976,7 @@ export function AdminOrganizationPage() {
                 className={inputClass}
               />
             </Field>
-            <Field label="Tanggal efektif" hint="Asia/Jakarta">
+            <Field label="Tanggal efektif" hint="WIB">
               <input
                 name="effectiveOn"
                 type="date"

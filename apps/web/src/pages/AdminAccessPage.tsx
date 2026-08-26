@@ -31,6 +31,11 @@ function statusLabel(status: string) {
   return "Nonaktif";
 }
 
+function formatWibDateTime(value: string) {
+  const dateTime = new Intl.DateTimeFormat("id-ID", { dateStyle: "long", timeStyle: "short", timeZone: "Asia/Jakarta" }).format(new Date(value));
+  return `${dateTime} WIB`;
+}
+
 function employeeAccessLabel(status: "invited" | "active" | "suspended" | "inactive" | null) {
   if (status === "active") return "AKSES AKTIF";
   if (status === "invited") return "MENUNGGU AKTIVASI";
@@ -336,7 +341,7 @@ export function AdminAccessPage() {
         <section className="mb-5 rounded-2xl border border-brand-primary/30 bg-brand-primary-pale p-4">
           <p className="text-sm font-bold text-brand-heading">Link aktivasi — tampil sekali di sesi ini</p>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            Berlaku sampai {new Date(activationLink.expiresAt).toLocaleString("id-ID")}. Membuat link baru akan menonaktifkan link sebelumnya.
+            Berlaku sampai {formatWibDateTime(activationLink.expiresAt)}. Membuat link baru akan menonaktifkan link sebelumnya.
           </p>
           <div className="mt-3 flex flex-col gap-2 sm:flex-row">
             <input
