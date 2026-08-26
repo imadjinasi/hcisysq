@@ -739,6 +739,10 @@ export async function registerOrganizationAdminRoutes(
     if (!params.success || !body.success) return invalid(reply, "INVALID_REPORTING_OVERRIDE", "Invalid reporting override.");
     const item = await atomicOrganizationMutation(pool, principal, async (transaction) => {
       const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return null;
+      if (!(await transaction.repository.validateStructuralIncumbent(body.data.employeeId)).eligible) {
+        await reply.status(409).send({ code: "ORGANIZATION_EMPLOYEE_NOT_ELIGIBLE", message: "Removed or inactive employees cannot receive a reporting override." });
+        return null;
+      }
       const created = { id: randomUUID(), ...body.data, managerEmployeeId: null, effectiveTo: body.data.effectiveTo ?? null };
       snapshot.reportingOverrides.push(created); await transaction.repository.replaceDraftSnapshot(snapshot);
       await transaction.audit("organization.reporting_override.created", "organization_reporting_override", created.id,
@@ -880,6 +884,11 @@ export async function registerOrganizationAdminRoutes(
     }
     const configured = await atomicOrganizationMutation(pool, principal, async (transaction) => {
       const snapshot = await editableSnapshot(params.data.draftId, reply, transaction.repository); if (!snapshot) return null;
+      if (body.data.holderSource === "EMPLOYEE" && body.data.primaryEmployeeId
+        && !(await transaction.repository.validateStructuralIncumbent(body.data.primaryEmployeeId)).eligible) {
+        await reply.status(409).send({ code: "ORGANIZATION_EMPLOYEE_NOT_ELIGIBLE", message: "Removed or inactive employees cannot be configured as organization leaders." });
+        return null;
+      }
       const node = snapshot.nodes.find((item) => item.stableKey === body.data.nodeKey);
       if (!node) { await reply.status(404).send({ code: "ORGANIZATION_NODE_NOT_FOUND" }); return null; }
       let position = body.data.positionKey

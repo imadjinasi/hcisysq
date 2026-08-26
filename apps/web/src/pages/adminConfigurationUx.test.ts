@@ -25,6 +25,11 @@ describe("Organization Designer administration UX contracts", () => {
     expect(adminOrgAccessSource).not.toContain("/contact");
     expect(employeeDetailSource).toContain("Alasan perubahan");
   });
+  it("does not offer lifecycle mutations again for a removed employee", () => {
+    expect(employeeDetailSource).toContain("employee?.removedAt ? <p");
+    expect(employeeDetailSource).toContain("Persiapan dan aktivasi tidak tersedia");
+    expect(employeeDetailSource).toContain("!employee?.removedAt ? <section");
+  });
   it("keeps friendly add placement and integration code advanced", () => {
     expect(organizationSource).toContain('name="placement" value="child"');
     expect(organizationSource).toContain('name="placement" value="sibling"');

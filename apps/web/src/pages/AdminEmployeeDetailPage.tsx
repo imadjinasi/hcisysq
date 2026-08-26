@@ -245,7 +245,7 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
           <p className="mt-2 text-sm text-muted-foreground">
             Atasan langsung ini nanti menjadi input resolver approval. Siklus reporting line ditolak oleh backend.
           </p>
-          <form onSubmit={saveManager} className="mt-4 space-y-3">
+          {employee?.removedAt ? <p className="mt-4 rounded-xl bg-slate-100 p-3 text-sm text-muted-foreground">Reporting line historis tetap terbaca; pegawai yang dikeluarkan tidak dapat diubah lagi.</p> : <form onSubmit={saveManager} className="mt-4 space-y-3">
             <select
               value={managerId}
               onChange={(event) => setManagerId(event.target.value)}
@@ -265,7 +265,7 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
             >
               {savingManager ? "Menyimpan..." : "Simpan atasan langsung"}
             </button>
-          </form>
+          </form>}
         </article>
       </section>
 
@@ -276,7 +276,7 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
             <h2 className="text-base font-bold text-brand-heading">Account akses</h2>
           </div>
           <p className="mt-3 text-sm font-semibold">{accountStatusLabel(employee?.accountStatus ?? null)}</p>
-          {employee?.accountId ? (
+          {employee?.removedAt ? <p className="mt-3 rounded-xl bg-slate-100 p-3 text-sm text-muted-foreground">Account employee dinonaktifkan saat dikeluarkan. Persiapan dan aktivasi tidak tersedia.</p> : employee?.accountId ? (
             <>
               <p className="mt-1 break-all text-sm text-muted-foreground">{employee.accountEmail}</p>
               {employee.accountStatus === "invited" ? (
@@ -347,11 +347,11 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
         {sourceSnapshots.length ? sourceSnapshots.map((snapshot) => <details key={snapshot.id} className="mt-3 rounded-xl border border-border/70 p-3"><summary className="cursor-pointer text-sm font-semibold">{snapshot.sourceFilename} · {snapshot.sourceSheet} · {new Date(snapshot.importedAt).toLocaleString("id-ID")}</summary><dl className="mt-3 grid gap-2 sm:grid-cols-2">{Object.entries(snapshot.unmodeledSourceData).map(([key, value]) => <div key={key}><dt className="text-xs text-muted-foreground">{key}</dt><dd className="break-words text-sm">{String(value ?? "")}</dd></div>)}</dl></details>) : <p className="mt-3 text-sm text-muted-foreground">Belum ada snapshot import yang tersedia.</p>}
       </section>
 
-      <section className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-5">
+      {!employee?.removedAt ? <section className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-5">
         <h2 className="text-base font-bold text-red-900">Keluarkan dari Employee Master</h2>
         <p className="mt-1 text-sm text-red-800">Berbeda dari Tidak aktif atau Keluar/resigned. Tindakan ini tidak menghapus riwayat, tetapi menutup akses employee dan mengecualikan orang ini dari populasi pegawai HCIS.</p>
         {!removalPreview ? <button type="button" onClick={() => void loadRemovalPreview()} className="mt-3 h-10 rounded-xl border border-red-300 bg-white px-4 text-sm font-bold text-red-900">Tinjau dampak</button> : <div className="mt-3 space-y-3"><p className="text-sm text-red-900">Account: {removalPreview.accountStatus ?? "tidak ada"}. {removalPreview.dependencyCategories.map((d) => `${d.category}: ${d.count}`).join(" · ") || "Tidak ada dependensi published."}</p><input value={removalName} onChange={(event) => setRemovalName(event.target.value)} placeholder={`Ketik nama lengkap: ${removalPreview.fullName}`} className="h-10 w-full rounded-xl border border-red-300 bg-white px-3 text-sm" /><input value={removalReason} onChange={(event) => setRemovalReason(event.target.value)} placeholder="Alasan wajib" className="h-10 w-full rounded-xl border border-red-300 bg-white px-3 text-sm" /><button type="button" disabled={!removalName || !removalReason || removalPreview.blocked} onClick={() => void removeFromMaster()} className="h-10 rounded-xl bg-red-700 px-4 text-sm font-bold text-white disabled:opacity-50">Keluarkan dari Employee Master</button></div>}
-      </section>
+      </section> : null}
     </AdminShell>
   );
 }
