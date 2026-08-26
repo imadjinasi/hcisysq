@@ -15,8 +15,16 @@ const adminShellSource = readFileSync(
   new URL("../layouts/AdminShell.tsx", import.meta.url),
   "utf8",
 );
+const employeeDetailSource = readFileSync(new URL("./AdminEmployeeDetailPage.tsx", import.meta.url), "utf8");
+const adminOrgAccessSource = readFileSync(new URL("../lib/adminOrgAccess.ts", import.meta.url), "utf8");
 
 describe("Organization Designer administration UX contracts", () => {
+  it("keeps contact mutation inside the audited Employee Master editor only", () => {
+    expect(employeeDetailSource).not.toContain("Kontak terverifikasi");
+    expect(employeeDetailSource).not.toContain("updateEmployeeContact");
+    expect(adminOrgAccessSource).not.toContain("/contact");
+    expect(employeeDetailSource).toContain("Alasan perubahan");
+  });
   it("keeps friendly add placement and integration code advanced", () => {
     expect(organizationSource).toContain('name="placement" value="child"');
     expect(organizationSource).toContain('name="placement" value="sibling"');

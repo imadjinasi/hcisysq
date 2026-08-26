@@ -32,6 +32,7 @@ describe("AccountActivationService", () => {
               principalType: "EMPLOYEE",
               status: "invited",
               employeeStatus: "active",
+              employeeRemovedAt: null,
               passwordHash: null,
             },
           ],
@@ -70,6 +71,7 @@ describe("AccountActivationService", () => {
               principalType: "EMPLOYEE",
               status: "invited",
               employeeStatus: "active",
+              employeeRemovedAt: null,
               passwordHash: "existing-password-hash",
             },
           ],
@@ -92,6 +94,15 @@ describe("AccountActivationService", () => {
     expect(
       query.mock.calls.some(([sql]) => String(sql).includes("INSERT INTO account_activation_tokens")),
     ).toBe(false);
+  });
+
+  it("rejects activation issuance for a removed employee", async () => {
+    const query = vi.fn(async (sql: string) => sql.includes("FROM accounts account")
+      ? { rows: [{ id:"10000000-0000-4000-8000-000000000003",principalType:"EMPLOYEE",status:"invited",employeeStatus:"active",employeeRemovedAt:new Date(),passwordHash:null }], rowCount:1 }
+      : { rows:[],rowCount:1 });
+    const client={query,release:vi.fn()};
+    const service=new AccountActivationService({connect:vi.fn(async()=>client)} as unknown as Pool);
+    await expect(service.issue("10000000-0000-4000-8000-000000000003","20000000-0000-4000-8000-000000000001")).rejects.toMatchObject({code:"EMPLOYEE_NOT_ACTIVE"});
   });
 
   it("activates an invited board account and consumes the token", async () => {

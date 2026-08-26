@@ -449,7 +449,7 @@ export class PostgresOrganizationRepository {
       capabilityValid: boolean;
     }>(
       `SELECT
-         (e.status = 'active') AS "employeeActive",
+         (e.status = 'active' AND e.removed_at IS NULL) AS "employeeActive",
          EXISTS (
            SELECT 1 FROM accounts a
            WHERE a.employee_id = e.id AND a.principal_type = 'EMPLOYEE' AND a.status = 'active'
@@ -492,7 +492,7 @@ export class PostgresOrganizationRepository {
       `SELECT
          e.id AS "employeeId",
          e.full_name AS "employeeName",
-         (e.status = 'active') AS "employeeActive",
+         (e.status = 'active' AND e.removed_at IS NULL) AS "employeeActive",
          account.status AS "accountStatus",
          CASE WHEN $3::text IS NULL THEN true ELSE EXISTS (
            SELECT 1
@@ -535,7 +535,7 @@ export class PostgresOrganizationRepository {
    */
   async validateStructuralIncumbent(employeeId: string): Promise<AuthorityEligibilityResult> {
     const result = await this.db.query<{ employeeActive: boolean }>(
-      `SELECT (status = 'active') AS "employeeActive"
+      `SELECT (status = 'active' AND removed_at IS NULL) AS "employeeActive"
        FROM employees
        WHERE id = $1`,
       [employeeId],

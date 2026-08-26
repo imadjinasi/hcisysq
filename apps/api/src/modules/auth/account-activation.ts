@@ -16,6 +16,7 @@ interface AccountForIssueRow {
   principalType: "EMPLOYEE" | "FOUNDATION_BOARD" | "SUPER_ADMIN";
   status: "invited" | "active" | "suspended" | "inactive";
   employeeStatus: "active" | "inactive" | "resigned" | null;
+  employeeRemovedAt: Date | null;
   passwordHash: string | null;
 }
 
@@ -26,6 +27,7 @@ interface ActivationRow {
   principalType: "EMPLOYEE" | "FOUNDATION_BOARD" | "SUPER_ADMIN";
   accountStatus: "invited" | "active" | "suspended" | "inactive";
   employeeStatus: "active" | "inactive" | "resigned" | null;
+  employeeRemovedAt: Date | null;
   expiresAt: Date;
   consumedAt: Date | null;
   revokedAt: Date | null;
@@ -100,7 +102,7 @@ function assertUsableActivation(row: ActivationRow | undefined): asserts row is 
     row.consumedAt ||
     row.revokedAt ||
     row.expiresAt.getTime() <= Date.now() ||
-    (row.principalType === "EMPLOYEE" && row.employeeStatus !== "active")
+    (row.principalType === "EMPLOYEE" && (row.employeeStatus !== "active" || row.employeeRemovedAt !== null))
   ) {
     throw invalidActivationLink();
   }
@@ -119,6 +121,7 @@ async function loadActivation(
       account.principal_type AS "principalType",
       account.status AS "accountStatus",
       employee.status AS "employeeStatus",
+      employee.removed_at AS "employeeRemovedAt",
       activation.expires_at AS "expiresAt",
       activation.consumed_at AS "consumedAt",
       activation.revoked_at AS "revokedAt"
@@ -147,6 +150,7 @@ export class AccountActivationService {
         account.principal_type AS "principalType",
         account.status,
         employee.status AS "employeeStatus",
+        employee.removed_at AS "employeeRemovedAt",
         account.password_hash AS "passwordHash"
        FROM accounts account
        LEFT JOIN employees employee ON employee.id = account.employee_id
@@ -179,7 +183,7 @@ export class AccountActivationService {
         "Account sudah pernah diaktifkan. Gunakan alur pemulihan kata sandi untuk mengganti kredensial.",
       );
     }
-    if (account.principalType === "EMPLOYEE" && account.employeeStatus !== "active") {
+    if (account.principalType === "EMPLOYEE" && (account.employeeStatus !== "active" || account.employeeRemovedAt !== null)) {
       throw new AccountActivationError(
         409,
         "EMPLOYEE_NOT_ACTIVE",

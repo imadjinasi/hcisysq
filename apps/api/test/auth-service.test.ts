@@ -134,6 +134,15 @@ describe("AuthService", () => {
 
     await expect(service.getSession("opaque-token")).resolves.toBeNull();
   });
+
+  it("keeps EMPLOYEE login/session fail-closed on removed employees without restricting other principals", async () => {
+    const queries:string[]=[];
+    const query=vi.fn(async(sql:string)=>{queries.push(sql);return {rows:[],rowCount:0};});
+    const service=new AuthService({query} as unknown as Pool,encryptionKey,8,true);
+    await expect(service.getSession("token")).resolves.toBeNull();
+    expect(queries.join("\n")).toContain("a.principal_type <> 'EMPLOYEE'");
+    expect(queries.join("\n")).toContain("e.removed_at IS NULL");
+  });
 });
 
 describe("readCookie", () => {

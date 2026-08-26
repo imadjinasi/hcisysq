@@ -578,10 +578,10 @@ describe("ORG-004 draft validation and impact", () => {
 
   it("separates active structural employment from login eligibility", async () => {
     const query = vi.fn(async (sql: string) => {
-      if (sql.includes("SELECT (status = 'active')")) {
+      if (sql.includes("SELECT (status = 'active' AND removed_at IS NULL)")) {
         return { rows: [{ employeeActive: true }], rowCount: 1 };
       }
-      if (sql.includes("(e.status = 'active')")) {
+      if (sql.includes("(e.status = 'active' AND e.removed_at IS NULL)")) {
         return {
           rows: [{ employeeActive: true, accountActive: false, capabilityValid: false }],
           rowCount: 1,
@@ -621,6 +621,15 @@ describe("ORG-004 draft validation and impact", () => {
       .resolves.toMatchObject({ valid: true });
     await expect(service.publish(draft.changeSet.id, "admin")).resolves.toBeUndefined();
     expect(draft.changeSet.status).toBe("PUBLISHED");
+  });
+
+  it("treats a removed employee as inactive for authority and structural eligibility", async () => {
+    const query=vi.fn(async(sql:string)=> sql.includes("SELECT (status = 'active' AND removed_at IS NULL)")
+      ? {rows:[{employeeActive:false}],rowCount:1}
+      : {rows:[{employeeActive:false,accountActive:true,capabilityValid:true}],rowCount:1});
+    const repository=new PostgresOrganizationRepository({query} as never);
+    await expect(repository.validateStructuralIncumbent(employeeIds.head)).resolves.toEqual({eligible:false,reason:"EMPLOYEE_NOT_ACTIVE"});
+    await expect(repository.validate(employeeIds.head,{effectiveDate:"2026-08-22"})).resolves.toEqual({eligible:false,reason:"EMPLOYEE_NOT_ACTIVE"});
   });
 
   it("reopens the same validated revision without changing its snapshot, then validates it again", async () => {

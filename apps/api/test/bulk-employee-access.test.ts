@@ -114,6 +114,7 @@ describe("BulkEmployeeAccessService", () => {
             principalType: "EMPLOYEE",
             status: "invited",
             employeeStatus: "active",
+            employeeRemovedAt: null,
             passwordHash: null,
           }],
           rowCount: 1,

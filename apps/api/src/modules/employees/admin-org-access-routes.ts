@@ -232,7 +232,7 @@ export async function registerOrgAccessAdminRoutes(
             count(e.id)::int AS "employeeCount",
             count(e.id) FILTER (WHERE e.status = 'active')::int AS "activeCount"
           FROM organizational_units u
-          LEFT JOIN employees e ON e.organizational_unit_id = u.id
+          LEFT JOIN employees e ON e.organizational_unit_id = u.id AND e.removed_at IS NULL
           GROUP BY u.id, u.name
           ORDER BY u.name ASC
         `,
@@ -245,7 +245,7 @@ export async function registerOrgAccessAdminRoutes(
             count(e.id)::int AS "employeeCount",
             count(e.id) FILTER (WHERE e.status = 'active')::int AS "activeCount"
           FROM positions p
-          LEFT JOIN employees e ON e.position_id = p.id
+          LEFT JOIN employees e ON e.position_id = p.id AND e.removed_at IS NULL
           GROUP BY p.id, p.name
           ORDER BY p.name ASC
         `,
@@ -255,9 +255,9 @@ export async function registerOrgAccessAdminRoutes(
           SELECT
             count(*) FILTER (WHERE status = 'active')::int AS "activeEmployees",
             count(*) FILTER (
-              WHERE status = 'active' AND direct_manager_employee_id IS NOT NULL
+              WHERE status = 'active' AND removed_at IS NULL AND direct_manager_employee_id IS NOT NULL
             )::int AS "assignedManagers"
-          FROM employees
+          FROM employees WHERE removed_at IS NULL
         `,
       ),
     ]);
@@ -404,7 +404,7 @@ export async function registerOrgAccessAdminRoutes(
     }
 
     const employee = await pool.query<{ id: string }>(
-      "SELECT id FROM employees WHERE id = $1",
+      "SELECT id FROM employees WHERE id = $1 AND removed_at IS NULL",
       [employeeId],
     );
     if (!employee.rows[0]) {
@@ -413,7 +413,7 @@ export async function registerOrgAccessAdminRoutes(
 
     if (managerId) {
       const manager = await pool.query<{ id: string }>(
-        "SELECT id FROM employees WHERE id = $1 AND status = 'active'",
+        "SELECT id FROM employees WHERE id = $1 AND status = 'active' AND removed_at IS NULL",
         [managerId],
       );
       if (!manager.rows[0]) {

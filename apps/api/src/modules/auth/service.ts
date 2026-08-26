@@ -27,6 +27,7 @@ interface AccountRow {
   mfaSecretIv: string | null;
   mfaSecretTag: string | null;
   mfaEnabledAt: Date | null;
+  employeeRemovedAt: Date | null;
 }
 
 interface SessionRow {
@@ -163,10 +164,12 @@ export class AuthService {
           s.expires_at AS "expiresAt"
         FROM auth_sessions s
         JOIN accounts a ON a.id = s.account_id
+        LEFT JOIN employees e ON e.id = a.employee_id
         WHERE s.token_hash = $1
           AND s.revoked_at IS NULL
           AND s.expires_at > now()
           AND a.status = 'active'
+          AND (a.principal_type <> 'EMPLOYEE' OR (e.id IS NOT NULL AND e.status = 'active' AND e.removed_at IS NULL))
           AND (a.password_changed_at IS NULL OR s.created_at >= a.password_changed_at)
         LIMIT 1
       `,
@@ -220,17 +223,20 @@ export class AuthService {
     const result = await this.pool.query<AccountRow>(
       `
         SELECT
-          id,
-          email,
-          principal_type AS "principalType",
-          status,
-          password_hash AS "passwordHash",
-          mfa_secret_ciphertext AS "mfaSecretCiphertext",
-          mfa_secret_iv AS "mfaSecretIv",
-          mfa_secret_tag AS "mfaSecretTag",
-          mfa_enabled_at AS "mfaEnabledAt"
-        FROM accounts
-        WHERE lower(email) = lower($1)
+          a.id,
+          a.email,
+          a.principal_type AS "principalType",
+          a.status,
+          a.password_hash AS "passwordHash",
+          a.mfa_secret_ciphertext AS "mfaSecretCiphertext",
+          a.mfa_secret_iv AS "mfaSecretIv",
+          a.mfa_secret_tag AS "mfaSecretTag",
+          a.mfa_enabled_at AS "mfaEnabledAt",
+          e.removed_at AS "employeeRemovedAt"
+        FROM accounts a
+        LEFT JOIN employees e ON e.id = a.employee_id
+        WHERE lower(a.email) = lower($1)
+          AND (a.principal_type <> 'EMPLOYEE' OR (e.id IS NOT NULL AND e.status = 'active' AND e.removed_at IS NULL))
         LIMIT 1
       `,
       [email],

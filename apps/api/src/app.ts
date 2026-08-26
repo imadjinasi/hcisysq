@@ -8,7 +8,6 @@ import { registerAccountActivationAdminRoutes } from "./modules/auth/admin-accou
 import { registerAccountActivationRoutes } from "./modules/auth/activation-routes.js";
 import { registerAuthRoutes } from "./modules/auth/routes.js";
 import { registerBoardDashboardRoutes } from "./modules/board/dashboard-routes.js";
-import { registerEmployeeContactAdminRoutes } from "./modules/employees/admin-employee-contact-routes.js";
 import { registerEmployeeMasterAdminRoutes } from "./modules/employees/admin-employee-master-routes.js";
 import { registerEmployeeAdminRoutes } from "./modules/employees/admin-routes.js";
 import { registerOrgAccessAdminRoutes } from "./modules/employees/admin-org-access-routes.js";
@@ -48,7 +47,6 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerEmployeeAdminRoutes(app, pool, config);
   await registerOrgAccessAdminRoutes(app, pool, config);
   await registerOrganizationAdminRoutes(app, pool, config);
-  await registerEmployeeContactAdminRoutes(app, pool, config);
   await registerEmployeeMasterAdminRoutes(app, pool, config);
   await registerAttendanceRoutes(app, pool, config);
   await registerLeaveAdminRoutes(app, pool, config);

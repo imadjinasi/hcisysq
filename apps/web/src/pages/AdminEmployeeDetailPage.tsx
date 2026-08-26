@@ -16,7 +16,6 @@ import {
   updateEmployeeMaster,
   prepareEmployeeAccount,
   updateDirectManager,
-  updateEmployeeContact,
   type EmployeeDetailResponse,
   type EmployeeSourceSnapshot,
 } from "@/lib/adminOrgAccess";
@@ -33,13 +32,10 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
   const [data, setData] = useState<EmployeeDetailResponse | null>(null);
   const [managerId, setManagerId] = useState("");
   const [accountEmail, setAccountEmail] = useState("");
-  const [contactEmail, setContactEmail] = useState("");
-  const [contactPhone, setContactPhone] = useState("");
   const [activationLink, setActivationLink] = useState<{
     url: string;
     expiresAt: string;
   } | null>(null);
-  const [savingContact, setSavingContact] = useState(false);
   const [savingManager, setSavingManager] = useState(false);
   const [preparingAccount, setPreparingAccount] = useState(false);
   const [issuingActivation, setIssuingActivation] = useState(false);
@@ -58,8 +54,6 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
     setData(result);
     setManagerId(result.employee.managerEmployeeId ?? "");
     setAccountEmail(result.employee.accountEmail ?? result.employee.email ?? "");
-    setContactEmail(result.employee.email ?? "");
-    setContactPhone(result.employee.phone ?? "");
     setEdit(Object.fromEntries(Object.entries(result.employee).map(([key, value]) => [key, value == null ? "" : String(value)])));
   };
 
@@ -87,24 +81,6 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
     };
   }, [employeeId]);
 
-  const saveContact = async (event: FormEvent) => {
-    event.preventDefault();
-    setSavingContact(true);
-    setError(null);
-    setNotice(null);
-    try {
-      await updateEmployeeContact(employeeId, {
-        email: contactEmail.trim() ? contactEmail.trim() : null,
-        phone: contactPhone.trim() ? contactPhone.trim() : null,
-      });
-      setNotice("Kontak employee master berhasil diperbarui. Email account login, bila sudah ada, tidak diubah otomatis.");
-      await reload();
-    } catch (cause) {
-      setError(cause instanceof AdminApiError ? cause.message : "Kontak pegawai gagal diperbarui.");
-    } finally {
-      setSavingContact(false);
-    }
-  };
 
   const loadRemovalPreview = async () => { try { setRemovalPreview(await previewEmployeeRemoval(employeeId)); } catch (cause) { setError(cause instanceof AdminApiError ? cause.message : "Dampak penghapusan tidak dapat dimuat."); } };
   const removeFromMaster = async () => { try { await removeEmployeeFromMaster(employeeId, removalName, removalReason); setNotice("Pegawai telah dikeluarkan dari Employee Master; riwayat tetap tersimpan dan account pegawai dinonaktifkan."); await reload(); } catch (cause) { setError(cause instanceof AdminApiError ? cause.message : "Penghapusan dari Employee Master gagal."); } };
@@ -259,42 +235,6 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
             <label className="sm:col-span-2 text-xs font-semibold text-muted-foreground">Alasan perubahan<input required value={editReason} onChange={(event) => setEditReason(event.target.value)} className="mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm" /></label><button type="submit" className="h-10 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white">Simpan perubahan</button>
           </form> : null}
 
-          <form onSubmit={saveContact} className="mt-5 rounded-2xl border border-border/70 bg-surface p-4">
-            <div>
-              <p className="text-sm font-bold text-foreground">Kontak terverifikasi</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                Gunakan setelah Admin mengonfirmasi email/nomor HP dengan pegawai. Perubahan ini tidak mengubah email account login yang sudah terpisah.
-              </p>
-            </div>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <label className="text-xs font-semibold text-muted-foreground">
-                Email
-                <input
-                  type="email"
-                  value={contactEmail}
-                  onChange={(event) => setContactEmail(event.target.value)}
-                  placeholder="pegawai@contoh.id"
-                  className="mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm text-foreground outline-none focus:border-brand-primary"
-                />
-              </label>
-              <label className="text-xs font-semibold text-muted-foreground">
-                Nomor HP
-                <input
-                  value={contactPhone}
-                  onChange={(event) => setContactPhone(event.target.value)}
-                  placeholder="08xxxxxxxxxx"
-                  className="mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm text-foreground outline-none focus:border-brand-primary"
-                />
-              </label>
-            </div>
-            <button
-              type="submit"
-              disabled={savingContact || !employee}
-              className="mt-3 h-10 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white disabled:opacity-50"
-            >
-              {savingContact ? "Menyimpan..." : "Simpan kontak"}
-            </button>
-          </form>
         </article>
 
         <article className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">

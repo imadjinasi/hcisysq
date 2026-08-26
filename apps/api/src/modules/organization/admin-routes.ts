@@ -580,6 +580,12 @@ export async function registerOrganizationAdminRoutes(
         await reply.status(400).send({ code: "DUPLICATE_ORGANIZATION_MEMBERSHIP", message: "Each employee can be submitted once per team." });
         return false;
       }
+      for (const employeeId of submitted.keys()) {
+        if (!(await transaction.repository.validateStructuralIncumbent(employeeId)).eligible) {
+          await reply.status(409).send({ code: "ORGANIZATION_EMPLOYEE_NOT_ELIGIBLE", message: "Removed or inactive employees cannot receive a new organization membership." });
+          return false;
+        }
+      }
       const submittedPeriod = { effectiveFrom: body.data.effectiveFrom, effectiveTo: body.data.effectiveTo ?? null };
       const unsafePrimaryRemovals = primaryMembershipRemovalsWithoutReplacement({
         memberships: snapshot.memberships,
@@ -645,6 +651,12 @@ export async function registerOrganizationAdminRoutes(
         || (accountHolder && Boolean(body.data.primaryEmployeeId || body.data.actingEmployeeId))) {
         await reply.status(400).send({ code: "INVALID_HOLDER_SOURCE", message: "Incumbent must match the position holder source." });
         return false;
+      }
+      for (const employeeId of [body.data.primaryEmployeeId, body.data.actingEmployeeId].filter((value): value is string => Boolean(value))) {
+        if (!(await transaction.repository.validateStructuralIncumbent(employeeId)).eligible) {
+          await reply.status(409).send({ code: "ORGANIZATION_EMPLOYEE_NOT_ELIGIBLE", message: "Removed or inactive employees cannot become structural incumbents." });
+          return false;
+        }
       }
       position.holderSource = holderSource;
       snapshot.incumbencies = snapshot.incumbencies.filter((item) => item.positionKey !== body.data.positionKey);

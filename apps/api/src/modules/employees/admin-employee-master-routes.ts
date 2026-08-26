@@ -21,6 +21,7 @@ async function dependencies(db: Pool | PoolClient, employeeId: string) {
  UNION ALL SELECT 'reporting_override_employee' FROM organization_reporting_overrides x,current_revision c,today WHERE x.change_set_id=c.id AND x.employee_id=$1 AND x.effective_from<=today.d AND (x.effective_to IS NULL OR x.effective_to>=today.d)
  UNION ALL SELECT 'reporting_override_manager' FROM organization_reporting_overrides x,current_revision c,today WHERE x.change_set_id=c.id AND x.manager_employee_id=$1 AND x.effective_from<=today.d AND (x.effective_to IS NULL OR x.effective_to>=today.d)
  UNION ALL SELECT 'legacy_direct_manager' FROM employees x WHERE x.direct_manager_employee_id=$1 AND x.status='active' AND x.removed_at IS NULL
+ UNION ALL SELECT 'legacy_unit_approver' FROM organizational_units x WHERE x.leave_approver_employee_id=$1
  ) d GROUP BY category ORDER BY category`,[employeeId])).rows;
 }
 
