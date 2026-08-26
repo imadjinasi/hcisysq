@@ -179,7 +179,7 @@ integration("ORG-007 disposable PostgreSQL Leave UAT", () => {
       ]) {
         await pool.query(`INSERT INTO organization_incumbencies (
           id,change_set_id,position_key,account_id,kind,effective_from,is_primary_structural
-        ) VALUES ($1,$2,$3,$4,'PRIMARY','2026-01-01',true)`,
+        ) VALUES ($1,$2,$3,$4,'PRIMARY','2026-01-01',false)`,
         [randomUUID(), ids.changeSet, positionKey, accountId]);
       }
       const incumbencies = [[ids.directorPosition, ids.director], [ids.managerPosition, ids.manager],
