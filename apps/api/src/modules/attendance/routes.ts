@@ -186,7 +186,8 @@ async function loadEmployeeByAccount(
     LEFT JOIN positions p ON p.id = e.position_id
     WHERE a.id = $1
       AND a.principal_type = 'EMPLOYEE'
-      AND a.status = 'active'`,
+      AND a.status = 'active'
+      AND e.removed_at IS NULL`,
     [accountId],
   );
 

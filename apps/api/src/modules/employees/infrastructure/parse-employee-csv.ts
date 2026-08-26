@@ -1,5 +1,4 @@
 import {
-  EMPLOYEE_SOURCE_HEADERS,
   REQUIRED_EMPLOYEE_SOURCE_HEADERS,
   flagDuplicateEmployeeNumbers,
   normalizeEmployeeImportRow,
@@ -102,18 +101,20 @@ function parseRecords(text: string, delimiter: "," | ";"): string[][] {
 function findHeaderRecord(records: string[][]): {
   headerIndex: number;
   headers: Map<string, number>;
+  originalHeaders: Map<string, string>;
 } {
   const scanLimit = Math.min(records.length, 10);
 
   for (let headerIndex = 0; headerIndex < scanLimit; headerIndex += 1) {
     const candidate = records[headerIndex]!;
     const headers = new Map<string, number>();
-    candidate.forEach((value, index) => headers.set(headerKey(value), index));
+    const originalHeaders = new Map<string, string>();
+    candidate.forEach((value, index) => { headers.set(headerKey(value), index); originalHeaders.set(headerKey(value), value); });
 
     const complete = REQUIRED_EMPLOYEE_SOURCE_HEADERS.every((name) =>
       headers.has(headerKey(name)),
     );
-    if (complete) return { headerIndex, headers };
+    if (complete) return { headerIndex, headers, originalHeaders };
   }
 
   throw new EmployeeCsvFormatError(
@@ -130,11 +131,10 @@ export function parseEmployeeCsv(
 
   const delimiter = detectDelimiter(text);
   const records = parseRecords(text, delimiter);
-  const { headerIndex, headers } = findHeaderRecord(records);
+  const { headerIndex, headers, originalHeaders } = findHeaderRecord(records);
 
   const maxRows = options.maxRows ?? 2_000;
   const rows: NormalizedEmployeeImportRow[] = [];
-  const knownHeaders = Object.values(EMPLOYEE_SOURCE_HEADERS);
 
   for (let recordIndex = headerIndex + 1; recordIndex < records.length; recordIndex += 1) {
     if (rows.length >= maxRows) {
@@ -143,10 +143,7 @@ export function parseEmployeeCsv(
 
     const record = records[recordIndex]!;
     const source: Record<string, unknown> = {};
-    for (const name of knownHeaders) {
-      const column = headers.get(headerKey(name));
-      if (column !== undefined) source[name] = record[column] ?? "";
-    }
+    for (const [header, column] of headers) source[originalHeaders.get(header) ?? header] = record[column] ?? "";
 
     const normalized = normalizeEmployeeImportRow(recordIndex + 1, source);
     if (normalized.candidate || normalized.issues.length > 0) rows.push(normalized);

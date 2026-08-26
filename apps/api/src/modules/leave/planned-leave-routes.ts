@@ -200,6 +200,7 @@ async function loadEmployeeContext(
     WHERE account.id = $1
       AND account.principal_type = 'EMPLOYEE'
       AND account.status = 'active'
+      AND employee.removed_at IS NULL
     ${lock ? "FOR UPDATE OF employee" : ""}`,
     [accountId],
   );

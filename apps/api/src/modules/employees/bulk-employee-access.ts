@@ -85,6 +85,7 @@ interface EmployeeRow extends QueryResultRow {
   employeeName: string;
   employeeStatus: EmployeeStatus;
   employeeEmail: string | null;
+  removedAt?: Date | null;
 }
 
 interface AccountRow extends QueryResultRow {
@@ -294,7 +295,7 @@ async function loadPreviewCandidates(pool: Pool, employeeIds: string[]) {
        (a.password_hash IS NOT NULL) AS "accountPasswordSet"
      FROM employees e
      LEFT JOIN accounts a ON a.employee_id = e.id AND a.principal_type = 'EMPLOYEE'
-     WHERE e.id = ANY($1::uuid[])
+     WHERE e.id = ANY($1::uuid[]) AND e.removed_at IS NULL
      ORDER BY e.full_name, e.id`,
     [employeeIds],
   );
@@ -307,7 +308,7 @@ async function loadLockedCandidate(
 ): Promise<EmployeeAccessCandidate | null> {
   const employeeResult = await client.query<EmployeeRow>(
     `SELECT id AS "employeeId", employee_number AS "employeeNumber",
-            full_name AS "employeeName", status AS "employeeStatus", email AS "employeeEmail"
+            full_name AS "employeeName", status AS "employeeStatus", email AS "employeeEmail", removed_at AS "removedAt"
      FROM employees WHERE id = $1 FOR UPDATE`,
     [employeeId],
   );
@@ -335,6 +336,7 @@ async function loadLockedCandidate(
           AND other.employee_id IS DISTINCT FROM $2::uuid) AS "conflictingAccountEmailCount"`,
     [employee.employeeEmail, employeeId],
   );
+  if (employee.removedAt) return null;
   return {
     ...employee,
     employeeEmailCount: Number(counts.rows[0]?.employeeEmailCount ?? 0),

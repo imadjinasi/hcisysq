@@ -390,7 +390,7 @@ export async function registerOrganizationAdminRoutes(
        FROM employees e
        LEFT JOIN organizational_units u ON u.id = e.organizational_unit_id
        LEFT JOIN positions p ON p.id = e.position_id
-       WHERE e.status = 'active'
+       WHERE e.status = 'active' AND e.removed_at IS NULL
        ORDER BY e.full_name`,
     );
     return reply.send({ items: result.rows });

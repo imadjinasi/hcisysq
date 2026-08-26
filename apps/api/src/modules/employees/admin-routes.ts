@@ -20,6 +20,7 @@ import {
 const listQuerySchema = z.object({
   q: z.string().trim().max(100).optional(),
   status: z.enum(["active", "inactive", "resigned"]).optional(),
+  removed: z.enum(["include", "only"]).optional(),
   unitId: z.string().uuid().optional(),
   positionId: z.string().uuid().optional(),
   page: z.coerce.number().int().min(1).default(1),
@@ -142,7 +143,7 @@ export async function registerEmployeeAdminRoutes(
       });
     }
 
-    const { page, pageSize, status, unitId, positionId } = parsed.data;
+    const { page, pageSize, status, unitId, positionId, removed } = parsed.data;
     const search = parsed.data.q?.trim() || null;
     const offset = (page - 1) * pageSize;
     const filterValues = [search, status ?? null, unitId ?? null, positionId ?? null];
@@ -154,6 +155,7 @@ export async function registerEmployeeAdminRoutes(
         AND ($2::text IS NULL OR e.status = $2)
         AND ($3::uuid IS NULL OR e.organizational_unit_id = $3)
         AND ($4::uuid IS NULL OR e.position_id = $4)
+        AND ($5::text = 'include' OR ($5::text = 'only' AND e.removed_at IS NOT NULL) OR ($5::text IS NULL AND e.removed_at IS NULL))
     `;
 
     const [items, count, summary, units, positions] = await Promise.all([
@@ -183,13 +185,13 @@ export async function registerEmployeeAdminRoutes(
           LEFT JOIN positions p ON p.id = e.position_id
           ${where}
           ORDER BY e.full_name ASC, e.employee_number ASC
-          LIMIT $5 OFFSET $6
+          LIMIT $6 OFFSET $7
         `,
-        [...filterValues, pageSize, offset],
+        [...filterValues, removed ?? null, pageSize, offset],
       ),
       pool.query<CountRow>(
         `SELECT count(*)::int AS total FROM employees e ${where}`,
-        filterValues,
+        [...filterValues, removed ?? null],
       ),
       pool.query<SummaryRow>(
         `
@@ -198,7 +200,7 @@ export async function registerEmployeeAdminRoutes(
             count(*) FILTER (WHERE status = 'active')::int AS active,
             count(*) FILTER (WHERE status = 'inactive')::int AS inactive,
             count(*) FILTER (WHERE status = 'resigned')::int AS resigned
-          FROM employees
+          FROM employees WHERE removed_at IS NULL
         `,
       ),
       pool.query<ReferenceRow>(

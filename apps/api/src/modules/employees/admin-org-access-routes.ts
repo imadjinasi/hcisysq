@@ -89,6 +89,11 @@ interface EmployeeDetailRow {
   education: string | null;
   startedOn: string | null;
   endedOn: string | null;
+  employmentType: string | null;
+  functionalPosition: string | null;
+  structuralPosition: string | null;
+  removedAt: Date | null;
+  removalReason: string | null;
   managerEmployeeId: string | null;
   managerEmployeeNumber: string | null;
   managerFullName: string | null;
@@ -297,6 +302,11 @@ export async function registerOrgAccessAdminRoutes(
             e.education,
             e.started_on AS "startedOn",
             e.ended_on AS "endedOn",
+            e.employment_type AS "employmentType",
+            e.functional_position AS "functionalPosition",
+            e.structural_position AS "structuralPosition",
+            e.removed_at AS "removedAt",
+            e.removal_reason AS "removalReason",
             manager.id AS "managerEmployeeId",
             manager.employee_number AS "managerEmployeeNumber",
             manager.full_name AS "managerFullName",
@@ -324,7 +334,7 @@ export async function registerOrgAccessAdminRoutes(
           FROM employees e
           LEFT JOIN organizational_units u ON u.id = e.organizational_unit_id
           LEFT JOIN positions p ON p.id = e.position_id
-          WHERE e.status = 'active' AND e.id <> $1
+          WHERE e.status = 'active' AND e.removed_at IS NULL AND e.id <> $1
           ORDER BY e.full_name ASC
         `,
         [employeeId],

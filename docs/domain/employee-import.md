@@ -20,7 +20,9 @@ CSV accepts comma or semicolon delimiters. The importer scans the first 10 non-e
 
 For XLSX compatibility, the importer reads only the sheet named `Master Data SDM YSQ`, with header row 2 and data starting at row 3. Formula-derived identifiers are read from their cached/displayed result as text and are never intentionally coerced through JavaScript numeric precision.
 
-The importer uses an allowlist. Columns outside this list are ignored.
+Canonical fields use the mapping below. Every source header and row value is retained in
+an auditable row-level source snapshot; fields outside the canonical model are shown as
+**"Preserved as source data — not yet modeled"**. No source field is silently discarded.
 
 | Source header | Target | Required | Notes |
 |---|---|---:|---|
@@ -62,7 +64,10 @@ The current source includes several spreadsheet-specific anomalies that the impo
 
 The source contains additional sensitive fields. MVP does not ingest them merely because they exist.
 
-Currently excluded include NIK, BPJS identifiers, bank account, NPWP, family identifiers, document markers, full address, and unclassified free-form notes.
+Currently excluded fields, including NIK, BPJS identifiers, bank account, NPWP, family
+identifiers, document markers, full address, and unclassified notes, are not promoted to
+canonical employee columns. Their import source values remain available only in the
+restricted audited source snapshot; no new operational use is implied.
 
 Adding any excluded field to persisted HCIS data requires an explicit product/security decision and matching authorization/audit behavior.
 

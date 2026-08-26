@@ -212,4 +212,23 @@ describe("parseEmployeeCsv", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]?.candidate?.employeeNumber).toBe("YSQ-DEMO-001");
   });
+
+  it("retains an unmodeled source column with its original spelling", () => {
+    const headers = [...Object.values(EMPLOYEE_SOURCE_HEADERS), "Catatan HR Rahasia"];
+    const values = [...headers.slice(0, -1).map((header) => String(source()[header] ?? "")), "perlu review"];
+    const rows = parseEmployeeCsv(Buffer.from(`${headers.join(",")}\n${values.join(",")}\n`, "utf8"));
+    expect(rows[0]?.candidate?.sourceData["Catatan HR Rahasia"]).toBe("perlu review");
+  });
+
+  it("records canonical column presence separately from an explicit empty value", () => {
+    const row = normalizeEmployeeImportRow(3, {
+      [EMPLOYEE_SOURCE_HEADERS.employeeNumber]: "YSQ-DEMO-001",
+      [EMPLOYEE_SOURCE_HEADERS.fullName]: "Ahmad Demo",
+      [EMPLOYEE_SOURCE_HEADERS.status]: "Aktif",
+      [EMPLOYEE_SOURCE_HEADERS.phone]: "",
+    });
+    expect(row.candidate?.presentFields).toContain("phone");
+    expect(row.candidate?.presentFields).not.toContain("education");
+    expect(row.candidate?.phone).toBeNull();
+  });
 });

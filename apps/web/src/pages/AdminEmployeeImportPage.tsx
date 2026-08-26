@@ -191,6 +191,17 @@ export function AdminEmployeeImportPage() {
               {summaryCard("Error", preview.errorCount, "error")}
             </div>
 
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <div className="rounded-2xl border border-border/70 bg-surface p-4">
+                <p className="text-sm font-bold">Kolom kanonis yang dipetakan</p>
+                <p className="mt-2 text-xs text-muted-foreground">{preview.canonicalColumns.join(", ") || "Tidak ada"}</p>
+              </div>
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                <p className="text-sm font-bold text-amber-900">Disimpan sebagai data sumber — belum dimodelkan</p>
+                <p className="mt-2 text-xs text-amber-900">{preview.preservedUnmodeledColumns.join(", ") || "Tidak ada"}</p>
+              </div>
+            </div>
+
             {validationSummary.length ? (
               <div className="mt-4 rounded-2xl border border-border/70 bg-surface p-4">
                 <p className="text-sm font-bold text-foreground">Ringkasan validasi</p>
@@ -250,6 +261,7 @@ export function AdminEmployeeImportPage() {
                     <th className="px-4 py-3 font-semibold">Baris</th>
                     <th className="px-4 py-3 font-semibold">Aksi</th>
                     <th className="px-4 py-3 font-semibold">Validasi</th>
+                    <th className="px-4 py-3 font-semibold">Perubahan kanonis</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/70">
@@ -258,6 +270,10 @@ export function AdminEmployeeImportPage() {
                       <td className="px-4 py-3 font-semibold">{row.rowNumber}</td>
                       <td className="px-4 py-3">
                         <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold uppercase text-slate-700">{row.action}</span>
+                      </td>
+                      <td className="px-4 py-3 align-top">
+                        {row.changedFields.length ? <><p className="text-xs font-semibold text-foreground">Berubah: {row.changedFields.join(", ")}</p>{row.explicitClears.length ? <p className="mt-1 text-xs font-bold text-red-700">Akan dikosongkan: {row.explicitClears.join(", ")}</p> : null}<details className="mt-1 text-xs text-muted-foreground"><summary>Bandingkan sebelum/sesudah</summary><pre className="mt-1 max-w-md overflow-auto rounded bg-slate-50 p-2">{JSON.stringify({ before: row.before, after: row.after }, null, 2)}</pre></details></> : <p className="text-xs text-muted-foreground">Tidak ada perubahan kanonis</p>}
+                        {row.absentCanonicalFields.length ? <p className="mt-1 text-xs text-muted-foreground">Kolom tidak ada (nilai lama dipertahankan): {row.absentCanonicalFields.join(", ")}</p> : null}
                       </td>
                       <td className="px-4 py-3">
                         {row.issues.length ? (

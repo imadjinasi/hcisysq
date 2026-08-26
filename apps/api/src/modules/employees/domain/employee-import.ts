@@ -52,6 +52,10 @@ export interface EmployeeImportCandidate {
   education: string | null;
   startedOn: string | null;
   endedOn: string | null;
+  /** Original spelling and values, retained for auditable source snapshots. */
+  sourceData: Record<string, unknown>;
+  /** Canonical field names whose source column existed (empty is intentionally distinct). */
+  presentFields: string[];
 }
 
 export interface NormalizedEmployeeImportRow {
@@ -80,10 +84,17 @@ export interface EmployeeImportSummary {
 }
 
 export interface EmployeeImportPreview extends EmployeeImportSummary {
+  canonicalColumns: string[];
+  preservedUnmodeledColumns: string[];
   rows: Array<{
     rowNumber: number;
     action: ImportAction;
     issues: ImportIssue[];
+    before: Record<string, unknown> | null;
+    after: Record<string, unknown> | null;
+    changedFields: string[];
+    explicitClears: string[];
+    absentCanonicalFields: string[];
   }>;
 }
 
@@ -128,6 +139,12 @@ const namedMonths: Record<string, number> = {
 function text(value: unknown): string {
   if (value === null || value === undefined) return "";
   return String(value).replace(/\u00a0/g, " ").trim();
+}
+
+function sourceValue(source: Record<string, unknown>, header: string): unknown {
+  if (Object.prototype.hasOwnProperty.call(source, header)) return source[header];
+  const key = normalizeReferenceName(header);
+  return Object.entries(source).find(([name]) => normalizeReferenceName(name) === key)?.[1];
 }
 
 function nullableText(value: unknown): string | null {
@@ -319,12 +336,12 @@ export function normalizeEmployeeImportRow(
   source: Record<string, unknown>,
 ): NormalizedEmployeeImportRow {
   const issues: ImportIssue[] = [];
-  const rawEmployeeNumber = text(source[EMPLOYEE_SOURCE_HEADERS.employeeNumber]);
+  const rawEmployeeNumber = text(sourceValue(source, EMPLOYEE_SOURCE_HEADERS.employeeNumber));
   const employeeNumberHasSpreadsheetError = spreadsheetErrorValues.has(
     rawEmployeeNumber.toUpperCase(),
   );
   const employeeNumber = employeeNumberHasSpreadsheetError ? "" : rawEmployeeNumber;
-  const fullName = text(source[EMPLOYEE_SOURCE_HEADERS.fullName]);
+  const fullName = text(sourceValue(source, EMPLOYEE_SOURCE_HEADERS.fullName));
 
   if (!rawEmployeeNumber && !fullName) {
     return { rowNumber, candidate: null, issues };
@@ -355,19 +372,19 @@ export function normalizeEmployeeImportRow(
     });
   }
 
-  const status = normalizeStatus(source[EMPLOYEE_SOURCE_HEADERS.status]);
+  const status = normalizeStatus(sourceValue(source, EMPLOYEE_SOURCE_HEADERS.status));
   if (status.warning) issues.push(status.warning);
 
-  const email = normalizeEmail(source[EMPLOYEE_SOURCE_HEADERS.email]);
+  const email = normalizeEmail(sourceValue(source, EMPLOYEE_SOURCE_HEADERS.email));
   if (email.warning) issues.push(email.warning);
 
-  const startedOn = normalizeDate(source[EMPLOYEE_SOURCE_HEADERS.startedOn], "startedOn");
+  const startedOn = normalizeDate(sourceValue(source, EMPLOYEE_SOURCE_HEADERS.startedOn), "startedOn");
   if (startedOn.warning) issues.push(startedOn.warning);
 
-  const endedOn = normalizeDate(source[EMPLOYEE_SOURCE_HEADERS.endedOn], "endedOn");
+  const endedOn = normalizeDate(sourceValue(source, EMPLOYEE_SOURCE_HEADERS.endedOn), "endedOn");
   if (endedOn.warning) issues.push(endedOn.warning);
 
-  const unitName = nullableText(source[EMPLOYEE_SOURCE_HEADERS.unitName]);
+  const unitName = nullableText(sourceValue(source, EMPLOYEE_SOURCE_HEADERS.unitName));
   if (!unitName) {
     issues.push({
       severity: "warning",
@@ -377,7 +394,7 @@ export function normalizeEmployeeImportRow(
     });
   }
 
-  const positionName = nullableText(source[EMPLOYEE_SOURCE_HEADERS.positionName]);
+  const positionName = nullableText(sourceValue(source, EMPLOYEE_SOURCE_HEADERS.positionName));
   if (!positionName) {
     issues.push({
       severity: "warning",
@@ -393,17 +410,21 @@ export function normalizeEmployeeImportRow(
       employeeNumber,
       fullName,
       status: status.value,
-      employmentStatus: nullableText(source[EMPLOYEE_SOURCE_HEADERS.employmentStatus]),
+      employmentStatus: nullableText(sourceValue(source, EMPLOYEE_SOURCE_HEADERS.employmentStatus)),
       unitName,
       positionName,
-      employmentType: nullableText(source[EMPLOYEE_SOURCE_HEADERS.employmentType]),
-      functionalPosition: nullableText(source[EMPLOYEE_SOURCE_HEADERS.functionalPosition]),
-      structuralPosition: nullableText(source[EMPLOYEE_SOURCE_HEADERS.structuralPosition]),
+      employmentType: nullableText(sourceValue(source, EMPLOYEE_SOURCE_HEADERS.employmentType)),
+      functionalPosition: nullableText(sourceValue(source, EMPLOYEE_SOURCE_HEADERS.functionalPosition)),
+      structuralPosition: nullableText(sourceValue(source, EMPLOYEE_SOURCE_HEADERS.structuralPosition)),
       email: email.value,
-      phone: nullableText(source[EMPLOYEE_SOURCE_HEADERS.phone]),
-      education: nullableText(source[EMPLOYEE_SOURCE_HEADERS.education]),
+      phone: nullableText(sourceValue(source, EMPLOYEE_SOURCE_HEADERS.phone)),
+      education: nullableText(sourceValue(source, EMPLOYEE_SOURCE_HEADERS.education)),
       startedOn: startedOn.value,
       endedOn: endedOn.value,
+      sourceData: source,
+      presentFields: Object.entries(EMPLOYEE_SOURCE_HEADERS)
+        .filter(([, header]) => sourceValue(source, header) !== undefined)
+        .map(([field]) => field),
     },
     issues,
   };

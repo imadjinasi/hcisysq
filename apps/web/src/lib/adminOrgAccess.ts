@@ -55,6 +55,11 @@ export interface EmployeeDetailResponse {
     education: string | null;
     startedOn: string | null;
     endedOn: string | null;
+    employmentType: string | null;
+    functionalPosition: string | null;
+    structuralPosition: string | null;
+    removedAt: string | null;
+    removalReason: string | null;
     managerEmployeeId: string | null;
     managerEmployeeNumber: string | null;
     managerFullName: string | null;
@@ -92,6 +97,23 @@ export interface AccessAccount {
   unitName: string | null;
   createdAt: string;
   assignments: RoleAssignment[];
+}
+
+export interface EmployeeSourceSnapshot { id: string; sourceFilename: string; sourceSheet: string; importedAt: string; unmodeledSourceData: Record<string, unknown>; }
+
+export async function getEmployeeSourceSnapshots(employeeId: string): Promise<{ items: EmployeeSourceSnapshot[] }> {
+  const response = await fetch(`/api/admin/employees/${employeeId}/source-snapshots`, { credentials: "include", headers: { Accept: "application/json" } });
+  return readJson(response);
+}
+
+export async function previewEmployeeRemoval(employeeId: string): Promise<{ fullName: string; removedAt: string | null; accountId: string | null; accountStatus: string | null; publishedAssignments: number }> {
+  const response = await fetch(`/api/admin/employees/${employeeId}/remove-preview`, { method: "POST", credentials: "include", headers: { Accept: "application/json" } });
+  return readJson(response);
+}
+
+export async function removeEmployeeFromMaster(employeeId: string, confirmationName: string, reason: string): Promise<{ removed: boolean }> {
+  const response = await fetch(`/api/admin/employees/${employeeId}/remove`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ confirmationName, reason }) });
+  return readJson(response);
 }
 
 export interface EmployeeAccessRow {
@@ -267,6 +289,11 @@ export async function prepareEmployeeAccount(input: {
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify(input),
   });
+  return readJson(response);
+}
+
+export async function updateEmployeeMaster(employeeId: string, input: Record<string, unknown>): Promise<{ employeeId: string }> {
+  const response = await fetch(`/api/admin/employees/${employeeId}`, { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify(input) });
   return readJson(response);
 }
 

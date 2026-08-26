@@ -68,10 +68,17 @@ export interface EmployeeImportPreview {
   status: ImportStatus;
   createdAt: string;
   committedAt: string | null;
+  canonicalColumns: string[];
+  preservedUnmodeledColumns: string[];
   rows: Array<{
     rowNumber: number;
     action: ImportAction;
     issues: ImportIssue[];
+    before: Record<string, unknown> | null;
+    after: Record<string, unknown> | null;
+    changedFields: string[];
+    explicitClears: string[];
+    absentCanonicalFields: string[];
   }>;
 }
 

@@ -9,10 +9,16 @@ import {
 import { AdminApiError } from "@/lib/adminEmployees";
 import {
   getEmployeeDetail,
+  getOrganizationAdmin,
+  getEmployeeSourceSnapshots,
+  previewEmployeeRemoval,
+  removeEmployeeFromMaster,
+  updateEmployeeMaster,
   prepareEmployeeAccount,
   updateDirectManager,
   updateEmployeeContact,
   type EmployeeDetailResponse,
+  type EmployeeSourceSnapshot,
 } from "@/lib/adminOrgAccess";
 
 function accountStatusLabel(status: string | null) {
@@ -39,6 +45,14 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
   const [issuingActivation, setIssuingActivation] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sourceSnapshots, setSourceSnapshots] = useState<EmployeeSourceSnapshot[]>([]);
+  const [removalPreview, setRemovalPreview] = useState<{ fullName: string; accountId: string | null; accountStatus: string | null; publishedAssignments: number } | null>(null);
+  const [removalName, setRemovalName] = useState("");
+  const [removalReason, setRemovalReason] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [editReason, setEditReason] = useState("");
+  const [edit, setEdit] = useState<Record<string, string>>({});
+  const [references, setReferences] = useState<{ units: Array<{ id: string; name: string }>; positions: Array<{ id: string; name: string }> }>({ units: [], positions: [] });
 
   const applyResult = (result: EmployeeDetailResponse) => {
     setData(result);
@@ -46,6 +60,7 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
     setAccountEmail(result.employee.accountEmail ?? result.employee.email ?? "");
     setContactEmail(result.employee.email ?? "");
     setContactPhone(result.employee.phone ?? "");
+    setEdit(Object.fromEntries(Object.entries(result.employee).map(([key, value]) => [key, value == null ? "" : String(value)])));
   };
 
   const reload = async () => {
@@ -65,6 +80,8 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
           cause instanceof AdminApiError ? cause.message : "Detail pegawai tidak dapat dimuat.",
         );
       });
+    void getEmployeeSourceSnapshots(employeeId).then((result) => { if (mounted) setSourceSnapshots(result.items); }).catch(() => undefined);
+    void getOrganizationAdmin().then((result) => { if (mounted) setReferences({ units: result.units, positions: result.positions }); }).catch(() => undefined);
     return () => {
       mounted = false;
     };
@@ -88,6 +105,10 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
       setSavingContact(false);
     }
   };
+
+  const loadRemovalPreview = async () => { try { setRemovalPreview(await previewEmployeeRemoval(employeeId)); } catch (cause) { setError(cause instanceof AdminApiError ? cause.message : "Dampak penghapusan tidak dapat dimuat."); } };
+  const removeFromMaster = async () => { try { await removeEmployeeFromMaster(employeeId, removalName, removalReason); setNotice("Pegawai telah dikeluarkan dari Employee Master; riwayat tetap tersimpan dan account pegawai dinonaktifkan."); await reload(); } catch (cause) { setError(cause instanceof AdminApiError ? cause.message : "Penghapusan dari Employee Master gagal."); } };
+  const saveMaster = async (event: FormEvent) => { event.preventDefault(); try { await updateEmployeeMaster(employeeId, { fullName: edit.fullName, employeeNumber: edit.employeeNumber, status: edit.status, employmentStatus: edit.employmentStatus || null, organizationalUnitId: edit.unitId || null, positionId: edit.positionId || null, employmentType: edit.employmentType || null, functionalPosition: edit.functionalPosition || null, structuralPosition: edit.structuralPosition || null, email: edit.email || null, phone: edit.phone || null, education: edit.education || null, startedOn: edit.startedOn || null, endedOn: edit.endedOn || null, reason: editReason }); setNotice("Employee master diperbarui; email login account tidak berubah otomatis."); setEditing(false); await reload(); } catch (cause) { setError(cause instanceof AdminApiError ? cause.message : "Employee master gagal diperbarui."); } };
 
   const saveManager = async (event: FormEvent) => {
     event.preventDefault();
@@ -227,6 +248,15 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
               </div>
             ))}
           </dl>
+
+          <button type="button" onClick={() => setEditing((value) => !value)} className="mt-4 h-10 rounded-xl border border-brand-primary/30 px-4 text-sm font-bold text-brand-primary-deep">{editing ? "Batal edit" : "Edit employee master"}</button>
+          {editing ? <form onSubmit={saveMaster} className="mt-4 grid gap-3 rounded-2xl border border-brand-primary/20 bg-brand-primary-pale/40 p-4 sm:grid-cols-2">
+            {["fullName","employeeNumber","employmentStatus","employmentType","functionalPosition","structuralPosition","email","phone","education","startedOn","endedOn"].map((field) => <label key={field} className="text-xs font-semibold text-muted-foreground">{field}<input value={edit[field] ?? ""} onChange={(event) => setEdit((current) => ({ ...current, [field]: event.target.value }))} type={field.endsWith("On") ? "date" : field === "email" ? "email" : "text"} className="mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm" /></label>)}
+            <label className="text-xs font-semibold text-muted-foreground">Status<select value={edit.status ?? "active"} onChange={(event) => setEdit((current) => ({ ...current, status: event.target.value }))} className="mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm"><option value="active">Aktif</option><option value="inactive">Tidak aktif</option><option value="resigned">Keluar/resigned</option></select></label>
+            <label className="text-xs font-semibold text-muted-foreground">Unit<select value={edit.unitId ?? ""} onChange={(event) => setEdit((current) => ({ ...current, unitId: event.target.value }))} className="mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm"><option value="">Tanpa unit</option>{references.units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}</select></label>
+            <label className="text-xs font-semibold text-muted-foreground">Jabatan<select value={edit.positionId ?? ""} onChange={(event) => setEdit((current) => ({ ...current, positionId: event.target.value }))} className="mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm"><option value="">Tanpa jabatan</option>{references.positions.map((position) => <option key={position.id} value={position.id}>{position.name}</option>)}</select></label>
+            <label className="sm:col-span-2 text-xs font-semibold text-muted-foreground">Alasan perubahan<input required value={editReason} onChange={(event) => setEditReason(event.target.value)} className="mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm" /></label><button type="submit" className="h-10 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white">Simpan perubahan</button>
+          </form> : null}
 
           <form onSubmit={saveContact} className="mt-5 rounded-2xl border border-border/70 bg-surface p-4">
             <div>
@@ -368,6 +398,18 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
             )}
           </div>
         </article>
+      </section>
+
+      <section className="mt-5 rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+        <h2 className="text-base font-bold text-brand-heading">Data Sumber</h2>
+        <p className="mt-1 text-xs text-muted-foreground">Hanya Super Admin. Nilai sumber bersifat administratif/audit dan tidak tersedia pada employee self-service.</p>
+        {sourceSnapshots.length ? sourceSnapshots.map((snapshot) => <details key={snapshot.id} className="mt-3 rounded-xl border border-border/70 p-3"><summary className="cursor-pointer text-sm font-semibold">{snapshot.sourceFilename} · {snapshot.sourceSheet} · {new Date(snapshot.importedAt).toLocaleString("id-ID")}</summary><dl className="mt-3 grid gap-2 sm:grid-cols-2">{Object.entries(snapshot.unmodeledSourceData).map(([key, value]) => <div key={key}><dt className="text-xs text-muted-foreground">{key}</dt><dd className="break-words text-sm">{String(value ?? "")}</dd></div>)}</dl></details>) : <p className="mt-3 text-sm text-muted-foreground">Belum ada snapshot import yang tersedia.</p>}
+      </section>
+
+      <section className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-5">
+        <h2 className="text-base font-bold text-red-900">Keluarkan dari Employee Master</h2>
+        <p className="mt-1 text-sm text-red-800">Berbeda dari Tidak aktif atau Keluar/resigned. Tindakan ini tidak menghapus riwayat, tetapi menutup akses employee dan mengecualikan orang ini dari populasi pegawai HCIS.</p>
+        {!removalPreview ? <button type="button" onClick={() => void loadRemovalPreview()} className="mt-3 h-10 rounded-xl border border-red-300 bg-white px-4 text-sm font-bold text-red-900">Tinjau dampak</button> : <div className="mt-3 space-y-3"><p className="text-sm text-red-900">Account: {removalPreview.accountStatus ?? "tidak ada"}; assignment organisasi published: {removalPreview.publishedAssignments}.</p><input value={removalName} onChange={(event) => setRemovalName(event.target.value)} placeholder={`Ketik nama lengkap: ${removalPreview.fullName}`} className="h-10 w-full rounded-xl border border-red-300 bg-white px-3 text-sm" /><input value={removalReason} onChange={(event) => setRemovalReason(event.target.value)} placeholder="Alasan wajib" className="h-10 w-full rounded-xl border border-red-300 bg-white px-3 text-sm" /><button type="button" disabled={!removalName || !removalReason || removalPreview.publishedAssignments > 0} onClick={() => void removeFromMaster()} className="h-10 rounded-xl bg-red-700 px-4 text-sm font-bold text-white disabled:opacity-50">Keluarkan dari Employee Master</button></div>}
       </section>
     </AdminShell>
   );

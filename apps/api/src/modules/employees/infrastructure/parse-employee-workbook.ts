@@ -4,7 +4,6 @@ import {
   EMPLOYEE_IMPORT_FIRST_DATA_ROW,
   EMPLOYEE_IMPORT_HEADER_ROW,
   EMPLOYEE_IMPORT_SHEET,
-  EMPLOYEE_SOURCE_HEADERS,
   REQUIRED_EMPLOYEE_SOURCE_HEADERS,
   flagDuplicateEmployeeNumbers,
   normalizeEmployeeImportRow,
@@ -55,9 +54,11 @@ export async function parseEmployeeWorkbook(
   }
 
   const headers = new Map<string, number>();
+  const originalHeaders = new Map<string, string>();
   const headerRow = worksheet.getRow(EMPLOYEE_IMPORT_HEADER_ROW);
   headerRow.eachCell({ includeEmpty: false }, (cell, columnNumber) => {
     headers.set(headerKey(cell.text), columnNumber);
+    originalHeaders.set(headerKey(cell.text), cell.text);
   });
 
   const missingHeaders = REQUIRED_EMPLOYEE_SOURCE_HEADERS.filter(
@@ -71,7 +72,6 @@ export async function parseEmployeeWorkbook(
 
   const maxRows = options.maxRows ?? 2_000;
   const rows: NormalizedEmployeeImportRow[] = [];
-  const knownHeaders = Object.values(EMPLOYEE_SOURCE_HEADERS);
 
   worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
     if (rowNumber < EMPLOYEE_IMPORT_FIRST_DATA_ROW) return;
@@ -80,10 +80,7 @@ export async function parseEmployeeWorkbook(
     }
 
     const source: Record<string, unknown> = {};
-    for (const header of knownHeaders) {
-      const columnNumber = headers.get(headerKey(header));
-      if (columnNumber) source[header] = cellValue(row.getCell(columnNumber));
-    }
+    for (const [header, columnNumber] of headers) source[originalHeaders.get(header) ?? header] = cellValue(row.getCell(columnNumber));
 
     const normalized = normalizeEmployeeImportRow(rowNumber, source);
     if (normalized.candidate || normalized.issues.length > 0) rows.push(normalized);

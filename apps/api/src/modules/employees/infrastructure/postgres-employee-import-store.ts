@@ -10,7 +10,7 @@ import type {
   ImportAction,
   ImportIssue,
 } from "../domain/employee-import.js";
-import { normalizeReferenceName } from "../domain/employee-import.js";
+import { EMPLOYEE_SOURCE_HEADERS, normalizeReferenceName } from "../domain/employee-import.js";
 import type {
   EmployeeImportStore,
   SaveEmployeeImportPreviewInput,
@@ -37,6 +37,8 @@ interface ImportDetailRow {
   payload: EmployeeImportCandidate | null;
   messages: ImportIssue[];
 }
+
+const canonicalSourceHeaders: Set<string> = new Set(Object.values(EMPLOYEE_SOURCE_HEADERS).map(normalizeReferenceName));
 
 export class EmployeeImportConflictError extends Error {
   constructor(message: string) {
@@ -149,13 +151,26 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
        ORDER BY row_number`,
       [importId],
     );
+    const numbers = rows.rows.flatMap((row) => row.payload?.employeeNumber ? [row.payload.employeeNumber] : []);
+    const existing = numbers.length ? await this.pool.query<Record<string, unknown>>(
+      `SELECT e.employee_number AS "employeeNumber", e.full_name AS "fullName", e.status, e.employment_status AS "employmentStatus", u.name AS "unitName", p.name AS "positionName", e.employment_type AS "employmentType", e.functional_position AS "functionalPosition", e.structural_position AS "structuralPosition", e.email, e.phone, e.education, e.started_on::text AS "startedOn", e.ended_on::text AS "endedOn" FROM employees e LEFT JOIN organizational_units u ON u.id=e.organizational_unit_id LEFT JOIN positions p ON p.id=e.position_id WHERE e.employee_number = ANY($1::text[])`, [numbers],
+    ) : { rows: [] as Record<string, unknown>[] };
+    const existingByNumber = new Map(existing.rows.map((row) => [String(row.employeeNumber), row]));
+    const canonical = ["fullName", "status", "employmentStatus", "unitName", "positionName", "employmentType", "functionalPosition", "structuralPosition", "email", "phone", "education", "startedOn", "endedOn"];
 
     return {
       ...toSummary(jobRow),
+      canonicalColumns: Object.values(EMPLOYEE_SOURCE_HEADERS).filter((header) => rows.rows.some((row) => row.payload && Object.keys(row.payload.sourceData ?? {}).some((key) => normalizeReferenceName(key) === normalizeReferenceName(header)))),
+      preservedUnmodeledColumns: [...new Set(rows.rows.flatMap((row) => Object.keys(row.payload?.sourceData ?? {}).filter((key) => !canonicalSourceHeaders.has(normalizeReferenceName(key)))))],
       rows: rows.rows.map((row) => ({
         rowNumber: row.row_number,
         action: row.action,
         issues: row.messages,
+        before: row.payload ? existingByNumber.get(row.payload.employeeNumber) ?? null : null,
+        after: row.payload ? Object.fromEntries(canonical.filter((field) => row.payload!.presentFields.includes(field)).map((field) => [field, row.payload![field as keyof EmployeeImportCandidate] ?? null])) : null,
+        changedFields: row.payload ? canonical.filter((field) => row.payload!.presentFields.includes(field) && String((existingByNumber.get(row.payload!.employeeNumber) ?? {})[field] ?? "") !== String(row.payload![field as keyof EmployeeImportCandidate] ?? "")) : [],
+        explicitClears: row.payload ? canonical.filter((field) => row.payload!.presentFields.includes(field) && row.payload![field as keyof EmployeeImportCandidate] == null && (existingByNumber.get(row.payload!.employeeNumber) ?? {})[field] != null) : [],
+        absentCanonicalFields: row.payload ? canonical.filter((field) => !row.payload!.presentFields.includes(field)) : [],
       })),
     };
   }
@@ -192,7 +207,7 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
 
       for (const row of rows.rows) {
         if (!row.payload || (row.action !== "insert" && row.action !== "update")) continue;
-        const actualAction = await this.upsertEmployee(client, row.payload, importId);
+        const actualAction = await this.upsertEmployee(client, row.payload, importId, row.row_number);
         if (actualAction === "insert") insertCount += 1;
         if (actualAction === "update") updateCount += 1;
 
@@ -227,6 +242,7 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
     client: PoolClient,
     candidate: EmployeeImportCandidate,
     importId: string,
+    rowNumber: number,
   ): Promise<"insert" | "update"> {
     const existing = await client.query<{ id: string }>(
       "SELECT id FROM employees WHERE employee_number = $1 FOR UPDATE",
@@ -243,19 +259,19 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
     if (existing.rows[0]) {
       await client.query(
         `UPDATE employees SET
-          full_name = $2,
-          status = $3,
-          employment_status = $4,
-          organizational_unit_id = $5,
-          position_id = $6,
-          employment_type = $7,
-          functional_position = $8,
-          structural_position = $9,
-          email = $10,
-          phone = $11,
-          education = $12,
-          started_on = $13,
-          ended_on = $14,
+          full_name = CASE WHEN 'fullName' = ANY($16::text[]) THEN $2 ELSE full_name END,
+          status = CASE WHEN 'status' = ANY($16::text[]) THEN $3 ELSE status END,
+          employment_status = CASE WHEN 'employmentStatus' = ANY($16::text[]) THEN $4 ELSE employment_status END,
+          organizational_unit_id = CASE WHEN 'unitName' = ANY($16::text[]) THEN $5 ELSE organizational_unit_id END,
+          position_id = CASE WHEN 'positionName' = ANY($16::text[]) THEN $6 ELSE position_id END,
+          employment_type = CASE WHEN 'employmentType' = ANY($16::text[]) THEN $7 ELSE employment_type END,
+          functional_position = CASE WHEN 'functionalPosition' = ANY($16::text[]) THEN $8 ELSE functional_position END,
+          structural_position = CASE WHEN 'structuralPosition' = ANY($16::text[]) THEN $9 ELSE structural_position END,
+          email = CASE WHEN 'email' = ANY($16::text[]) THEN $10 ELSE email END,
+          phone = CASE WHEN 'phone' = ANY($16::text[]) THEN $11 ELSE phone END,
+          education = CASE WHEN 'education' = ANY($16::text[]) THEN $12 ELSE education END,
+          started_on = CASE WHEN 'startedOn' = ANY($16::text[]) THEN $13 ELSE started_on END,
+          ended_on = CASE WHEN 'endedOn' = ANY($16::text[]) THEN $14 ELSE ended_on END,
           source_last_import_job_id = $15,
           updated_at = now()
         WHERE employee_number = $1`,
@@ -274,9 +290,10 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
           candidate.education,
           candidate.startedOn,
           candidate.endedOn,
-          importId,
+          importId, candidate.presentFields,
         ],
       );
+      await this.saveSourceSnapshot(client, existing.rows[0].id, importId, rowNumber, candidate);
       return "update";
     }
 
@@ -306,7 +323,16 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
         importId,
       ],
     );
+    const inserted = await client.query<{ id: string }>("SELECT id FROM employees WHERE employee_number = $1", [candidate.employeeNumber]);
+    await this.saveSourceSnapshot(client, inserted.rows[0]!.id, importId, rowNumber, candidate);
     return "insert";
+  }
+
+  private async saveSourceSnapshot(client: PoolClient, employeeId: string, importId: string, rowNumber: number, candidate: EmployeeImportCandidate) {
+    const job = await client.query<{ source_filename: string; source_sheet: string }>("SELECT source_filename, source_sheet FROM employee_import_jobs WHERE id = $1", [importId]);
+    const unmodeled = Object.fromEntries(Object.entries(candidate.sourceData).filter(([key]) => !canonicalSourceHeaders.has(normalizeReferenceName(key))));
+    await client.query(`INSERT INTO employee_import_source_snapshots (id, employee_id, import_job_id, row_number, source_filename, source_sheet, source_data, unmodeled_source_data)
+      VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb)`, [randomUUID(), employeeId, importId, rowNumber, job.rows[0]!.source_filename, job.rows[0]!.source_sheet, JSON.stringify(candidate.sourceData), JSON.stringify(unmodeled)]);
   }
 
   private async upsertReference(
