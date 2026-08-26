@@ -19,6 +19,13 @@ CREATE INDEX IF NOT EXISTS leave_request_approval_steps_account_inbox_idx
   ON leave_request_approval_steps (approver_account_id, status, created_at DESC)
   WHERE approver_account_id IS NOT NULL;
 
+ALTER TABLE leave_notification_outbox
+  DROP CONSTRAINT IF EXISTS leave_notification_outbox_target_type_check;
+
+ALTER TABLE leave_notification_outbox
+  ADD CONSTRAINT leave_notification_outbox_target_type_check
+  CHECK (target_type IN ('employee', 'account', 'role'));
+
 INSERT INTO permissions (permission_key, description)
 VALUES ('leave.governance.approve', 'Approve an explicitly snapshotted governance Leave step')
 ON CONFLICT (permission_key) DO UPDATE SET description = EXCLUDED.description;

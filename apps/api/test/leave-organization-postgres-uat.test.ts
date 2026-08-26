@@ -250,7 +250,7 @@ integration("ORG-007 disposable PostgreSQL Leave UAT", () => {
     const key = randomUUID();
     const response = await submit(tokens.invitedRequester, key);
     expect(response.statusCode).toBe(409);
-    expect(response.json()).toMatchObject({ code: "AUTHORITY_INELIGIBLE" });
+    expect(response.json()).toMatchObject({ code: "AUTHORITY_ACCOUNT_NOT_ACTIVE" });
     const created = await pool.query(`SELECT count(*)::int AS count FROM leave_requests
       WHERE employee_id=$1 AND idempotency_key=$2`, [ids.invitedRequester, key]);
     expect(created.rows[0].count).toBe(0);
