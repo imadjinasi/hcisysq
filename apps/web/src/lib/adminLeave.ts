@@ -19,15 +19,6 @@ export interface LeavePolicySummary {
   notes: string[];
 }
 
-export interface LeaveUnitConfiguration {
-  id: string;
-  name: string;
-  activeEmployeeCount: number;
-  approverEmployeeId: string | null;
-  approverName: string | null;
-  rolloutState: "LEGACY" | "SHADOW" | "STRUCTURE" | "MIXED";
-}
-
 export interface LeaveEmployeeConfiguration {
   id: string;
   fullName: string;
@@ -36,55 +27,34 @@ export interface LeaveEmployeeConfiguration {
   unitId: string | null;
   unitName: string | null;
   positionName: string | null;
-  directManagerEmployeeId: string | null;
-  directManagerName: string | null;
   leaveEntitlementGroup: LeaveEntitlementGroup | null;
-  rolloutMode: "LEGACY" | "SHADOW" | "STRUCTURE";
 }
 
 export interface LeaveConfigurationResponse {
   policies: LeavePolicySummary[];
-  units: LeaveUnitConfiguration[];
   employees: LeaveEmployeeConfiguration[];
   summary: {
-    activeUnits: number;
-    unitApproverConfigured: number;
     activeEmployees: number;
-    directManagerConfigured: number;
     entitlementGroupConfigured: number;
   };
-  rollout: {
-    workflowKey: "leave.annual";
-    effectiveDate: string;
-    state: "LEGACY" | "SHADOW" | "STRUCTURE" | "MIXED";
-    counts: Record<"LEGACY" | "SHADOW" | "STRUCTURE", number>;
-  };
+  approvalSource: "organization_structure";
 }
+
+export type LeaveApprovalSource =
+  | "DIRECT_MANAGER"
+  | "UNIT_APPROVER"
+  | "GOVERNANCE_APPROVER";
 
 export interface LeaveApprovalPreviewResponse {
   employee: LeaveEmployeeConfiguration & {
     startedOn: string | null;
-    unitApproverEmployeeId: string | null;
-    unitApproverName: string | null;
   };
   referenceDate: string;
   approvalChain: Array<{
     employeeId: string;
-    sources: Array<"DIRECT_MANAGER" | "UNIT_APPROVER" | "GOVERNANCE_APPROVER">;
+    sources: LeaveApprovalSource[];
   }>;
-  routing: {
-    mode: "LEGACY" | "SHADOW" | "STRUCTURE";
-    authoritativeSource: "LEGACY" | "STRUCTURE";
-    structuralCandidateChain: Array<{
-      employeeId: string;
-      sources: Array<"DIRECT_MANAGER" | "UNIT_APPROVER" | "GOVERNANCE_APPROVER">;
-    }> | null;
-    comparison: null | {
-      status: "MATCH" | "MISMATCH";
-      reasons: string[];
-      error?: { code: string; message: string };
-    };
-  };
+  approvalSource: "organization_structure";
   annualLeave: null | {
     annualEntitlementDays: number;
     eligibilityMonths: number;
@@ -127,19 +97,6 @@ export async function getLeaveConfiguration(): Promise<LeaveConfigurationRespons
   const response = await fetch("/api/admin/leave/configuration", {
     credentials: "include",
     headers: { Accept: "application/json" },
-  });
-  return readJson(response);
-}
-
-export async function updateUnitLeaveApprover(
-  unitId: string,
-  employeeId: string | null,
-): Promise<{ unitId: string; approverEmployeeId: string | null }> {
-  const response = await fetch(`/api/admin/leave/units/${unitId}/approver`, {
-    method: "PATCH",
-    credentials: "include",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({ employeeId }),
   });
   return readJson(response);
 }

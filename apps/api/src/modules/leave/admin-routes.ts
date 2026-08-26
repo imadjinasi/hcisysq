@@ -12,10 +12,6 @@ import {
   type AuthPrincipal,
 } from "../auth/service.js";
 import {
-  PostgresOrganizationRepository,
-  type OrganizationRolloutMode,
-} from "../organization/index.js";
-import {
   calculateAnnualLeaveYearView,
   type LeaveEntitlementGroup,
 } from "./domain/annual-leave-policy.js";
@@ -26,23 +22,13 @@ import {
   resolveLeaveAuthorities,
 } from "./organization-authority.js";
 
-const unitIdSchema = z.object({ unitId: z.string().uuid() });
 const employeeIdSchema = z.object({ employeeId: z.string().uuid() });
-const approverSchema = z.object({ employeeId: z.string().uuid().nullable() });
 const entitlementGroupSchema = z.object({
   group: z.enum(["education", "non_education"]).nullable(),
 });
 const previewQuerySchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
-
-interface LeaveUnitRow {
-  id: string;
-  name: string;
-  activeEmployeeCount: number;
-  approverEmployeeId: string | null;
-  approverName: string | null;
-}
 
 interface LeaveEmployeeRow {
   id: string;
@@ -52,15 +38,11 @@ interface LeaveEmployeeRow {
   unitId: string | null;
   unitName: string | null;
   positionName: string | null;
-  directManagerEmployeeId: string | null;
-  directManagerName: string | null;
   leaveEntitlementGroup: LeaveEntitlementGroup | null;
 }
 
 interface LeavePreviewRow extends LeaveEmployeeRow {
   startedOn: string | null;
-  unitApproverEmployeeId: string | null;
-  unitApproverName: string | null;
 }
 
 async function audit(
@@ -131,159 +113,37 @@ export async function registerLeaveAdminRoutes(
     const principal = await authenticateAdmin(request, reply);
     if (!principal) return;
 
-    const [units, employees] = await Promise.all([
-      pool.query<LeaveUnitRow>(
-        `
-          SELECT
-            u.id,
-            u.name,
-            count(e.id) FILTER (WHERE e.status = 'active')::int AS "activeEmployeeCount",
-            u.leave_approver_employee_id AS "approverEmployeeId",
-            approver.full_name AS "approverName"
-          FROM organizational_units u
-          LEFT JOIN employees e ON e.organizational_unit_id = u.id
-          LEFT JOIN employees approver ON approver.id = u.leave_approver_employee_id
-          GROUP BY u.id, u.name, u.leave_approver_employee_id, approver.full_name
-          ORDER BY u.name ASC
-        `,
-      ),
-      pool.query<LeaveEmployeeRow>(
-        `
-          SELECT
-            e.id,
-            e.full_name AS "fullName",
-            e.employee_number AS "employeeNumber",
-            e.status,
-            u.id AS "unitId",
-            u.name AS "unitName",
-            p.name AS "positionName",
-            e.direct_manager_employee_id AS "directManagerEmployeeId",
-            manager.full_name AS "directManagerName",
-            e.leave_entitlement_group AS "leaveEntitlementGroup"
-          FROM employees e
-          LEFT JOIN organizational_units u ON u.id = e.organizational_unit_id
-          LEFT JOIN positions p ON p.id = e.position_id
-          LEFT JOIN employees manager ON manager.id = e.direct_manager_employee_id
-          WHERE e.status = 'active'
-          ORDER BY e.full_name ASC
-        `,
-      ),
-    ]);
+    const employees = await pool.query<LeaveEmployeeRow>(
+      `SELECT
+         e.id,
+         e.full_name AS "fullName",
+         e.employee_number AS "employeeNumber",
+         e.status,
+         u.id AS "unitId",
+         u.name AS "unitName",
+         p.name AS "positionName",
+         e.leave_entitlement_group AS "leaveEntitlementGroup"
+       FROM employees e
+       LEFT JOIN organizational_units u ON u.id = e.organizational_unit_id
+       LEFT JOIN positions p ON p.id = e.position_id
+       WHERE e.status = 'active'
+         AND e.removed_at IS NULL
+       ORDER BY e.full_name ASC`,
+    );
 
-    const unitApproverConfigured = units.rows.filter(
-      (unit) => unit.approverEmployeeId !== null,
-    ).length;
     const entitlementGroupConfigured = employees.rows.filter(
       (employee) => employee.leaveEntitlementGroup !== null,
     ).length;
-    const directManagerConfigured = employees.rows.filter(
-      (employee) => employee.directManagerEmployeeId !== null,
-    ).length;
-    const rolloutEffectiveDate = jakartaToday();
-    const rolloutModes = await new PostgresOrganizationRepository(pool).getRolloutModes(
-      "leave.annual",
-      employees.rows.map((employee) => employee.id),
-      rolloutEffectiveDate,
-    );
-    const rolloutCounts: Record<OrganizationRolloutMode, number> = {
-      LEGACY: 0,
-      SHADOW: 0,
-      STRUCTURE: 0,
-    };
-    rolloutModes.forEach((mode) => { rolloutCounts[mode] += 1; });
-    const activeModes = (Object.entries(rolloutCounts) as Array<[OrganizationRolloutMode, number]>)
-      .filter(([, count]) => count > 0)
-      .map(([mode]) => mode);
-    const employeesWithRollout = employees.rows.map((employee) => ({
-      ...employee,
-      rolloutMode: rolloutModes.get(employee.id) ?? "LEGACY",
-    }));
-    const unitsWithRollout = units.rows.map((unit) => {
-      const modes = [...new Set(employeesWithRollout
-        .filter((employee) => employee.unitId === unit.id)
-        .map((employee) => employee.rolloutMode))];
-      return {
-        ...unit,
-        rolloutState: modes.length > 1 ? "MIXED" : modes[0] ?? "LEGACY",
-      };
-    });
 
     reply.header("Cache-Control", "no-store");
     return reply.send({
       policies: LEAVE_POLICY_CATALOG,
-      units: unitsWithRollout,
-      employees: employeesWithRollout,
+      employees: employees.rows,
       summary: {
-        activeUnits: units.rows.filter((unit) => unit.activeEmployeeCount > 0).length,
-        unitApproverConfigured,
         activeEmployees: employees.rows.length,
-        directManagerConfigured,
         entitlementGroupConfigured,
       },
-      rollout: {
-        workflowKey: "leave.annual",
-        effectiveDate: rolloutEffectiveDate,
-        state: activeModes.length > 1 ? "MIXED" : activeModes[0] ?? "LEGACY",
-        counts: rolloutCounts,
-      },
-    });
-  });
-
-  app.patch("/admin/leave/units/:unitId/approver", async (request, reply) => {
-    const principal = await authenticateAdmin(request, reply);
-    if (!principal) return;
-
-    const params = unitIdSchema.safeParse(request.params);
-    const body = approverSchema.safeParse(request.body);
-    if (!params.success || !body.success) {
-      return reply.status(400).send({
-        code: "INVALID_UNIT_APPROVER",
-        message: "Konfigurasi approver unit tidak valid.",
-      });
-    }
-
-    const unit = await pool.query<{ id: string }>(
-      "SELECT id FROM organizational_units WHERE id = $1",
-      [params.data.unitId],
-    );
-    if (!unit.rows[0]) {
-      return reply.status(404).send({
-        code: "UNIT_NOT_FOUND",
-        message: "Unit organisasi tidak ditemukan.",
-      });
-    }
-
-    if (body.data.employeeId) {
-      const approver = await pool.query<{ id: string }>(
-        "SELECT id FROM employees WHERE id = $1 AND status = 'active'",
-        [body.data.employeeId],
-      );
-      if (!approver.rows[0]) {
-        return reply.status(409).send({
-          code: "UNIT_APPROVER_NOT_ACTIVE",
-          message: "Approver unit harus merupakan pegawai aktif.",
-        });
-      }
-    }
-
-    await pool.query(
-      `UPDATE organizational_units
-       SET leave_approver_employee_id = $2, updated_at = now()
-       WHERE id = $1`,
-      [params.data.unitId, body.data.employeeId],
-    );
-    await audit(
-      pool,
-      principal,
-      "leave.unit_approver.changed",
-      "organizational_unit",
-      params.data.unitId,
-      { approverEmployeeId: body.data.employeeId },
-    );
-
-    return reply.send({
-      unitId: params.data.unitId,
-      approverEmployeeId: body.data.employeeId,
+      approvalSource: "organization_structure",
     });
   });
 
@@ -303,7 +163,7 @@ export async function registerLeaveAdminRoutes(
       }
 
       const employee = await pool.query<{ id: string }>(
-        "SELECT id FROM employees WHERE id = $1",
+        "SELECT id FROM employees WHERE id = $1 AND removed_at IS NULL",
         [params.data.employeeId],
       );
       if (!employee.rows[0]) {
@@ -344,34 +204,27 @@ export async function registerLeaveAdminRoutes(
     if (!params.success || !query.success) {
       return reply.status(400).send({
         code: "INVALID_LEAVE_PREVIEW",
-        message: "Parameter preview cuti tidak valid.",
+        message: "Parameter pratinjau cuti tidak valid.",
       });
     }
 
     const result = await pool.query<LeavePreviewRow>(
-      `
-        SELECT
-          e.id,
-          e.full_name AS "fullName",
-          e.employee_number AS "employeeNumber",
-          e.status,
-          e.started_on::text AS "startedOn",
-          u.id AS "unitId",
-          u.name AS "unitName",
-          p.name AS "positionName",
-          e.direct_manager_employee_id AS "directManagerEmployeeId",
-          manager.full_name AS "directManagerName",
-          e.leave_entitlement_group AS "leaveEntitlementGroup",
-          u.leave_approver_employee_id AS "unitApproverEmployeeId",
-          unit_approver.full_name AS "unitApproverName"
-        FROM employees e
-        LEFT JOIN organizational_units u ON u.id = e.organizational_unit_id
-        LEFT JOIN positions p ON p.id = e.position_id
-        LEFT JOIN employees manager ON manager.id = e.direct_manager_employee_id
-        LEFT JOIN employees unit_approver ON unit_approver.id = u.leave_approver_employee_id
-        WHERE e.id = $1
-        LIMIT 1
-      `,
+      `SELECT
+         e.id,
+         e.full_name AS "fullName",
+         e.employee_number AS "employeeNumber",
+         e.status,
+         e.started_on::text AS "startedOn",
+         u.id AS "unitId",
+         u.name AS "unitName",
+         p.name AS "positionName",
+         e.leave_entitlement_group AS "leaveEntitlementGroup"
+       FROM employees e
+       LEFT JOIN organizational_units u ON u.id = e.organizational_unit_id
+       LEFT JOIN positions p ON p.id = e.position_id
+       WHERE e.id = $1
+         AND e.removed_at IS NULL
+       LIMIT 1`,
       [params.data.employeeId],
     );
 
@@ -385,60 +238,27 @@ export async function registerLeaveAdminRoutes(
 
     const warnings: Array<{ code: string; message: string }> = [];
     let approvalChain: Awaited<ReturnType<typeof resolveLeaveAuthorities>>["approvalChain"] = [];
-    let routing: {
-      mode: OrganizationRolloutMode;
-      authoritativeSource: "LEGACY" | "STRUCTURE";
-      structuralCandidateChain: Array<{ employeeId: string; sources: string[] }> | null;
-      comparison: null | {
-        status: "MATCH" | "MISMATCH";
-        reasons: string[];
-        error?: { code: string; message: string };
-      };
-    };
+
     try {
       const authorityResolution = await resolveLeaveAuthorities(pool, {
         workflowKey: "leave.annual",
         requesterEmployeeId: employee.id,
         effectiveDate: query.data.date ?? jakartaToday(),
+        // Kept only for the compatibility shape of the resolver input. The
+        // direct-cutover service ignores these migration-era values.
         legacy: {
-          directManagerEmployeeId: employee.directManagerEmployeeId,
-          unitApproverEmployeeId: employee.unitApproverEmployeeId,
+          directManagerEmployeeId: null,
+          unitApproverEmployeeId: null,
         },
         policyChain: "LINE_AND_UNIT",
       });
       approvalChain = authorityResolution.approvalChain;
-      const shadow = authorityResolution.context.shadow;
-      routing = {
-        mode: authorityResolution.context.mode,
-        authoritativeSource: authorityResolution.context.authoritativeSource,
-        structuralCandidateChain: shadow?.structural?.authorities.map((authority) => ({
-          employeeId: authority.employeeId,
-          sources: (authority.sources ?? [authority.source]).filter((source) => source !== "OVERSIGHT_PARENT"),
-        })) ?? null,
-        comparison: shadow ? {
-          status: shadow.matches ? "MATCH" : "MISMATCH",
-          reasons: shadow.mismatchReasons,
-          ...(shadow.error ? { error: shadow.error } : {}),
-        } : null,
-      };
     } catch (error) {
-      if (error instanceof LeaveApprovalConfigurationError || error instanceof LeaveOrganizationAuthorityError) {
+      if (
+        error instanceof LeaveApprovalConfigurationError ||
+        error instanceof LeaveOrganizationAuthorityError
+      ) {
         warnings.push({ code: error.code, message: error.message });
-        const mode = await new PostgresOrganizationRepository(pool).getRolloutMode(
-          "leave.annual",
-          employee.id,
-          query.data.date ?? jakartaToday(),
-        );
-        routing = {
-          mode,
-          authoritativeSource: mode === "STRUCTURE" ? "STRUCTURE" : "LEGACY",
-          structuralCandidateChain: null,
-          comparison: mode === "SHADOW" ? {
-            status: "MISMATCH",
-            reasons: [error.code],
-            error: { code: error.code, message: error.message },
-          } : null,
-        };
       } else {
         throw error;
       }
@@ -464,7 +284,7 @@ export async function registerLeaveAdminRoutes(
       employee,
       referenceDate,
       approvalChain,
-      routing,
+      approvalSource: "organization_structure",
       annualLeave,
       warnings,
     });
