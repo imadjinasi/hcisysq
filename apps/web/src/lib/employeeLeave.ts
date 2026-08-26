@@ -1,4 +1,45 @@
 export type AnnualLeavePeriodKey = "JAN_MAR" | "APR_JUN" | "JUL_SEP" | "OCT_DEC";
+export type LeaveApprovalSource =
+  | "DIRECT_MANAGER"
+  | "UNIT_APPROVER"
+  | "GOVERNANCE_APPROVER";
+
+export type LeaveApprovalPrincipal =
+  | {
+      principalType: "EMPLOYEE";
+      employeeId: string;
+      accountId: null;
+    }
+  | {
+      principalType: "ACCOUNT";
+      employeeId: null;
+      accountId: string;
+    };
+
+export type LeaveApprovalPreviewStep = LeaveApprovalPrincipal & {
+  name: string;
+  sources: LeaveApprovalSource[];
+};
+
+export function leaveApprovalSourceLabel(sources: readonly LeaveApprovalSource[]) {
+  const labels: string[] = [];
+  if (sources.includes("DIRECT_MANAGER")) labels.push("Atasan langsung");
+  if (sources.includes("UNIT_APPROVER")) labels.push("Penyetuju unit");
+  if (sources.includes("GOVERNANCE_APPROVER")) labels.push("Penyetuju Pengurus Yayasan");
+  return labels.join(" + ");
+}
+
+export function leavePolicyLabel(policyKey: string) {
+  const labels: Record<string, string> = {
+    annual: "Cuti Tahunan",
+    employee_marriage: "Cuti Pernikahan Pegawai",
+    child_marriage: "Cuti Pernikahan Anak",
+    child_circumcision: "Cuti Khitan Anak",
+    hajj: "Cuti Ibadah Haji Wajib",
+    unpaid: "Cuti Tanpa Gaji",
+  };
+  return labels[policyKey] ?? "Cuti & Izin";
+}
 
 export interface AnnualLeavePeriodView {
   key: AnnualLeavePeriodKey;
@@ -52,7 +93,7 @@ export interface LeaveRequestSummary {
   annualPeriodKey: AnnualLeavePeriodKey | null;
   submittedAt: string;
   finalDecidedAt: string | null;
-  currentApproverName: string | null;
+  currentApproverLabel: string | null;
 }
 
 export interface AnnualLeavePreview {
@@ -66,11 +107,7 @@ export interface AnnualLeavePreview {
   noticeDays: number;
   workingDates: string[];
   nonWorkingDates: string[];
-  approvalChain: Array<{
-    employeeId: string;
-    name: string;
-    sources: Array<"DIRECT_MANAGER" | "UNIT_APPROVER">;
-  }>;
+  approvalChain: LeaveApprovalPreviewStep[];
 }
 
 export interface LeaveApprovalInboxItem {
@@ -84,7 +121,7 @@ export interface LeaveApprovalInboxItem {
   workingDays: number;
   reason: string | null;
   submittedAt: string;
-  sources: string[];
+  sources: LeaveApprovalSource[];
 }
 
 export class EmployeeLeaveApiError extends Error {

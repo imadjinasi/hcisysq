@@ -13,6 +13,7 @@ import {
   readCookie,
   type AuthPrincipal,
 } from "../auth/service.js";
+import { jakartaBusinessDate } from "../organization/jakarta-date.js";
 import {
   calculateAnnualLeaveYearView,
   type AnnualLeavePeriodKey,
@@ -104,7 +105,7 @@ interface RequestSummaryRow {
   annualPeriodKey: AnnualLeavePeriodKey | null;
   submittedAt: Date;
   finalDecidedAt: Date | null;
-  currentApproverName: string | null;
+  currentApproverLabel: string | null;
 }
 
 interface InboxRow {
@@ -133,12 +134,7 @@ class EmployeeLeaveError extends Error {
 }
 
 function jakartaToday(): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Jakarta",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
+  return jakartaBusinessDate();
 }
 
 function yearOf(date: string): number {
@@ -276,7 +272,13 @@ async function hydrateApprovalChain(
       if (!actor || actor.principalType !== "FOUNDATION_BOARD" || actor.status !== "active") {
         throw new EmployeeLeaveError(409, "APPROVER_ACCOUNT_NOT_READY", "Akun governance approver belum aktif.");
       }
-      return { ...step, name: actor.email };
+      return {
+        ...step,
+        principalType: "ACCOUNT" as const,
+        employeeId: null,
+        accountId: actor.id,
+        name: "Penyetuju Pengurus Yayasan",
+      };
     }
     if (!step.employeeId) throw new EmployeeLeaveError(409, "APPROVER_NOT_ACTIVE", "Principal approver tidak valid.");
     const actor = byId.get(step.employeeId);
@@ -294,7 +296,13 @@ async function hydrateApprovalChain(
         `Akun approver ${actor.fullName} belum aktif.`,
       );
     }
-    return { ...step, name: actor.fullName };
+    return {
+      ...step,
+      principalType: "EMPLOYEE" as const,
+      employeeId: actor.id,
+      accountId: null,
+      name: actor.fullName,
+    };
   });
 }
 
@@ -492,7 +500,13 @@ export async function registerEmployeeLeaveRoutes(
             r.annual_period_key AS "annualPeriodKey",
             r.submitted_at AS "submittedAt",
             r.final_decided_at AS "finalDecidedAt",
-            approver.full_name AS "currentApproverName"
+            CASE
+              WHEN approver.id IS NOT NULL THEN approver.full_name
+              WHEN current_step.approver_account_id IS NOT NULL
+                AND current_step.sources @> ARRAY['GOVERNANCE_APPROVER']::text[]
+                THEN 'Penyetuju Pengurus Yayasan'
+              ELSE NULL
+            END AS "currentApproverLabel"
           FROM leave_requests r
           LEFT JOIN leave_request_approval_steps current_step
             ON current_step.leave_request_id = r.id AND current_step.status = 'pending'
@@ -710,7 +724,13 @@ export async function registerEmployeeLeaveRoutes(
           r.annual_period_key AS "annualPeriodKey",
           r.submitted_at AS "submittedAt",
           r.final_decided_at AS "finalDecidedAt",
-          approver.full_name AS "currentApproverName"
+          CASE
+            WHEN approver.id IS NOT NULL THEN approver.full_name
+            WHEN current_step.approver_account_id IS NOT NULL
+              AND current_step.sources @> ARRAY['GOVERNANCE_APPROVER']::text[]
+              THEN 'Penyetuju Pengurus Yayasan'
+            ELSE NULL
+          END AS "currentApproverLabel"
         FROM leave_requests r
         LEFT JOIN leave_request_approval_steps current_step
           ON current_step.leave_request_id = r.id AND current_step.status = 'pending'
@@ -837,9 +857,10 @@ export async function registerEmployeeLeaveRoutes(
              SELECT 1 FROM account_role_assignments ara
              JOIN role_permissions rp ON rp.role_id = ara.role_id
              WHERE ara.account_id = $1 AND rp.permission_key = 'leave.governance.approve'
-               AND (ara.starts_on IS NULL OR ara.starts_on <= CURRENT_DATE)
-               AND (ara.ends_on IS NULL OR ara.ends_on >= CURRENT_DATE)
-           ) AS allowed`, [principal.id],
+               AND (ara.starts_on IS NULL OR ara.starts_on <= $2::date)
+               AND (ara.ends_on IS NULL OR ara.ends_on >= $2::date)
+               AND ara.scope_type = 'organization'
+           ) AS allowed`, [principal.id, jakartaToday()],
         );
         if (!capability.rows[0]?.allowed) {
           throw new EmployeeLeaveError(403, "APPROVAL_FORBIDDEN", "Capability governance approval tidak tersedia.");

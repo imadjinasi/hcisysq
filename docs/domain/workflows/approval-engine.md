@@ -248,6 +248,8 @@ waiting -> pending
 
 Only the valid current approver may decide the current step.
 
+For an Account principal, the inbox and decision check use the stored `approver_account_id`; account type or aggregate Board access never substitutes for exact ownership. Governance decision capability dates are evaluated against the Asia/Jakarta business date. User-facing copy calls this WIB and does not expose the internal timezone name.
+
 ### Approve
 
 - current step -> `approved`;

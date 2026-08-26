@@ -253,6 +253,88 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /leave/approvals:
+    get:
+      tags: [Leave, Approvals]
+      operationId: listLeaveApprovalInbox
+      summary: List active Leave steps assigned to the exact authenticated Employee or Foundation Board principal
+      responses:
+        '200':
+          description: Exact-principal pending inbox
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/LeaveApprovalInboxItem' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /leave/approvals/{stepId}/decision:
+    post:
+      tags: [Leave, Approvals]
+      operationId: decideLeaveApprovalStep
+      summary: Decide an active immutable-snapshot step owned by the exact authenticated principal
+      parameters:
+        - name: stepId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [approve, reject] }
+                note: { type: [string, 'null'], maxLength: 1000 }
+      responses:
+        '200': { description: Decision committed and audited }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Step is no longer pending }
+
+  /admin/access/accounts/{accountId}/role-assignments:
+    post:
+      tags: [Access]
+      operationId: createAccountRoleAssignment
+      summary: Create an audited assignment subject to strict principal-role compatibility
+      description: FOUNDATION_BOARD accepts only governance_leave_approver with organization scope; EMPLOYEE rejects that role; SUPER_ADMIN remains protected.
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [roleId, scopeType]
+              properties:
+                roleId: { type: string, format: uuid }
+                scopeType: { type: string, enum: [own, unit, organization] }
+                organizationalUnitId: { type: [string, 'null'], format: uuid }
+                startsOn: { type: [string, 'null'], format: date }
+                endsOn: { type: [string, 'null'], format: date }
+                reason: { type: [string, 'null'], maxLength: 500 }
+      responses:
+        '201': { description: Assignment created and audited }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: Principal, role, or scope combination is forbidden }
+
   /admin/access/employee-accounts/bulk-prepare:
     post:
       tags: [Access]
@@ -927,13 +1009,42 @@ components:
         principalType: { type: string, enum: [EMPLOYEE, ACCOUNT] }
         employeeId: { type: [string, 'null'], format: uuid }
         accountId: { type: [string, 'null'], format: uuid }
+        name: { type: string }
         sources:
           type: array
           minItems: 1
           items:
             type: string
             enum: [DIRECT_MANAGER, UNIT_APPROVER, GOVERNANCE_APPROVER]
-      description: Exactly one of employeeId or accountId identifies the immutable approval principal. principalType is EMPLOYEE when omitted by older employee-only representations.
+      description: Exactly one of employeeId or accountId identifies the immutable approval principal. Employee-facing annual and planned previews include explicit principalType and the null counterpart; older administrative employee views may omit principalType/accountId for EMPLOYEE.
+
+    LeaveApprovalInboxItem:
+      type: object
+      required: [stepId, requestId, requesterEmployeeId, requesterName, policyKey, startOn, endOn, workingDays, reason, submittedAt, sources]
+      properties:
+        stepId: { type: string, format: uuid }
+        requestId: { type: string, format: uuid }
+        requesterEmployeeId: { type: string, format: uuid }
+        requesterName: { type: string }
+        policyKey: { type: string }
+        startOn: { type: string, format: date }
+        endOn: { type: string, format: date }
+        workingDays: { type: integer, minimum: 0 }
+        reason: { type: [string, 'null'] }
+        submittedAt: { type: string, format: date-time }
+        sources:
+          type: array
+          minItems: 1
+          items: { type: string, enum: [DIRECT_MANAGER, UNIT_APPROVER, GOVERNANCE_APPROVER] }
+
+    LeaveRequestCurrentApprover:
+      type: object
+      description: Employee request histories return this safe display field; governance principals never expose UUIDs.
+      required: [currentApproverLabel]
+      properties:
+        currentApproverLabel:
+          type: [string, 'null']
+          example: Penyetuju Pengurus Yayasan
 
     AdminLeaveConfiguration:
       type: object

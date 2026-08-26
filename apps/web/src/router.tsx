@@ -29,6 +29,7 @@ import { EmployeePayslipsPage } from "@/pages/EmployeePayslipsPage";
 import { EmployeePlannedLeavePage } from "@/pages/EmployeePlannedLeavePage";
 import { EmployeeSpecialLeavePage } from "@/pages/EmployeeSpecialLeavePage";
 import { FoundationBoardPage } from "@/pages/FoundationBoardPage";
+import { FoundationBoardApprovalsPage } from "@/pages/FoundationBoardApprovalsPage";
 import { HcAttendanceResolutionPage } from "@/pages/HcAttendanceResolutionPage";
 import { HcLeaveValidationPage } from "@/pages/HcLeaveValidationPage";
 import { HcPlannedLeavePage } from "@/pages/HcPlannedLeavePage";
@@ -230,6 +231,13 @@ const boardRoute = createRoute({
   component: FoundationBoardPage,
 });
 
+const boardApprovalsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/board/approvals",
+  beforeLoad: () => requirePrincipal("FOUNDATION_BOARD"),
+  component: FoundationBoardApprovalsPage,
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   activationRoute,
@@ -256,6 +264,7 @@ const routeTree = rootRoute.addChildren([
   adminPayslipsRoute,
   adminAccessRoute,
   boardRoute,
+  boardApprovalsRoute,
 ]);
 
 export const router = createRouter({

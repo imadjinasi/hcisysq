@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   CalendarDays,
   CheckCircle2,
+  ClipboardCheck,
   Clock3,
   Loader2,
   LogOut,
@@ -106,9 +107,12 @@ export function FoundationBoardPage() {
               Ringkasan agregat Human Capital untuk kebutuhan governance. Tidak menampilkan data pribadi pegawai atau dokumen cuti.
             </p>
           </div>
-          {data ? (
-            <p className="text-xs text-muted-foreground">Diperbarui {generatedLabel(data.generatedAt)}</p>
-          ) : null}
+          <div className="flex flex-col items-start gap-2 sm:items-end">
+            <a href="/board/approvals" className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-4 text-xs font-bold text-white">
+              <ClipboardCheck className="h-4 w-4" aria-hidden="true" /> Persetujuan Cuti
+            </a>
+            {data ? <p className="text-xs text-muted-foreground">Diperbarui {generatedLabel(data.generatedAt)}</p> : null}
+          </div>
         </section>
 
         {error ? (

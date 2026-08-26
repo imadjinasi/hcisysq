@@ -1,6 +1,6 @@
 # Access Model
 
-**Status:** ACCEPTED — ORG-004 STRUCTURAL AUTHORITY EXTENSION PLANNED  
+**Status:** ACCEPTED — ORG-004 GOVERNANCE AUTHORITY ACTIVE
 **Specifications:** AUTH-001, AUTH-010, SEC-001, ACCESS-ORG-001
 **Related:** ORG-001, ORG-002, ORG-004
 
@@ -48,7 +48,7 @@ Default access is aggregate-first and read-only, for example:
 - explicitly authorized financial summaries;
 - report export when permission exists.
 
-This account type does **not** automatically allow employee mutation, operational approval, payroll mutation, role management, or system configuration.
+This account type does **not** automatically allow employee mutation, operational approval, payroll mutation, role management, or system configuration. The only currently accepted operational exception is an exact snapshotted governance Leave step when the account has the narrow `leave.governance.approve` capability.
 
 Individual sensitive data is available only through explicit authorization.
 
@@ -190,9 +190,9 @@ Director employee
 
 This operational approval relationship must not be confused with `FOUNDATION_BOARD` account type.
 
-If a governance actor must perform an operational approval, HCIS requires an explicitly modeled authorized principal/capability for that workflow. The system must not silently grant mutation capability to every Foundation Board account merely because a similarly named governance position exists.
+If a governance actor performs an operational approval, HCIS requires both an explicit Organization position/account binding and the narrow `governance_leave_approver` role. The role is valid only for `FOUNDATION_BOARD`, always has organization scope, and grants only `leave.governance.approve`. It does not grant Employee, Human Capital, finance, administrative, or general Board mutation authority.
 
-The exact principal/account mapping for governance positions must be verified during ORG-004 implementation before real activation.
+The Admin Access GUI exposes this as `Penyetuju cuti Pengurus Yayasan`; the operator never selects a raw role ID, permission key, or scope value for this operation. `EMPLOYEE` cannot receive this role, and `FOUNDATION_BOARD` cannot receive ordinary Employee/HC operational roles through the same assignment route.
 
 ## Temporary and acting authority
 
@@ -296,7 +296,7 @@ A stale frontend chart or client-side navigation state must never be an authoriz
 - Organization-wide Human Capital navigation requires effective role/capability with organization scope and valid assignment dates; a unit-scoped HC role is insufficient.
 - Manually typing a URL cannot bypass authorization.
 - Same role in another unit does not create cross-unit access.
-- Foundation Board remains read-only unless a future target specification explicitly grants a narrow operational capability.
+- Foundation Board remains read-only except for an exact snapshotted governance Leave step when the account has the explicit narrow capability described above.
 - Super Admin does not automatically receive employee self-service.
 - Role, scope, account-state, permission, structural authority-binding, acting assignment, and other sensitive changes produce audit events.
 - Free-text job titles never grant authority.

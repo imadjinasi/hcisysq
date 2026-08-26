@@ -1,3 +1,5 @@
+import type { LeaveApprovalPreviewStep } from "./employeeLeave";
+
 export type SupportedPlannedLeaveKey =
   | "employee_marriage"
   | "child_marriage"
@@ -44,7 +46,7 @@ export interface PlannedLeaveSummary {
     };
     submittedAt: string;
     finalDecidedAt: string | null;
-    currentApproverName: string | null;
+    currentApproverLabel: string | null;
     hcTaskKind: "validate" | "approve" | null;
     hcTaskStatus: string | null;
     nextAction: string;
@@ -60,11 +62,7 @@ export interface PlannedLeavePreview {
   minimumNoticeDays: number;
   noticeDays: number;
   unpaid: boolean;
-  approvalChain: Array<{
-    employeeId: string;
-    name: string;
-    sources: Array<"DIRECT_MANAGER" | "UNIT_APPROVER">;
-  }>;
+  approvalChain: LeaveApprovalPreviewStep[];
   nextAction: string;
 }
 

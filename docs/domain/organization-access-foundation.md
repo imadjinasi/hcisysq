@@ -119,13 +119,23 @@ The following mutations create `access_audit_events`:
 
 Audit payloads store identifiers, state, scope, dates, and reasons needed for accountability. They must not contain passwords, session tokens, MFA secrets, workbook contents, or raw sensitive employee documents.
 
+## Governance Leave authority extension
+
+The accepted ORG-004 extension adds one strict principal-role compatibility exception:
+
+- `FOUNDATION_BOARD` may receive only `governance_leave_approver`, with `organization` scope;
+- `EMPLOYEE` may receive existing employee-compatible roles but never `governance_leave_approver`;
+- `SUPER_ADMIN` assignment protections remain unchanged;
+- creation and removal use the existing audited role-assignment trail;
+- Admin Access presents a dedicated `Akses Organ Yayasan` workflow and never asks the operator for raw role, permission, or scope identifiers.
+
 ## Security invariants
 
 - All admin routes require a valid `SUPER_ADMIN` server-side session.
 - Frontend navigation is not an authorization boundary.
 - Super Admin itself cannot be disabled through employee access administration.
-- Foundation Board cannot receive operational employee roles through this milestone.
-- Only `EMPLOYEE` accounts receive additive operational role assignments here.
+- Foundation Board cannot receive operational employee roles. Its only assignable role through this route is the narrow organization-wide governance Leave approver role.
+- Employee accounts receive employee-compatible additive assignments and cannot receive the governance Leave approver role.
 - An account with no authentication method cannot be activated.
 - Employee import never creates accounts automatically.
 - Direct-manager changes never rewrite historical approval snapshots.

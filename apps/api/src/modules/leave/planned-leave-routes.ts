@@ -12,6 +12,7 @@ import {
   AuthService,
   type AuthPrincipal,
 } from "../auth/service.js";
+import { jakartaBusinessDate } from "../organization/jakarta-date.js";
 import {
   LeaveApprovalConfigurationError,
   type LeaveApprovalStep,
@@ -116,7 +117,7 @@ interface PlannedSummaryRow {
   validationSummary: Record<string, unknown>;
   submittedAt: Date;
   finalDecidedAt: Date | null;
-  currentApproverName: string | null;
+  currentApproverLabel: string | null;
   hcTaskKind: "validate" | "approve" | null;
   hcTaskStatus:
     | "waiting"
@@ -167,12 +168,7 @@ class PlannedLeaveRouteError extends Error {
 }
 
 function jakartaToday(): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Jakarta",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
+  return jakartaBusinessDate();
 }
 
 async function loadEmployeeContext(
@@ -273,7 +269,13 @@ async function hydrateApprovalChain(
       if (!actor || actor.principalType !== "FOUNDATION_BOARD" || actor.status !== "active") {
         throw new PlannedLeaveRouteError(409, "APPROVER_ACCOUNT_NOT_READY", "Akun governance approver belum aktif.");
       }
-      return { ...step, name: actor.email };
+      return {
+        ...step,
+        principalType: "ACCOUNT" as const,
+        employeeId: null,
+        accountId: actor.id,
+        name: "Penyetuju Pengurus Yayasan",
+      };
     }
     if (!step.employeeId) throw new PlannedLeaveRouteError(409, "APPROVER_NOT_ACTIVE", "Principal approver tidak valid.");
     const actor = byId.get(step.employeeId);
@@ -291,7 +293,13 @@ async function hydrateApprovalChain(
         `Akun approver ${actor.fullName} belum aktif.`,
       );
     }
-    return { ...step, name: actor.fullName };
+    return {
+      ...step,
+      principalType: "EMPLOYEE" as const,
+      employeeId: actor.id,
+      accountId: null,
+      name: actor.fullName,
+    };
   });
 }
 
@@ -529,7 +537,11 @@ function nextAction(item: PlannedSummaryRow) {
   if (item.status === "approved") return "Selesai";
   if (item.status === "rejected") return "Pengajuan ditolak";
   if (item.status === "cancelled") return "Pengajuan dibatalkan";
-  if (item.currentApproverName) return `Menunggu persetujuan ${item.currentApproverName}`;
+  if (item.currentApproverLabel) {
+    return item.currentApproverLabel === "Penyetuju Pengurus Yayasan"
+      ? `Menunggu ${item.currentApproverLabel}`
+      : `Menunggu persetujuan ${item.currentApproverLabel}`;
+  }
   if (item.hcTaskStatus === "pending") {
     return item.hcTaskKind === "approve"
       ? "Menunggu keputusan Human Capital"
@@ -657,7 +669,13 @@ export async function registerPlannedLeaveRoutes(
           request.validation_summary AS "validationSummary",
           request.submitted_at AS "submittedAt",
           request.final_decided_at AS "finalDecidedAt",
-          approver.full_name AS "currentApproverName",
+          CASE
+            WHEN approver.id IS NOT NULL THEN approver.full_name
+            WHEN active_step.approver_account_id IS NOT NULL
+              AND active_step.sources @> ARRAY['GOVERNANCE_APPROVER']::text[]
+              THEN 'Penyetuju Pengurus Yayasan'
+            ELSE NULL
+          END AS "currentApproverLabel",
           task.task_kind AS "hcTaskKind",
           task.status AS "hcTaskStatus"
         FROM leave_requests request

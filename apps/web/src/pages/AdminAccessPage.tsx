@@ -31,6 +31,24 @@ function statusLabel(status: string) {
   return "Nonaktif";
 }
 
+function principalLabel(principalType: "EMPLOYEE" | "FOUNDATION_BOARD" | "SUPER_ADMIN") {
+  if (principalType === "EMPLOYEE") return "Pegawai";
+  if (principalType === "FOUNDATION_BOARD") return "Organ Yayasan";
+  return "Super Admin";
+}
+
+function scopeLabel(scopeType: "own" | "unit" | "organization", unitName: string | null) {
+  if (scopeType === "unit") return unitName ? `Cakupan unit: ${unitName}` : "Cakupan unit";
+  if (scopeType === "organization") return "Seluruh organisasi";
+  return "Data sendiri";
+}
+
+function roleLabel(roleKey: string, name: string) {
+  return roleKey === "governance_leave_approver"
+    ? "Penyetuju cuti Pengurus Yayasan"
+    : name;
+}
+
 function formatWibDateTime(value: string) {
   const dateTime = new Intl.DateTimeFormat("id-ID", { dateStyle: "long", timeStyle: "short", timeZone: "Asia/Jakarta" }).format(new Date(value));
   return `${dateTime} WIB`;
@@ -41,7 +59,7 @@ function employeeAccessLabel(status: "invited" | "active" | "suspended" | "inact
   if (status === "invited") return "MENUNGGU AKTIVASI";
   if (status === "suspended") return "DITANGGUHKAN";
   if (status === "inactive") return "NONAKTIF";
-  return "BELUM ADA ACCOUNT";
+  return "BELUM ADA AKUN";
 }
 
 function bulkActionLabel(action: BulkEmployeeAccessResult["items"][number]["action"]) {
@@ -88,7 +106,9 @@ export function AdminAccessPage() {
         result.accounts.find((account) => account.principalType === "EMPLOYEE")?.id ?? "",
       );
     }
-    if (!roleId) setRoleId(result.roles[0]?.id ?? "");
+    if (!roleId) {
+      setRoleId(result.roles.find((role) => role.roleKey !== "governance_leave_approver")?.id ?? "");
+    }
     if (!unitId) setUnitId(result.units[0]?.id ?? "");
   };
 
@@ -101,7 +121,7 @@ export function AdminAccessPage() {
         setSelectedAccountId(
           result.accounts.find((account) => account.principalType === "EMPLOYEE")?.id ?? "",
         );
-        setRoleId(result.roles[0]?.id ?? "");
+        setRoleId(result.roles.find((role) => role.roleKey !== "governance_leave_approver")?.id ?? "");
         setUnitId(result.units[0]?.id ?? "");
       })
       .catch((cause: unknown) => {
@@ -117,6 +137,15 @@ export function AdminAccessPage() {
     () => data?.accounts.filter((account) => account.principalType === "EMPLOYEE") ?? [],
     [data],
   );
+  const boardAccounts = useMemo(
+    () => data?.accounts.filter((account) => account.principalType === "FOUNDATION_BOARD") ?? [],
+    [data],
+  );
+  const employeeRoles = useMemo(
+    () => data?.roles.filter((role) => role.roleKey !== "governance_leave_approver") ?? [],
+    [data],
+  );
+  const governanceRole = data?.roles.find((role) => role.roleKey === "governance_leave_approver");
 
   const filteredEmployees = useMemo(() => {
     return filterEmployeeAccessRows(data?.employees ?? [], {
@@ -174,7 +203,7 @@ export function AdminAccessPage() {
       setBulkResult(result);
       setBulkPreview(null);
       setSelectedEmployeeIds(new Set());
-      setNotice("Operasi bulk selesai. Account berstatus menunggu aktivasi tetap harus diaktifkan sendiri oleh pegawai.");
+      setNotice("Penyiapan massal selesai. Akun berstatus menunggu aktivasi tetap harus diaktifkan sendiri oleh pegawai.");
       await reload();
     } catch (cause) {
       setError(cause instanceof AdminApiError ? cause.message : "Akses pegawai gagal disiapkan.");
@@ -188,7 +217,7 @@ export function AdminAccessPage() {
       await navigator.clipboard.writeText(new URL(activationPath, window.location.origin).toString());
       setNotice("Link aktivasi pegawai disalin.");
     } catch {
-      setNotice("Link tidak dapat disalin otomatis. Terbitkan ulang dari account pegawai bila diperlukan.");
+      setNotice("Link tidak dapat disalin otomatis. Terbitkan ulang dari akun pegawai bila diperlukan.");
     }
   };
 
@@ -203,7 +232,7 @@ export function AdminAccessPage() {
         url: new URL(result.activationPath, window.location.origin).toString(),
         expiresAt: result.expiresAt,
       });
-      setNotice("Link aktivasi baru dibuat. Link sebelumnya untuk account ini otomatis tidak berlaku.");
+      setNotice("Link aktivasi baru dibuat. Link sebelumnya untuk akun ini otomatis tidak berlaku.");
     } catch (cause) {
       setError(
         cause instanceof AccountActivationApiError
@@ -230,13 +259,13 @@ export function AdminAccessPage() {
         expiresAt: activation.expiresAt,
       });
       setBoardEmail("");
-      setNotice("Account Organ Yayasan disiapkan dan link aktivasi siap dibagikan.");
+      setNotice("Akun Organ Yayasan disiapkan dan link aktivasi siap dibagikan.");
       await reload();
     } catch (cause) {
       setError(
         cause instanceof AccountActivationApiError
           ? cause.message
-          : "Account Organ Yayasan gagal disiapkan.",
+          : "Akun Organ Yayasan gagal disiapkan.",
       );
     } finally {
       setBusy(false);
@@ -268,11 +297,11 @@ export function AdminAccessPage() {
         endsOn: endsOn || null,
         reason: reason.trim() || null,
       });
-      setNotice("Role assignment berhasil ditambahkan.");
+      setNotice("Kewenangan tambahan berhasil diberikan.");
       setReason("");
       await reload();
     } catch (cause) {
-      setError(cause instanceof AdminApiError ? cause.message : "Role assignment gagal disimpan.");
+      setError(cause instanceof AdminApiError ? cause.message : "Kewenangan tambahan gagal disimpan.");
     } finally {
       setBusy(false);
     }
@@ -287,10 +316,10 @@ export function AdminAccessPage() {
     setNotice(null);
     try {
       await updateAccountStatus(accountId, status);
-      setNotice("Status account berhasil diperbarui.");
+      setNotice("Status akun berhasil diperbarui.");
       await reload();
     } catch (cause) {
-      setError(cause instanceof AdminApiError ? cause.message : "Status account gagal diperbarui.");
+      setError(cause instanceof AdminApiError ? cause.message : "Status akun gagal diperbarui.");
     } finally {
       setBusy(false);
     }
@@ -302,10 +331,33 @@ export function AdminAccessPage() {
     setNotice(null);
     try {
       await removeRoleAssignment(assignmentId);
-      setNotice("Role assignment berhasil dicabut.");
+      setNotice("Kewenangan berhasil dicabut.");
       await reload();
     } catch (cause) {
-      setError(cause instanceof AdminApiError ? cause.message : "Role assignment gagal dicabut.");
+      setError(cause instanceof AdminApiError ? cause.message : "Kewenangan gagal dicabut.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const grantGovernanceApproval = async (accountId: string) => {
+    if (!governanceRole) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await createRoleAssignment(accountId, {
+        roleId: governanceRole.id,
+        scopeType: "organization",
+        organizationalUnitId: null,
+        startsOn: null,
+        endsOn: null,
+        reason: "Mandat persetujuan cuti Pengurus Yayasan",
+      });
+      setNotice("Kewenangan Penyetuju cuti Pengurus Yayasan diberikan untuk seluruh organisasi.");
+      await reload();
+    } catch (cause) {
+      setError(cause instanceof AdminApiError ? cause.message : "Kewenangan Organ Yayasan gagal diberikan.");
     } finally {
       setBusy(false);
     }
@@ -318,11 +370,11 @@ export function AdminAccessPage() {
     unaccountedActiveEmployees: 0,
   };
   const summaryCards = [
-    { label: "Semua account", value: summary.accounts, icon: UsersRound },
-    { label: "Account aktif", value: summary.active, icon: ShieldCheck },
+    { label: "Semua akun", value: summary.accounts, icon: UsersRound },
+    { label: "Akun aktif", value: summary.active, icon: ShieldCheck },
     { label: "Disiapkan", value: summary.invited, icon: UserPlus },
     {
-      label: "Pegawai aktif tanpa account",
+      label: "Pegawai aktif tanpa akun",
       value: summary.unaccountedActiveEmployees,
       icon: KeyRound,
     },
@@ -331,8 +383,8 @@ export function AdminAccessPage() {
   return (
     <AdminShell
       active="access"
-      title="Account, Role & Scope"
-      description="Account type tetap terpisah dari role. Employee aktif memperoleh base self-service setelah account aktif; assignment di bawah hanya untuk akses tambahan."
+      title="Akses & Kewenangan"
+      description="Siapkan akses masuk dan berikan kewenangan tambahan sesuai kebutuhan kerja. Akses dasar pegawai berlaku setelah akun diaktifkan."
     >
       {error ? <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div> : null}
       {notice ? <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{notice}</div> : null}
@@ -412,14 +464,14 @@ export function AdminAccessPage() {
             value={accountStatusFilter}
             onChange={(event) => setAccountStatusFilter(event.target.value as typeof accountStatusFilter)}
             className="h-10 rounded-xl border border-border bg-surface px-3 text-sm"
-            aria-label="Filter status account"
+            aria-label="Filter status akun"
           >
-            <option value="all">Semua status account</option>
+            <option value="all">Semua status akun</option>
             <option value="active">Akses aktif</option>
             <option value="invited">Menunggu aktivasi</option>
-            <option value="none">Belum ada account</option>
-            <option value="inactive">Account nonaktif</option>
-            <option value="suspended">Account ditangguhkan</option>
+            <option value="none">Belum ada akun</option>
+            <option value="inactive">Akun nonaktif</option>
+            <option value="suspended">Akun ditangguhkan</option>
           </select>
         </div>
 
@@ -504,13 +556,13 @@ export function AdminAccessPage() {
         {bulkPreview ? (
           <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
             <h3 className="text-sm font-bold text-amber-950">Konfirmasi penyiapan akses</h3>
-            <p className="mt-1 text-xs leading-5 text-amber-900">Periksa ringkasan berikut sebelum account atau undangan diubah.</p>
+            <p className="mt-1 text-xs leading-5 text-amber-900">Periksa ringkasan berikut sebelum akun atau undangan diubah.</p>
             <dl className="mt-3 grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
               {[
                 ["Dipilih", bulkPreview.summary.selected],
                 ["Sudah aktif", bulkPreview.summary.alreadyActive],
                 ["Perlu undangan aktivasi", bulkPreview.summary.invitationRequired],
-                ["Perlu dibuatkan account", bulkPreview.summary.accountPreparationRequired],
+                ["Perlu dibuatkan akun", bulkPreview.summary.accountPreparationRequired],
                 ["Aman diaktifkan kembali", bulkPreview.summary.safeReactivation],
                 ["Dilewati nonaktif/resign", bulkPreview.summary.skippedInactiveOrResigned],
                 ["Ditangguhkan tetap", bulkPreview.summary.suspendedUnchanged],
@@ -535,7 +587,7 @@ export function AdminAccessPage() {
             <dl className="mt-3 grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
               {[
                 ["Sudah aktif", bulkResult.summary.alreadyActive],
-                ["Account disiapkan", bulkResult.summary.accountsPrepared],
+                ["Akun disiapkan", bulkResult.summary.accountsPrepared],
                 ["Undangan diterbitkan", bulkResult.summary.activationInvitationsIssuedOrReissued],
                 ["Diaktifkan kembali", bulkResult.summary.accountsSafelyReactivated],
                 ["Dilewati", bulkResult.summary.skippedInactiveOrResigned],
@@ -570,9 +622,9 @@ export function AdminAccessPage() {
       </section>
 
       <section className="mt-5 rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
-        <h2 className="text-base font-bold text-brand-heading">Account Organ Yayasan</h2>
+        <h2 className="text-base font-bold text-brand-heading">Akses Organ Yayasan</h2>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          Account ini terpisah dari employee master dan setelah aktif masuk ke dashboard Organ Yayasan.
+          Siapkan akun berdasarkan email, bagikan link aktivasi, lalu tetapkan kewenangan persetujuan cuti bila diperlukan.
         </p>
         <form onSubmit={submitBoardAccount} className="mt-4 flex flex-col gap-3 sm:flex-row">
           <input
@@ -587,21 +639,65 @@ export function AdminAccessPage() {
             disabled={busy || !boardEmail.trim()}
             className="h-10 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white disabled:opacity-50"
           >
-            Siapkan account & link aktivasi
+            Siapkan akun & link aktivasi
           </button>
         </form>
+
+        <div className="mt-5 space-y-3">
+          {boardAccounts.map((account) => {
+            const assignment = account.assignments.find(
+              (item) => item.roleKey === "governance_leave_approver",
+            );
+            return (
+              <article key={account.id} className="rounded-2xl border border-border/70 bg-surface p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-bold text-brand-heading">{account.email}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Status aktivasi: {statusLabel(account.status)}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {account.status === "invited" ? (
+                      <button type="button" onClick={() => void publishActivationLink(account.id)} disabled={busy} className="h-9 rounded-xl border border-brand-primary/30 bg-white px-3 text-xs font-bold text-brand-primary-deep disabled:opacity-50">
+                        Buat link aktivasi
+                      </button>
+                    ) : null}
+                    {assignment ? (
+                      <button type="button" onClick={() => void removeAssignment(assignment.id)} disabled={busy} className="h-9 rounded-xl border border-red-200 bg-white px-3 text-xs font-bold text-red-700 disabled:opacity-50">
+                        Cabut kewenangan
+                      </button>
+                    ) : (
+                      <button type="button" onClick={() => void grantGovernanceApproval(account.id)} disabled={busy || !governanceRole} className="h-9 rounded-xl bg-brand-primary px-3 text-xs font-bold text-white disabled:opacity-50">
+                        Berikan kewenangan
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className={`mt-3 rounded-xl px-3 py-2 text-xs font-semibold ${assignment ? "bg-emerald-100 text-emerald-900" : "bg-white text-muted-foreground"}`}>
+                  {assignment
+                    ? "Penyetuju cuti Pengurus Yayasan · Seluruh organisasi"
+                    : "Belum memiliki kewenangan persetujuan cuti Pengurus Yayasan"}
+                </div>
+              </article>
+            );
+          })}
+          {!boardAccounts.length ? (
+            <p className="rounded-xl bg-surface p-4 text-xs text-muted-foreground">Belum ada akun Organ Yayasan.</p>
+          ) : null}
+        </div>
       </section>
 
       <section className="mt-5 rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
-        <h2 className="text-base font-bold text-brand-heading">Tambah role tambahan</h2>
-        <p className="mt-1 text-xs text-muted-foreground">Scope unit wajib menunjuk satu unit; scope organization berlaku lintas organisasi sesuai permission role.</p>
+        <h2 className="text-base font-bold text-brand-heading">Kewenangan tambahan pegawai</h2>
+        <p className="mt-1 text-xs text-muted-foreground">Pilih kewenangan dan cakupan data yang sesuai dengan mandat pegawai.</p>
         <form onSubmit={submitAssignment} className="mt-4 grid gap-3 lg:grid-cols-3">
           <select
             value={selectedAccountId}
             onChange={(event) => setSelectedAccountId(event.target.value)}
             className="h-10 rounded-xl border border-border bg-surface px-3 text-sm"
           >
-            <option value="">Pilih account pegawai</option>
+            <option value="">Pilih akun pegawai</option>
             {employeeAccounts.map((account) => (
               <option key={account.id} value={account.id}>
                 {account.employeeName ?? account.email} · {account.unitName ?? "Tanpa unit"}
@@ -609,12 +705,12 @@ export function AdminAccessPage() {
             ))}
           </select>
           <select value={roleId} onChange={(event) => setRoleId(event.target.value)} className="h-10 rounded-xl border border-border bg-surface px-3 text-sm">
-            {data?.roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}
+            {employeeRoles.map((role) => <option key={role.id} value={role.id}>{roleLabel(role.roleKey, role.name)}</option>)}
           </select>
           <select value={scopeType} onChange={(event) => setScopeType(event.target.value as typeof scopeType)} className="h-10 rounded-xl border border-border bg-surface px-3 text-sm">
-            <option value="unit">Scope unit</option>
-            <option value="organization">Scope organisasi</option>
-            <option value="own">Scope own</option>
+            <option value="unit">Cakupan unit</option>
+            <option value="organization">Seluruh organisasi</option>
+            <option value="own">Data sendiri</option>
           </select>
           {scopeType === "unit" ? (
             <select value={unitId} onChange={(event) => setUnitId(event.target.value)} className="h-10 rounded-xl border border-border bg-surface px-3 text-sm">
@@ -622,11 +718,11 @@ export function AdminAccessPage() {
               {data?.units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
             </select>
           ) : <div />}
-          <input type="date" value={startsOn} onChange={(event) => setStartsOn(event.target.value)} className="h-10 rounded-xl border border-border bg-surface px-3 text-sm" aria-label="Tanggal mulai assignment" />
-          <input type="date" value={endsOn} onChange={(event) => setEndsOn(event.target.value)} className="h-10 rounded-xl border border-border bg-surface px-3 text-sm" aria-label="Tanggal selesai assignment" />
+          <input type="date" value={startsOn} onChange={(event) => setStartsOn(event.target.value)} className="h-10 rounded-xl border border-border bg-surface px-3 text-sm" aria-label="Tanggal mulai kewenangan" />
+          <input type="date" value={endsOn} onChange={(event) => setEndsOn(event.target.value)} className="h-10 rounded-xl border border-border bg-surface px-3 text-sm" aria-label="Tanggal selesai kewenangan" />
           <input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Alasan / mandat (opsional)" className="h-10 rounded-xl border border-border bg-surface px-3 text-sm lg:col-span-2" />
           <button type="submit" disabled={busy || !selectedAccountId || !roleId} className="h-10 rounded-xl bg-brand-primary px-4 text-sm font-bold text-white disabled:opacity-50">
-            Tambah assignment
+            Tambah kewenangan
           </button>
         </form>
       </section>
@@ -638,7 +734,7 @@ export function AdminAccessPage() {
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-sm font-bold text-brand-heading">{account.employeeName ?? account.email}</h2>
-                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-700">{account.principalType}</span>
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-700">{principalLabel(account.principalType)}</span>
                   <span className="rounded-full bg-brand-primary-pale px-2.5 py-1 text-[11px] font-bold text-brand-primary-deep">{statusLabel(account.status)}</span>
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">{account.email}{account.employeeNumber ? ` · ${account.employeeNumber}` : ""}{account.unitName ? ` · ${account.unitName}` : ""}</p>
@@ -674,31 +770,32 @@ export function AdminAccessPage() {
               <div className="mt-4 flex flex-wrap gap-2">
                 {account.assignments.map((assignment) => (
                   <div key={assignment.id} className="flex items-center gap-2 rounded-xl border border-border/70 bg-surface px-3 py-2 text-xs">
-                    <span className="font-bold">{assignment.roleName}</span>
-                    <span className="text-muted-foreground">· {assignment.scopeType === "unit" ? assignment.organizationalUnitName : assignment.scopeType}</span>
+                    <span className="font-bold">{roleLabel(assignment.roleKey, assignment.roleName)}</span>
+                    <span className="text-muted-foreground">· {scopeLabel(assignment.scopeType, assignment.organizationalUnitName)}</span>
                     <button type="button" onClick={() => void removeAssignment(assignment.id)} disabled={busy} className="ml-1 font-bold text-red-700 disabled:opacity-50">Cabut</button>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="mt-4 text-xs text-muted-foreground">Tidak ada role tambahan.</p>
+              <p className="mt-4 text-xs text-muted-foreground">Tidak ada kewenangan tambahan.</p>
             )}
           </article>
         ))}
       </section>
 
-      <section className="mt-5 rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
-        <h2 className="text-base font-bold text-brand-heading">Role system</h2>
+      <details className="mt-5 rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
+        <summary className="cursor-pointer text-sm font-bold text-brand-heading">Detail teknis kewenangan</summary>
+        <p className="mt-2 text-xs text-muted-foreground">Informasi diagnostik untuk penelusuran konfigurasi teknis.</p>
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
           {data?.roles.map((role) => (
             <div key={role.id} className="rounded-xl bg-surface p-4">
-              <p className="text-sm font-bold">{role.name}</p>
+              <p className="text-sm font-bold">{roleLabel(role.roleKey, role.name)}</p>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">{role.description ?? "—"}</p>
-              <p className="mt-2 text-[11px] font-semibold text-brand-primary-deep">{role.permissions.join(" · ") || "Belum ada permission"}</p>
+              <p className="mt-2 text-[11px] font-semibold text-brand-primary-deep">{role.permissions.join(" · ") || "Belum ada izin teknis"}</p>
             </div>
           ))}
         </div>
-      </section>
+      </details>
     </AdminShell>
   );
 }

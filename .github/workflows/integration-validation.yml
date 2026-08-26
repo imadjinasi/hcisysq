@@ -176,6 +176,10 @@ jobs:
           0017_payslip_mvp.sql
           0018_payslip_published_immutability.sql
           0019_dynamic_organization.sql
+          0020_organization_revisions_and_account_holders.sql
+          0021_multiple_structural_positions.sql
+          0022_employee_master_lifecycle_and_source_snapshots.sql
+          0023_leave_approval_principals.sql
           EOF
 
           sed -n 's/^applied //p' /tmp/clean-migrate.log > /tmp/clean-applied.txt
@@ -527,6 +531,10 @@ jobs:
           0017_payslip_mvp.sql
           0018_payslip_published_immutability.sql
           0019_dynamic_organization.sql
+          0020_organization_revisions_and_account_holders.sql
+          0021_multiple_structural_positions.sql
+          0022_employee_master_lifecycle_and_source_snapshots.sql
+          0023_leave_approval_principals.sql
           EOF
 
           sed -n 's/^applied //p' /tmp/upgrade-migrate.log > /tmp/upgrade-applied.txt

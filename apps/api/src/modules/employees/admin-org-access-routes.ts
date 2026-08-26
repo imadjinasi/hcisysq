@@ -18,6 +18,7 @@ import {
 import {
   assertAssignmentDates,
   assertAssignmentScope,
+  assertPrincipalRoleCompatibility,
   OrgAccessPolicyError,
 } from "./org-access-policy.js";
 
@@ -622,7 +623,10 @@ export async function registerOrgAccessAdminRoutes(
         `SELECT id, principal_type AS "principalType" FROM accounts WHERE id = $1`,
         [params.data.accountId],
       ),
-      pool.query<{ id: string }>("SELECT id FROM roles WHERE id = $1", [body.data.roleId]),
+      pool.query<{ id: string; roleKey: string }>(
+        `SELECT id, role_key AS "roleKey" FROM roles WHERE id = $1`,
+        [body.data.roleId],
+      ),
       unitId
         ? pool.query<{ id: string }>("SELECT id FROM organizational_units WHERE id = $1", [unitId])
         : Promise.resolve({ rows: [{ id: "not-required" }] }),
@@ -631,17 +635,26 @@ export async function registerOrgAccessAdminRoutes(
     if (!account.rows[0]) {
       return reply.status(404).send({ code: "ACCOUNT_NOT_FOUND", message: "Account tidak ditemukan." });
     }
-    if (account.rows[0].principalType !== "EMPLOYEE") {
-      return reply.status(409).send({
-        code: "ROLE_ASSIGNMENT_EMPLOYEE_ONLY",
-        message: "Role tambahan tahap ini hanya dapat diberikan ke account pegawai.",
-      });
-    }
-    if (!role.rows[0]) {
+    const accountRow = account.rows[0];
+    const roleRow = role.rows[0];
+    if (!roleRow) {
       return reply.status(404).send({ code: "ROLE_NOT_FOUND", message: "Role tidak ditemukan." });
     }
     if (!unit.rows[0]) {
       return reply.status(404).send({ code: "UNIT_NOT_FOUND", message: "Unit organisasi tidak ditemukan." });
+    }
+
+    try {
+      assertPrincipalRoleCompatibility({
+        principalType: accountRow.principalType as "EMPLOYEE" | "FOUNDATION_BOARD" | "SUPER_ADMIN",
+        roleKey: roleRow.roleKey,
+        scopeType: body.data.scopeType,
+      });
+    } catch (error) {
+      if (error instanceof OrgAccessPolicyError) {
+        return reply.status(409).send({ code: error.code, message: error.message });
+      }
+      throw error;
     }
 
     const assignmentId = randomUUID();

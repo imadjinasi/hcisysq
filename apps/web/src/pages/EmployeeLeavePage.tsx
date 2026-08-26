@@ -371,7 +371,7 @@ export function EmployeeLeavePage() {
                 <p className="text-xs font-semibold text-muted-foreground">Alur persetujuan</p>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   {preview.approvalChain.map((step, index) => (
-                    <div key={step.employeeId} className="flex items-center gap-2">
+                    <div key={step.principalType === "ACCOUNT" ? step.accountId : step.employeeId} className="flex items-center gap-2">
                       {index > 0 ? <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" /> : null}
                       <span className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-brand-heading shadow-sm">
                         {step.name}
@@ -410,7 +410,7 @@ export function EmployeeLeavePage() {
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {item.workingDays} hari kerja
-                    {item.currentApproverName ? ` · menunggu ${item.currentApproverName}` : ""}
+                    {item.currentApproverLabel ? ` · menunggu ${item.currentApproverLabel}` : ""}
                   </p>
                 </div>
                 <span className="w-fit rounded-full bg-muted px-3 py-1 text-xs font-semibold">

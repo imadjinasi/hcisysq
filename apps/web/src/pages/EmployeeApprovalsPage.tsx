@@ -13,6 +13,7 @@ import {
   EmployeeLeaveApiError,
   getEmployeeLeaveSummary,
   getLeaveApprovalInbox,
+  leaveApprovalSourceLabel,
   type EmployeeLeaveSummary,
   type LeaveApprovalInboxItem,
 } from "@/lib/employeeLeave";
@@ -152,9 +153,7 @@ export function EmployeeApprovalsPage() {
                       <p className="mt-2 max-w-2xl text-xs leading-5 text-muted-foreground">{item.reason}</p>
                     ) : null}
                     <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      {item.sources.includes("DIRECT_MANAGER") ? "Atasan langsung" : ""}
-                      {item.sources.includes("DIRECT_MANAGER") && item.sources.includes("UNIT_APPROVER") ? " + " : ""}
-                      {item.sources.includes("UNIT_APPROVER") ? "Approver unit" : ""}
+                      {leaveApprovalSourceLabel(item.sources)}
                     </p>
                   </div>
                   <div className="flex gap-2">

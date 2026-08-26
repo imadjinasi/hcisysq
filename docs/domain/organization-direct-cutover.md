@@ -40,6 +40,12 @@ Neither identity requires a synthetic Employee record. Governance approval uses
 the narrow `leave.governance.approve` capability and does not grant employee or
 administrative authority.
 
+Super Admin assigns this capability from `Akses Organ Yayasan` as
+`Penyetuju cuti Pengurus Yayasan`. The assignment is always organization-wide;
+the GUI does not expose raw role IDs, permission keys, or scope enums. Server-side
+principal-role compatibility blocks every other Board operational role and blocks
+the governance role from Employee accounts.
+
 ## Deployment gate
 
 Before enabling a release that enforces direct Organization resolution in production, audit every active employee who participates in the affected workflow using the real resolver and effective published structure.
