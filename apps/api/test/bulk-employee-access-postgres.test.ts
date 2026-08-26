@@ -33,7 +33,8 @@ integration("Bulk employee access PostgreSQL write path", () => {
         employee_number text NOT NULL UNIQUE,
         full_name text NOT NULL,
         status text NOT NULL,
-        email text NULL
+        email text NULL,
+        removed_at timestamptz NULL
       );
       CREATE TABLE accounts (
         id uuid PRIMARY KEY,
