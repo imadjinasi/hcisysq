@@ -131,6 +131,7 @@ export async function listEmployees(input: {
   pageSize?: number;
   q?: string;
   status?: EmployeeStatus | "";
+  removed?: "" | "include" | "only";
   unitId?: string;
   positionId?: string;
 } = {}): Promise<AdminEmployeeListResponse> {
@@ -139,6 +140,7 @@ export async function listEmployees(input: {
   params.set("pageSize", String(input.pageSize ?? 25));
   if (input.q) params.set("q", input.q);
   if (input.status) params.set("status", input.status);
+  if (input.removed) params.set("removed", input.removed);
   if (input.unitId) params.set("unitId", input.unitId);
   if (input.positionId) params.set("positionId", input.positionId);
 

@@ -106,7 +106,7 @@ export async function getEmployeeSourceSnapshots(employeeId: string): Promise<{ 
   return readJson(response);
 }
 
-export async function previewEmployeeRemoval(employeeId: string): Promise<{ fullName: string; removedAt: string | null; accountId: string | null; accountStatus: string | null; publishedAssignments: number }> {
+export async function previewEmployeeRemoval(employeeId: string): Promise<{ fullName: string; removedAt: string | null; accountId: string | null; accountStatus: string | null; dependencyCategories: Array<{ category: string; count: number }>; blocked: boolean }> {
   const response = await fetch(`/api/admin/employees/${employeeId}/remove-preview`, { method: "POST", credentials: "include", headers: { Accept: "application/json" } });
   return readJson(response);
 }

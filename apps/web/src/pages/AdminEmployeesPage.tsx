@@ -26,6 +26,7 @@ export function AdminEmployeesPage() {
   const [draftQuery, setDraftQuery] = useState("");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<EmployeeStatus | "">("");
+  const [removed, setRemoved] = useState<"" | "only">("");
   const [unitId, setUnitId] = useState("");
   const [positionId, setPositionId] = useState("");
   const [page, setPage] = useState(1);
@@ -36,7 +37,7 @@ export function AdminEmployeesPage() {
     let mounted = true;
     setLoading(true);
     setError(null);
-    void listEmployees({ page, pageSize: 25, q: query, status, unitId, positionId })
+    void listEmployees({ page, pageSize: 25, q: query, status, removed, unitId, positionId })
       .then((result) => {
         if (mounted) setData(result);
       })
@@ -54,7 +55,7 @@ export function AdminEmployeesPage() {
     return () => {
       mounted = false;
     };
-  }, [page, positionId, query, status, unitId]);
+  }, [page, positionId, query, removed, status, unitId]);
 
   const submitSearch = (event: FormEvent) => {
     event.preventDefault();
@@ -109,6 +110,10 @@ export function AdminEmployeesPage() {
             <option value="active">Aktif</option>
             <option value="inactive">Tidak aktif</option>
             <option value="resigned">Keluar</option>
+          </select>
+
+          <select value={removed} onChange={(event) => { setRemoved(event.target.value as "" | "only"); setPage(1); }} className="h-10 rounded-xl border border-border bg-surface px-3 text-sm outline-none focus:border-brand-primary">
+            <option value="">Aktif / Tidak aktif / Keluar</option><option value="only">Dikeluarkan dari HCIS</option>
           </select>
 
           <select

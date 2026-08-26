@@ -527,7 +527,7 @@ export async function registerOrgAccessAdminRoutes(
         `
           SELECT count(*)::int AS count
           FROM employees e
-          WHERE e.status = 'active'
+          WHERE e.status = 'active' AND e.removed_at IS NULL
             AND NOT EXISTS (
               SELECT 1 FROM accounts a
               WHERE a.employee_id = e.id AND a.principal_type = 'EMPLOYEE'
@@ -549,6 +549,7 @@ export async function registerOrgAccessAdminRoutes(
          LEFT JOIN organizational_units u ON u.id = e.organizational_unit_id
          LEFT JOIN positions p ON p.id = e.position_id
          LEFT JOIN accounts a ON a.employee_id = e.id AND a.principal_type = 'EMPLOYEE'
+         WHERE e.removed_at IS NULL
          ORDER BY e.full_name, e.id`,
       ),
     ]);
@@ -619,7 +620,7 @@ export async function registerOrgAccessAdminRoutes(
       status: "active" | "inactive" | "resigned";
       email: string | null;
     }>(
-      "SELECT id, status, email FROM employees WHERE id = $1",
+      "SELECT id, status, email FROM employees WHERE id = $1 AND removed_at IS NULL",
       [parsed.data.employeeId],
     );
     const row = employee.rows[0];
@@ -691,8 +692,9 @@ export async function registerOrgAccessAdminRoutes(
       principalType: "EMPLOYEE" | "FOUNDATION_BOARD" | "SUPER_ADMIN";
       passwordHash: string | null;
     }>(
-      `SELECT id, principal_type AS "principalType", password_hash AS "passwordHash"
-       FROM accounts WHERE id = $1`,
+      `SELECT a.id, a.principal_type AS "principalType", a.password_hash AS "passwordHash", e.removed_at AS "employeeRemovedAt"
+       FROM accounts a LEFT JOIN employees e ON e.id=a.employee_id
+       WHERE a.id = $1`,
       [params.data.accountId],
     );
     const row = account.rows[0];
@@ -704,6 +706,9 @@ export async function registerOrgAccessAdminRoutes(
         code: "SUPER_ADMIN_STATUS_PROTECTED",
         message: "Status Super Admin tidak diubah melalui employee access administration.",
       });
+    }
+    if (row.principalType === "EMPLOYEE" && (row as { employeeRemovedAt?: Date | null }).employeeRemovedAt) {
+      return reply.status(409).send({ code: "REMOVED_EMPLOYEE_ACCESS_BLOCKED", message: "Account pegawai yang dikeluarkan dari HCIS tidak dapat diaktifkan." });
     }
     if (body.data.status === "active" && !row.passwordHash) {
       return reply.status(409).send({
