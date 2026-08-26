@@ -8,6 +8,7 @@ import {
 } from "../src/modules/employees/domain/employee-import.js";
 import { parseEmployeeCsv } from "../src/modules/employees/infrastructure/parse-employee-csv.js";
 import { parseEmployeeWorkbook } from "../src/modules/employees/infrastructure/parse-employee-workbook.js";
+import { buildEmployeeImportPreviewState } from "../src/modules/employees/infrastructure/postgres-employee-import-store.js";
 
 function source(overrides: Record<string, unknown> = {}) {
   return {
@@ -230,5 +231,23 @@ describe("parseEmployeeCsv", () => {
     expect(row.candidate?.presentFields).toContain("phone");
     expect(row.candidate?.presentFields).not.toContain("education");
     expect(row.candidate?.phone).toBeNull();
+  });
+});
+
+describe("import preview canonical state", () => {
+  it("keeps absent fields and applies an explicit clear into complete AFTER", () => {
+    const candidate = normalizeEmployeeImportRow(3, source({ [EMPLOYEE_SOURCE_HEADERS.phone]: "" })).candidate!;
+    const before = { employeeNumber:candidate.employeeNumber,fullName:"Nama Lama",status:"active",phone:"0812",education:"S1" };
+    const result = buildEmployeeImportPreviewState(candidate,before);
+    expect(result.after).toMatchObject({employeeNumber:candidate.employeeNumber,fullName:candidate.fullName,phone:null,education:"S1"});
+    expect(result.explicitClears).toContain("phone");
+    expect(result.absentCanonicalFields).toContain("education");
+  });
+  it("builds a complete deterministic AFTER for inserts", () => {
+    const candidate=normalizeEmployeeImportRow(3,source()).candidate!;
+    const result=buildEmployeeImportPreviewState(candidate,null);
+    expect(Object.keys(result.after)).toHaveLength(14);
+    expect(result.after.employeeNumber).toBe(candidate.employeeNumber);
+    expect(result.after.endedOn).toBeNull();
   });
 });

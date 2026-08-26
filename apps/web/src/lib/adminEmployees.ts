@@ -26,6 +26,8 @@ export interface AdminEmployeeListItem {
   startedOn: string | null;
   endedOn: string | null;
   updatedAt: string;
+  removedAt: string | null;
+  removalReason: string | null;
 }
 
 export interface AdminEmployeeListResponse {

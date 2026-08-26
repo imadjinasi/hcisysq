@@ -200,6 +200,7 @@ export function AdminEmployeeDetailPage({ employeeId }: { employeeId: string }) 
 
       {error ? <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div> : null}
       {notice ? <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{notice}</div> : null}
+      {employee?.removedAt ? <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-900">Dikeluarkan dari HCIS · {new Date(employee.removedAt).toLocaleString("id-ID")} · Alasan: {employee.removalReason}</div> : null}
 
       {activationLink ? (
         <section className="mb-5 rounded-2xl border border-brand-primary/30 bg-brand-primary-pale p-4">

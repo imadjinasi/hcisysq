@@ -12,12 +12,14 @@ const removal = z.object({ confirmationName:z.string().trim().min(1), reason:z.s
 const keys = ["fullName","employeeNumber","status","employmentStatus","organizationalUnitId","positionId","employmentType","functionalPosition","structuralPosition","email","phone","education","startedOn","endedOn"] as const;
 
 async function dependencies(db: Pool | PoolClient, employeeId: string) {
-  return (await db.query<{category:string;count:number}>(`SELECT category,count(*)::int AS count FROM (
- SELECT 'membership' category FROM organization_memberships x JOIN organization_change_sets c ON c.id=x.change_set_id WHERE c.status='PUBLISHED' AND x.employee_id=$1
- UNION ALL SELECT 'incumbency_employee' FROM organization_incumbencies x JOIN organization_change_sets c ON c.id=x.change_set_id WHERE c.status='PUBLISHED' AND x.employee_id=$1
- UNION ALL SELECT 'incumbency_employee_account' FROM organization_incumbencies x JOIN organization_change_sets c ON c.id=x.change_set_id JOIN accounts a ON a.id=x.account_id WHERE c.status='PUBLISHED' AND a.employee_id=$1 AND a.principal_type='EMPLOYEE'
- UNION ALL SELECT 'reporting_override_employee' FROM organization_reporting_overrides x JOIN organization_change_sets c ON c.id=x.change_set_id WHERE c.status='PUBLISHED' AND x.employee_id=$1
- UNION ALL SELECT 'reporting_override_manager' FROM organization_reporting_overrides x JOIN organization_change_sets c ON c.id=x.change_set_id WHERE c.status='PUBLISHED' AND x.manager_employee_id=$1
+  return (await db.query<{category:string;count:number}>(`WITH today AS (SELECT (now() AT TIME ZONE 'Asia/Jakarta')::date d), current_revision AS (
+ SELECT c.id FROM organization_change_sets c,today WHERE c.status='PUBLISHED' AND c.effective_on<=today.d ORDER BY c.effective_on DESC,c.published_at DESC,c.created_at DESC,c.id DESC LIMIT 1
+ ) SELECT category,count(*)::int AS count FROM (
+ SELECT 'membership' category FROM organization_memberships x,current_revision c,today WHERE x.change_set_id=c.id AND x.employee_id=$1 AND x.effective_from<=today.d AND (x.effective_to IS NULL OR x.effective_to>=today.d)
+ UNION ALL SELECT 'incumbency_employee' FROM organization_incumbencies x,current_revision c,today WHERE x.change_set_id=c.id AND x.employee_id=$1 AND x.effective_from<=today.d AND (x.effective_to IS NULL OR x.effective_to>=today.d)
+ UNION ALL SELECT 'incumbency_employee_account' FROM organization_incumbencies x JOIN accounts a ON a.id=x.account_id,current_revision c,today WHERE x.change_set_id=c.id AND a.employee_id=$1 AND a.principal_type='EMPLOYEE' AND x.effective_from<=today.d AND (x.effective_to IS NULL OR x.effective_to>=today.d)
+ UNION ALL SELECT 'reporting_override_employee' FROM organization_reporting_overrides x,current_revision c,today WHERE x.change_set_id=c.id AND x.employee_id=$1 AND x.effective_from<=today.d AND (x.effective_to IS NULL OR x.effective_to>=today.d)
+ UNION ALL SELECT 'reporting_override_manager' FROM organization_reporting_overrides x,current_revision c,today WHERE x.change_set_id=c.id AND x.manager_employee_id=$1 AND x.effective_from<=today.d AND (x.effective_to IS NULL OR x.effective_to>=today.d)
  UNION ALL SELECT 'legacy_direct_manager' FROM employees x WHERE x.direct_manager_employee_id=$1 AND x.status='active' AND x.removed_at IS NULL
  ) d GROUP BY category ORDER BY category`,[employeeId])).rows;
 }

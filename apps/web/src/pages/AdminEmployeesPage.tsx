@@ -8,12 +8,8 @@ import {
   type AdminEmployeeListResponse,
   type EmployeeStatus,
 } from "@/lib/adminEmployees";
+import { employeeLifecycleLabel } from "@/lib/employeeMasterLifecycle";
 
-function statusLabel(status: EmployeeStatus) {
-  if (status === "active") return "Aktif";
-  if (status === "resigned") return "Keluar";
-  return "Tidak aktif";
-}
 
 function statusClass(status: EmployeeStatus) {
   if (status === "active") return "bg-emerald-50 text-emerald-800";
@@ -69,7 +65,7 @@ export function AdminEmployeesPage() {
     <AdminShell
       active="employees"
       title="Data Pegawai"
-      description="Employee master read-only. Gunakan pencarian dan filter untuk review data hasil import; detail pegawai dipakai untuk reporting line dan kesiapan account."
+      description="Kelola data kanonis pegawai, riwayat sumber, reporting line, kesiapan account, dan lifecycle Employee Master."
     >
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
@@ -182,7 +178,7 @@ export function AdminEmployeesPage() {
                       </td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${statusClass(employee.status)}`}>
-                          {statusLabel(employee.status)}
+                          {employeeLifecycleLabel(employee.status, employee.removedAt)}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">{employee.unitName ?? "—"}</td>

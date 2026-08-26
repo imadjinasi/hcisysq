@@ -48,6 +48,8 @@ interface EmployeeRow {
   startedOn: string | null;
   endedOn: string | null;
   updatedAt: Date;
+  removedAt: Date | null;
+  removalReason: string | null;
 }
 
 interface CountRow {
@@ -180,6 +182,7 @@ export async function registerEmployeeAdminRoutes(
             e.started_on AS "startedOn",
             e.ended_on AS "endedOn",
             e.updated_at AS "updatedAt"
+            ,e.removed_at AS "removedAt", e.removal_reason AS "removalReason"
           FROM employees e
           LEFT JOIN organizational_units u ON u.id = e.organizational_unit_id
           LEFT JOIN positions p ON p.id = e.position_id

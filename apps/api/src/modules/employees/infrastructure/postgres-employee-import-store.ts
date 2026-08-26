@@ -39,6 +39,16 @@ interface ImportDetailRow {
 }
 
 const canonicalSourceHeaders: Set<string> = new Set(Object.values(EMPLOYEE_SOURCE_HEADERS).map(normalizeReferenceName));
+export const canonicalPreviewFields = ["employeeNumber", "fullName", "status", "employmentStatus", "unitName", "positionName", "employmentType", "functionalPosition", "structuralPosition", "email", "phone", "education", "startedOn", "endedOn"];
+
+export function buildEmployeeImportPreviewState(candidate: EmployeeImportCandidate, before: Record<string, unknown> | null) {
+  const present = new Set(["employeeNumber", ...candidate.presentFields]);
+  const after = Object.fromEntries(canonicalPreviewFields.map((field) => [field, present.has(field) ? candidate[field as keyof EmployeeImportCandidate] ?? null : before?.[field] ?? null]));
+  return { before, after,
+    changedFields:canonicalPreviewFields.filter((field)=>String(before?.[field]??"")!==String(after[field]??"")),
+    explicitClears:canonicalPreviewFields.filter((field)=>present.has(field)&&after[field]==null&&before?.[field]!=null),
+    absentCanonicalFields:canonicalPreviewFields.filter((field)=>!present.has(field)) };
+}
 
 export class EmployeeImportConflictError extends Error {
   constructor(message: string) {
@@ -156,22 +166,15 @@ export class PostgresEmployeeImportStore implements EmployeeImportStore {
       `SELECT e.employee_number AS "employeeNumber", e.full_name AS "fullName", e.status, e.employment_status AS "employmentStatus", u.name AS "unitName", p.name AS "positionName", e.employment_type AS "employmentType", e.functional_position AS "functionalPosition", e.structural_position AS "structuralPosition", e.email, e.phone, e.education, e.started_on::text AS "startedOn", e.ended_on::text AS "endedOn" FROM employees e LEFT JOIN organizational_units u ON u.id=e.organizational_unit_id LEFT JOIN positions p ON p.id=e.position_id WHERE e.employee_number = ANY($1::text[])`, [numbers],
     ) : { rows: [] as Record<string, unknown>[] };
     const existingByNumber = new Map(existing.rows.map((row) => [String(row.employeeNumber), row]));
-    const canonical = ["fullName", "status", "employmentStatus", "unitName", "positionName", "employmentType", "functionalPosition", "structuralPosition", "email", "phone", "education", "startedOn", "endedOn"];
 
     return {
       ...toSummary(jobRow),
       canonicalColumns: Object.values(EMPLOYEE_SOURCE_HEADERS).filter((header) => rows.rows.some((row) => row.payload && Object.keys(row.payload.sourceData ?? {}).some((key) => normalizeReferenceName(key) === normalizeReferenceName(header)))),
       preservedUnmodeledColumns: [...new Set(rows.rows.flatMap((row) => Object.keys(row.payload?.sourceData ?? {}).filter((key) => !canonicalSourceHeaders.has(normalizeReferenceName(key)))))],
-      rows: rows.rows.map((row) => ({
-        rowNumber: row.row_number,
-        action: row.action,
-        issues: row.messages,
-        before: row.payload ? existingByNumber.get(row.payload.employeeNumber) ?? null : null,
-        after: row.payload ? Object.fromEntries(canonical.filter((field) => row.payload!.presentFields.includes(field)).map((field) => [field, row.payload![field as keyof EmployeeImportCandidate] ?? null])) : null,
-        changedFields: row.payload ? canonical.filter((field) => row.payload!.presentFields.includes(field) && String((existingByNumber.get(row.payload!.employeeNumber) ?? {})[field] ?? "") !== String(row.payload![field as keyof EmployeeImportCandidate] ?? "")) : [],
-        explicitClears: row.payload ? canonical.filter((field) => row.payload!.presentFields.includes(field) && row.payload![field as keyof EmployeeImportCandidate] == null && (existingByNumber.get(row.payload!.employeeNumber) ?? {})[field] != null) : [],
-        absentCanonicalFields: row.payload ? canonical.filter((field) => !row.payload!.presentFields.includes(field)) : [],
-      })),
+      rows: rows.rows.map((row) => {
+        if (!row.payload) return { rowNumber:row.row_number,action:row.action,issues:row.messages,before:null,after:null,changedFields:[],explicitClears:[],absentCanonicalFields:[] };
+        return { rowNumber:row.row_number,action:row.action,issues:row.messages,...buildEmployeeImportPreviewState(row.payload,existingByNumber.get(row.payload.employeeNumber)??null) };
+      }),
     };
   }
 
