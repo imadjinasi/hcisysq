@@ -123,31 +123,20 @@ export class AuthService {
       throw new AuthError(403, "MFA_NOT_CONFIGURED", "MFA Super Admin belum dikonfigurasi.");
     }
 
-    const { token, hash } = generateSessionToken();
-    const sessionId = randomUUID();
-    const expiresAt = new Date(Date.now() + this.sessionTtlSeconds * 1000);
-
-    await this.pool.query(
-      `
-        INSERT INTO auth_sessions (
-          id, account_id, token_hash, expires_at, ip_address, user_agent
-        ) VALUES ($1, $2, $3, $4, $5, $6)
-      `,
-      [sessionId, account.id, hash, expiresAt, context.ipAddress, context.userAgent],
-    );
-
     this.attempts.delete(rateKey);
-    await this.audit("auth.login.succeeded", context, account.id, email);
+    return this.createSession(account, context, "auth.login.succeeded");
+  }
 
-    const session = {
-      principal: this.toPrincipal(account),
-      expiresAt: expiresAt.toISOString(),
-    };
-
-    return {
-      session,
-      setCookie: this.buildSessionCookie(token),
-    };
+  async createSessionForAccountId(
+    accountId: string,
+    context: RequestContext,
+    auditEvent = "auth.session.created",
+  ): Promise<{ session: AuthSessionResult; setCookie: string }> {
+    const account = await this.findAccountById(accountId);
+    if (!account || account.status !== "active") {
+      throw new AuthError(403, "ACCOUNT_INACTIVE", "Akun HCIS tidak aktif.");
+    }
+    return this.createSession(account, context, auditEvent);
   }
 
   async getSession(token: string | null): Promise<AuthSessionResult | null> {
@@ -216,6 +205,35 @@ export class AuthService {
     return `${AUTH_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`;
   }
 
+  private async createSession(
+    account: AccountRow,
+    context: RequestContext,
+    auditEvent: string,
+  ): Promise<{ session: AuthSessionResult; setCookie: string }> {
+    const { token, hash } = generateSessionToken();
+    const sessionId = randomUUID();
+    const expiresAt = new Date(Date.now() + this.sessionTtlSeconds * 1000);
+
+    await this.pool.query(
+      `
+        INSERT INTO auth_sessions (
+          id, account_id, token_hash, expires_at, ip_address, user_agent
+        ) VALUES ($1, $2, $3, $4, $5, $6)
+      `,
+      [sessionId, account.id, hash, expiresAt, context.ipAddress, context.userAgent],
+    );
+
+    await this.audit(auditEvent, context, account.id, account.email);
+
+    return {
+      session: {
+        principal: this.toPrincipal(account),
+        expiresAt: expiresAt.toISOString(),
+      },
+      setCookie: this.buildSessionCookie(token),
+    };
+  }
+
   private async findAccountByEmail(email: string): Promise<AccountRow | null> {
     const result = await this.pool.query<AccountRow>(
       `
@@ -239,16 +257,35 @@ export class AuthService {
     return result.rows[0] ?? null;
   }
 
+  private async findAccountById(accountId: string): Promise<AccountRow | null> {
+    const result = await this.pool.query<AccountRow>(
+      `
+        SELECT
+          id,
+          email,
+          principal_type AS "principalType",
+          status,
+          password_hash AS "passwordHash",
+          mfa_secret_ciphertext AS "mfaSecretCiphertext",
+          mfa_secret_iv AS "mfaSecretIv",
+          mfa_secret_tag AS "mfaSecretTag",
+          mfa_enabled_at AS "mfaEnabledAt"
+        FROM accounts
+        WHERE id = $1
+        LIMIT 1
+      `,
+      [accountId],
+    );
+
+    return result.rows[0] ?? null;
+  }
+
   private async verifyMfa(
     account: AccountRow,
     code: string,
     context: RequestContext,
   ): Promise<boolean> {
-    if (
-      !account.mfaSecretCiphertext ||
-      !account.mfaSecretIv ||
-      !account.mfaSecretTag
-    ) {
+    if (!account.mfaSecretCiphertext || !account.mfaSecretIv || !account.mfaSecretTag) {
       return false;
     }
 
