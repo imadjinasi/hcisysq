@@ -5,6 +5,8 @@ interface ErrorPayload {
   message?: string;
 }
 
+export type AuthMode = "local" | "oidc";
+
 export class AuthApiError extends Error {
   constructor(
     public readonly status: number,
@@ -29,6 +31,19 @@ async function readError(response: Response): Promise<AuthApiError> {
     payload.code ?? "AUTH_REQUEST_FAILED",
     payload.message ?? "Permintaan autentikasi gagal.",
   );
+}
+
+export async function getAuthMode(): Promise<AuthMode> {
+  const response = await fetch("/api/auth/mode", {
+    method: "GET",
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw await readError(response);
+  const payload = (await response.json()) as { mode?: string };
+  if (payload.mode !== "local" && payload.mode !== "oidc") {
+    throw new AuthApiError(500, "INVALID_AUTH_MODE", "Konfigurasi autentikasi tidak valid.");
+  }
+  return payload.mode;
 }
 
 export async function login(credentials: LoginCredentials): Promise<AuthSession> {
@@ -58,10 +73,16 @@ export async function getCurrentSession(): Promise<AuthSession | null> {
 }
 
 export async function logout(): Promise<void> {
-  await fetch("/api/auth/logout", {
+  const response = await fetch("/api/auth/logout", {
     method: "POST",
     headers: { Accept: "application/json" },
   });
+
+  if (response.status === 204) return;
+  if (!response.ok) throw await readError(response);
+
+  const payload = (await response.json()) as { logoutUrl?: string | null };
+  if (payload.logoutUrl) window.location.assign(payload.logoutUrl);
 }
 
 export function landingPath(
