@@ -79,3 +79,6 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Validate staging compose
+        run: docker compose --env-file infra/staging.env.example -f infra/docker-compose.staging.yml config -q
