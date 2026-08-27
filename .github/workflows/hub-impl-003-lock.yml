@@ -1,0 +1,34 @@
+name: HUB-IMPL-003 lockfile bootstrap
+
+on:
+  push:
+    branches:
+      - feat/hub-impl-003-oidc-staging
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-lockfile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/hub-impl-003-oidc-staging
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Refresh package lock only
+        run: npm install --package-lock-only --ignore-scripts
+      - name: Commit generated lockfile when needed
+        run: |
+          if git diff --quiet -- package-lock.json; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git commit -m "chore: refresh lockfile for HUB-IMPL-003"
+          git push origin HEAD:feat/hub-impl-003-oidc-staging
