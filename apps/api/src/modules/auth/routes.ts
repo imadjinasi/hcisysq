@@ -1,8 +1,11 @@
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { Pool } from "pg";
 import { z } from "zod";
 
-import type { ApiConfig } from "../../config/env.js";
+import { getOidcRuntimeConfig, type ApiConfig } from "../../config/env.js";
+import { SqHubApplicationAccessClient } from "./application-access.js";
+import { OidcProvider } from "./oidc-provider.js";
+import { OidcLoginService } from "./oidc-service.js";
 import {
   AUTH_COOKIE_NAME,
   AuthError,
@@ -24,6 +27,13 @@ function requestContext(request: FastifyRequest): RequestContext {
   };
 }
 
+function sendAuthError(reply: FastifyReply, error: AuthError) {
+  return reply.status(error.statusCode).send({
+    code: error.code,
+    message: error.message,
+  });
+}
+
 export async function registerAuthRoutes(
   app: FastifyInstance,
   pool: Pool,
@@ -40,8 +50,39 @@ export async function registerAuthRoutes(
     config.NODE_ENV === "production",
   );
 
+  let oidcLogin: OidcLoginService | null = null;
+  if (config.AUTH_MODE === "oidc") {
+    const oidcConfig = getOidcRuntimeConfig(config);
+    const provider = new OidcProvider({
+      issuer: oidcConfig.issuer,
+      clientId: oidcConfig.clientId,
+      clientSecret: oidcConfig.clientSecret,
+      redirectUri: oidcConfig.redirectUri,
+      postLogoutRedirectUri: oidcConfig.postLogoutRedirectUri,
+    });
+    const applicationAccess = new SqHubApplicationAccessClient(
+      oidcConfig.issuer,
+      oidcConfig.machineClientId,
+      oidcConfig.machineClientSecret,
+      oidcConfig.applicationAccessUrl,
+    );
+    oidcLogin = new OidcLoginService(pool, provider, applicationAccess, auth);
+  }
+
+  app.get("/auth/mode", async (_request, reply) => {
+    reply.header("Cache-Control", "no-store");
+    return reply.send({ mode: config.AUTH_MODE });
+  });
+
   app.post("/auth/login", async (request, reply) => {
     reply.header("Cache-Control", "no-store");
+
+    if (config.AUTH_MODE !== "local") {
+      return reply.status(404).send({
+        code: "LOCAL_AUTH_DISABLED",
+        message: "Autentikasi lokal tidak tersedia.",
+      });
+    }
 
     const parsed = loginSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -56,13 +97,49 @@ export async function registerAuthRoutes(
       reply.header("Set-Cookie", result.setCookie);
       return reply.send(result.session);
     } catch (error) {
-      if (error instanceof AuthError) {
-        return reply.status(error.statusCode).send({
-          code: error.code,
-          message: error.message,
-        });
-      }
+      if (error instanceof AuthError) return sendAuthError(reply, error);
       throw error;
+    }
+  });
+
+  app.get("/auth/oidc/start", async (_request, reply) => {
+    reply.header("Cache-Control", "no-store");
+    if (!oidcLogin) {
+      return reply.status(404).send({
+        code: "OIDC_AUTH_DISABLED",
+        message: "SQ Identity tidak aktif pada environment ini.",
+      });
+    }
+
+    try {
+      const authorizationUrl = await oidcLogin.begin();
+      return reply.redirect(authorizationUrl.href);
+    } catch {
+      return reply.status(503).send({
+        code: "IDENTITY_UNAVAILABLE",
+        message: "SQ Identity belum dapat dihubungi. Coba lagi.",
+      });
+    }
+  });
+
+  app.get("/auth/callback", { logLevel: "silent" }, async (request, reply) => {
+    reply.header("Cache-Control", "no-store");
+    if (!oidcLogin) {
+      return reply.status(404).send({
+        code: "OIDC_AUTH_DISABLED",
+        message: "SQ Identity tidak aktif pada environment ini.",
+      });
+    }
+
+    const oidcConfig = getOidcRuntimeConfig(config);
+    const callbackUrl = new URL(request.url, new URL(oidcConfig.redirectUri).origin);
+
+    try {
+      const result = await oidcLogin.complete(callbackUrl, requestContext(request));
+      reply.header("Set-Cookie", result.setCookie);
+      return reply.redirect("/");
+    } catch {
+      return reply.redirect("/?authError=oidc_failed");
     }
   });
 
@@ -86,6 +163,13 @@ export async function registerAuthRoutes(
     const token = readCookie(request.headers.cookie, AUTH_COOKIE_NAME);
     await auth.logout(token, requestContext(request));
     reply.header("Set-Cookie", auth.clearSessionCookie());
-    return reply.status(204).send();
+
+    if (!oidcLogin) return reply.status(204).send();
+
+    try {
+      return reply.send({ logoutUrl: (await oidcLogin.buildLogoutUrl()).href });
+    } catch {
+      return reply.send({ logoutUrl: null });
+    }
   });
 }
