@@ -19,9 +19,7 @@ services:
     shm_size: 128mb
 
   api:
-    build:
-      context: ..
-      dockerfile: apps/api/Dockerfile
+    image: ${HCIS_API_IMAGE:-ghcr.io/imadjinasi/hcisysq-api:staging}
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -65,9 +63,7 @@ services:
     mem_limit: ${API_MEMORY_LIMIT:-192m}
 
   web:
-    build:
-      context: ..
-      dockerfile: apps/web/Dockerfile
+    image: ${HCIS_WEB_IMAGE:-ghcr.io/imadjinasi/hcisysq-web:staging}
     restart: unless-stopped
     depends_on:
       api:
