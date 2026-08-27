@@ -68,30 +68,59 @@ describe("OidcIdentityMappingService", () => {
     expect(query.mock.calls.some(([sql]) => String(sql).includes("auth_audit_events"))).toBe(true);
   });
 
-  it("requires explicit replacement when the account already has another identity", async () => {
+  it("reports an identical mapping as idempotent without writing", async () => {
+    const mappedAccount = {
+      ...account,
+      identityIssuer: identity.issuer,
+      identitySubject: identity.subject,
+    };
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes("FROM accounts")) return { rows: [mappedAccount], rowCount: 1 };
+      return { rows: [], rowCount: 0 };
+    });
+    const service = new OidcIdentityMappingService(clientFrom(query));
+
+    await expect(
+      service.map({ accountId: account.id, ...identity, apply: true }),
+    ).resolves.toMatchObject({ status: "already_mapped" });
+    expect(query.mock.calls.some(([sql]) => String(sql).includes("UPDATE accounts"))).toBe(false);
+  });
+
+  it("previews a replacement before requiring --replace for the write", async () => {
     const mappedAccount = {
       ...account,
       identityIssuer: identity.issuer,
       identitySubject: "old-subject",
     };
-    const query = vi.fn(async (sql: string) => {
+    const previewQuery = vi.fn(async (sql: string) => {
       if (sql.includes("FROM accounts") && sql.includes("WHERE id = $1")) {
         return { rows: [mappedAccount], rowCount: 1 };
       }
       if (sql.includes("identity_issuer = $1")) return { rows: [], rowCount: 0 };
       return { rows: [], rowCount: 0 };
     });
-    const service = new OidcIdentityMappingService(clientFrom(query));
+    const preview = new OidcIdentityMappingService(clientFrom(previewQuery));
 
     await expect(
-      service.map({
-        accountId: account.id,
-        ...identity,
-        apply: true,
-      }),
-    ).rejects.toMatchObject({ code: "REPLACE_REQUIRED" });
+      preview.map({ accountId: account.id, ...identity, apply: false }),
+    ).resolves.toMatchObject({
+      status: "would_replace",
+      previousIdentity: { issuer: identity.issuer, subject: "old-subject" },
+      nextIdentity: identity,
+    });
 
-    expect(query.mock.calls.some(([sql]) => String(sql).includes("UPDATE accounts"))).toBe(false);
+    const applyQuery = vi.fn(async (sql: string) => {
+      if (sql.includes("FROM accounts") && sql.includes("WHERE id = $1")) {
+        return { rows: [mappedAccount], rowCount: 1 };
+      }
+      if (sql.includes("identity_issuer = $1")) return { rows: [], rowCount: 0 };
+      return { rows: [], rowCount: 0 };
+    });
+    const apply = new OidcIdentityMappingService(clientFrom(applyQuery));
+    await expect(
+      apply.map({ accountId: account.id, ...identity, apply: true }),
+    ).rejects.toMatchObject({ code: "REPLACE_REQUIRED" });
+    expect(applyQuery.mock.calls.some(([sql]) => String(sql).includes("UPDATE accounts"))).toBe(false);
   });
 
   it("refuses an identity already assigned to a different account", async () => {
