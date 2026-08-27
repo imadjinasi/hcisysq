@@ -58,13 +58,74 @@ New session creation fails closed for invalid or expired callback state, invalid
 
 `accounts.id` and all existing foreign keys remain unchanged.
 
+## Shared staging deployment
+
+The production VPS compose remains unchanged. OIDC rehearsal uses the dedicated `infra/docker-compose.staging.yml`, `infra/staging.env.example`, and `infra/caddy/hcis-staging.sabilulquran.or.id.caddy` files.
+
+The staging topology deliberately separates networks:
+- HCIS PostgreSQL and internal API/web traffic use the project-local `backend` network, which remains `internal: true`;
+- the public HCIS web container joins the existing external `edge_proxy` network as `hcis-staging-web`;
+- the HCIS API joins the external `sq_platform_staging` network so it can reach the private SQ Hub API service and obtain outbound access to the canonical public Keycloak issuer.
+
+SQ Hub Application Access is not required to be public. The staging template targets the private service name `sq-hub-api-staging:3100` on `sq_platform_staging`.
+
+Prepare the VPS-only environment file:
+
+```bash
+cp infra/staging.env.example infra/.env.staging
+chmod 600 infra/.env.staging
+```
+
+Replace all placeholder database, encryption, OIDC client, and machine-client secrets. Never commit `infra/.env.staging`.
+
+Create the shared network once if it does not already exist:
+
+```bash
+docker network inspect sq_platform_staging >/dev/null 2>&1 \
+  || docker network create sq_platform_staging
+```
+
+The existing Caddy network must also exist before deployment:
+
+```bash
+docker network inspect edge_proxy >/dev/null 2>&1
+```
+
+Validate Compose interpolation without starting services:
+
+```bash
+docker compose \
+  --env-file infra/.env.staging \
+  -f infra/docker-compose.staging.yml \
+  config -q
+```
+
+Start HCIS staging using a distinct Compose project name so its database volume and service namespace cannot collide with production:
+
+```bash
+docker compose \
+  -p hcis-staging \
+  --env-file infra/.env.staging \
+  -f infra/docker-compose.staging.yml \
+  up -d --build
+```
+
+Before browser UAT, verify from the VPS/container path that:
+- `https://login-staging.sabilulquran.or.id/realms/sq-staff-staging/.well-known/openid-configuration` is reachable;
+- `sq-hub-api-staging:3100` resolves from the HCIS API container over `sq_platform_staging`;
+- the HCIS API `/health` endpoint is healthy;
+- `https://hcis-staging.sabilulquran.or.id` terminates TLS and reaches `hcis-staging-web`.
+
 ## Recovery / rollback rehearsal
 
 Application rollback is configuration-first:
-1. set HCIS staging `AUTH_MODE=local`;
-2. restart or redeploy HCIS staging;
-3. verify local login and existing authorization behavior;
-4. keep identity mapping columns in place during the rehearsal so rollback does not require destructive data changes.
+1. stop the OIDC staging stack;
+2. change the staging environment to local mode only in a deliberate rollback rehearsal, or redeploy the existing production/local-auth compose for the isolated test target;
+3. restart/redeploy the isolated HCIS target;
+4. verify local login and existing authorization behavior;
+5. keep identity mapping columns in place during the rehearsal so rollback does not require destructive data changes.
+
+Do not point `hcis.sabilulquran.or.id` at the staging stack during this rehearsal.
 
 If schema removal is explicitly required later, first verify no environment is in OIDC mode and no OIDC transaction is active. Then drop `auth_oidc_transactions`, the partial identity index, the pair-nullability constraint, and the two identity columns. Do not modify `accounts.id` or role-assignment foreign keys.
 
@@ -93,6 +154,7 @@ npm run typecheck
 npm run lint
 npm run test
 npm run build
+docker compose --env-file infra/staging.env.example -f infra/docker-compose.staging.yml config -q
 ```
 
 Browser UAT on the real staging stack remains required for Keycloak redirect and TLS, synthetic login, privileged TOTP and recovery behavior, logout semantics, token-storage inspection, Application Access denial, outage behavior, and rollback rehearsal.
