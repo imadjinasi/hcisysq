@@ -11,6 +11,7 @@
     "test": "vitest run",
     "migrate": "node --env-file=.env.local --import tsx src/db/migrate.ts",
     "auth:bootstrap-super-admin": "node --env-file=.env.local --import tsx src/modules/auth/cli/bootstrap-super-admin.ts",
+    "auth:map-oidc-identity": "node --env-file=.env.local --import tsx src/modules/auth/cli/map-oidc-identity.ts",
     "employees:import": "node --env-file=.env.local --import tsx src/modules/employees/cli/import-employees.ts"
   },
   "dependencies": {
