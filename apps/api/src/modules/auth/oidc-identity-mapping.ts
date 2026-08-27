@@ -97,15 +97,15 @@ export class OidcIdentityMappingService {
       );
     }
 
+    if (!input.apply) {
+      return this.result(previousIdentity ? "would_replace" : "would_map", account, previousIdentity, identity);
+    }
+
     if (previousIdentity && !input.replace) {
       throw new OidcIdentityMappingError(
         "REPLACE_REQUIRED",
-        "Account already has a different OIDC identity mapping. Re-run with --replace only after verifying the existing binding.",
+        "Account already has a different OIDC identity mapping. Preview first, then re-run with --replace --apply only after verifying the existing binding.",
       );
-    }
-
-    if (!input.apply) {
-      return this.result(previousIdentity ? "would_replace" : "would_map", account, previousIdentity, identity);
     }
 
     await this.client.query(
