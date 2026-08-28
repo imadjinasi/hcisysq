@@ -29,9 +29,12 @@ HCIS owns:
 - raw attendance ingestion;
 - device-to-employee mapping;
 - HCIS employee/device synchronization where useful;
+- biometric credential backup, restore and synchronization for managed attendance devices;
 - operational logs, audits and reporting related to devices.
 
 HCIS must not recreate a second employee, organization, authentication or authorization source of truth merely because WDMS contains those modules.
+
+For biometric management, HCIS Employee remains the identity owner. HCIS stores biometric credential material as managed device credentials associated with the employee; physical devices hold synchronized replicas used for local verification.
 
 ## Core invariants
 
@@ -43,8 +46,9 @@ HCIS must not recreate a second employee, organization, authentication or author
 6. Unknown devices may be detected automatically but are not trusted automatically.
 7. Destructive device actions are break-glass operations with confirmation and audit.
 8. HCIS employee and organization data remain the source of truth for SQ personnel and organization concepts.
-9. Biometric credential material is not centralized in HCIS under ATT-005.
-10. Device behavior is capability-driven; unsupported commands are not exposed for devices that do not advertise or prove support.
+9. Biometric credential material is sensitive managed data: it is encrypted at rest, never written to routine logs, never exposed in ordinary attendance APIs, and every import/export/delete/sync operation is authorized and audited.
+10. HCIS does not perform biometric matching, reverse engineering or conversion of vendor templates. Vendor template payloads are preserved losslessly with their modality, format/version and provenance metadata.
+11. Device behavior is capability-driven; unsupported commands are not exposed for devices that do not advertise or prove support.
 
 ## WDMS parity matrix
 
@@ -79,7 +83,7 @@ HCIS adaptation:
 - auto-discovered devices enter `detected` / `claim_pending`, not `active`;
 - admin explicitly activates and assigns a display name/work-location context;
 - WDMS `Area` maps to HCIS Work Location / optional organization context instead of creating a parallel personnel hierarchy;
-- biometric counts are observability metadata only; biometric templates are not stored.
+- biometric counts are observability metadata and are reconciled against HCIS biometric-vault inventory where the device protocol exposes enough detail.
 
 ### B. Connectivity and communication policy — INCLUDE
 
@@ -156,7 +160,8 @@ Implement:
 - card-number synchronization where the device supports cards;
 - employee name synchronization where supported;
 - explicit device PIN assignment/mapping;
-- conflict detection before pushing roster changes.
+- conflict detection before pushing roster changes;
+- synchronize the employee's managed biometric credentials when explicitly selected or required by roster policy.
 
 Do not create a second WDMS-style Personnel master.
 
@@ -192,7 +197,7 @@ Implement where protocol/device support is proven:
 - Reboot;
 - time/timezone synchronization;
 - duplicate-punch-period configuration;
-- capture-setting metadata/configuration where no biometric media is ingested by HCIS;
+- capture-setting metadata/configuration;
 - firmware version inspection;
 - firmware upgrade workflow;
 - selected device configuration read/write;
@@ -214,18 +219,22 @@ WDMS exposes destructive maintenance. HCIS may expose equivalent actions only be
 
 - clear attendance data on device;
 - clear capture-photo cache on device, if applicable;
+- clear biometric credentials for a selected person/device;
 - clear all device data.
 
 Required safeguards:
 
 - SUPER_ADMIN only;
-- typed serial confirmation;
+- typed serial confirmation for device-wide destructive operations;
+- explicit employee confirmation for per-person biometric deletion;
 - recent successful device contact;
 - explicit explanation of what is deleted;
 - immutable admin audit event;
-- no deletion of HCIS raw evidence;
+- no deletion of HCIS raw attendance evidence;
 - for attendance-data clearing, warn if reconciliation is incomplete;
 - `clear all data` must be visually and permission-wise separated from routine operations.
+
+Device-side deletion and HCIS-vault deletion are separate operations. Clearing a device must never silently delete the HCIS backup copy, and deleting the HCIS master credential must require a separate explicit action.
 
 ### J. Transaction and device observability — INCLUDE
 
@@ -244,32 +253,67 @@ Implement:
 - admin audit log;
 - data-retention configuration for operational logs, subject to HCIS retention policy.
 
-Raw request bodies must not be exposed casually in Admin UI. Diagnostics should present safe summaries by default.
+Raw request bodies and biometric payloads must not be exposed casually in Admin UI. Diagnostics should present safe summaries by default.
 
-### K. Attendance photos — CONDITIONAL / NOT DEFAULT
+### K. Attendance photos — INCLUDE WHERE SUPPORTED
 
 WDMS can display/download attendance photos for supported devices.
 
-HCIS will not enable machine attendance-photo ingestion by default under ATT-005 because it adds biometric/privacy-sensitive media retention without being required for fingerprint attendance reliability.
+HCIS shall support attendance-photo ingestion where the managed device provides it, with the same restricted-access, encrypted-storage, provenance, retention and audit principles used for other sensitive attendance evidence.
 
-If later explicitly approved, it requires a separate privacy/retention/security specification.
+Attendance photos are evidence attached to a device transaction. They are not used by HCIS to perform automated biometric matching unless a future separately approved capability explicitly introduces such processing.
 
-### L. Biometric template and Bio-Photo vault — EXCLUDE
+### L. Biometric template and Bio-Photo vault — INCLUDE / HIGH SENSITIVITY
 
-Do not port WDMS central biometric-template or bio-photo management under ATT-005:
+HCIS shall provide central biometric credential management as part of attendance-device management.
 
-- fingerprint template vault;
-- face template vault;
-- palm template vault;
-- central biometric-template upload/download;
-- biometric-template deletion workflow as an HCIS master capability;
-- face bio-photo registration/import/approval;
-- automatic biometric synchronization between devices;
-- remote enrollment that causes biometric templates/media to enter HCIS.
+Supported credential classes, when the device/protocol supports them:
 
-Reason: HCIS is the HR/attendance system, not a biometric credential vault. Centralizing biometric credential material creates a materially different privacy/security system and is not necessary for attendance ingestion.
+- fingerprint templates;
+- face templates;
+- palm templates;
+- face/bio-photo used for device enrollment or device credential distribution;
+- card credential metadata where applicable.
 
-A future credential-management specification may revisit this only with explicit approval.
+Required management capabilities:
+
+- import/upload credential data from a managed device into HCIS;
+- associate imported credentials with the canonical HCIS Employee after explicit or deterministic reconciliation;
+- preserve multiple fingerprint slots/fingers and multiple vendor template versions when required;
+- store modality, vendor format/version, originating device, device user/PIN, capture/import time and integrity hash;
+- backup credentials independently from the continued availability of the source device;
+- restore credentials from HCIS to the same device after reset/replacement;
+- synchronize selected credentials to another compatible device;
+- compare HCIS credential inventory with per-device inventory;
+- identify missing/stale/conflicting credentials before synchronization;
+- delete a selected credential from selected devices without deleting the HCIS master copy;
+- delete the HCIS master credential through an explicit audited sensitive-data lifecycle action;
+- support remote enrollment when the device/protocol provides a proven enrollment flow, including retrieval of the resulting template into HCIS;
+- expose sync status and last successful distribution per credential/device.
+
+Source-of-truth model:
+
+```text
+HCIS Employee
+    -> HCIS Biometric Credential Vault (managed master copy)
+        -> Device A replica
+        -> Device B replica
+        -> Device C replica
+```
+
+HCIS stores vendor credential payloads losslessly. HCIS does not attempt to decode fingerprint minutiae, compare faces/palms, authenticate people itself, or translate incompatible template formats. Cross-device synchronization is allowed only when capability/model/template compatibility is known or proven.
+
+Security requirements:
+
+- biometric payload encrypted at rest using an application encryption key sourced from deployment secrets/key management, never committed to the repository;
+- encrypted backups must not contain plaintext biometric payloads;
+- biometric payload never appears in routine application logs, request logs, error traces, analytics or audit-event metadata;
+- list/detail APIs return metadata by default, not raw credential bytes;
+- raw credential export/download is disabled from ordinary Admin UI unless an explicit operational use case is separately enabled;
+- all import, enrollment, restore, sync, delete and exceptional export actions are immutable audit events;
+- least-privilege authorization separates ordinary attendance administration from sensitive biometric administration when the permission model is expanded beyond initial SUPER_ADMIN-only access;
+- integrity hash/dedup metadata may be stored in searchable relational metadata, but template payload storage must remain opaque;
+- production rollout requires an explicit retention, backup and credential-deletion policy before biometric collection is enabled.
 
 ### M. WDMS Personnel module — DO NOT DUPLICATE
 
@@ -289,7 +333,7 @@ Use HCIS Employee and Organization domains. Device-specific extensions belong to
 
 Do not recreate WDMS local user/role system.
 
-Use HCIS authentication and authorization. Device operations remain least-privilege and are initially SUPER_ADMIN-only until a dedicated device-operator permission is specified.
+Use HCIS authentication and authorization. Device operations remain least-privilege and are initially SUPER_ADMIN-only until a dedicated device-operator/biometric-operator permission is specified.
 
 ### O. MTD temperature/mask module — EXCLUDE
 
@@ -336,6 +380,15 @@ Suggested information architecture:
 - Transactions
 - PIN & Employee Mapping
 - Device Roster
+- Biometrics
+  - credential inventory per employee
+  - fingerprint/face/palm/bio-photo metadata
+  - import from device
+  - enroll where supported
+  - backup/restore
+  - distribute to selected devices
+  - per-device sync status
+  - guarded delete
 - Data Transfer
   - sync new transactions
   - upload all transactions
@@ -412,8 +465,22 @@ ATT-005 is an umbrella specification and must be delivered through small reviewa
 - card/name/device privilege metadata;
 - Work Code.
 
-### ATT-005E — Extended device operations
+### ATT-005E — Biometric credential vault and synchronization
 
+- encrypted biometric credential metadata/payload storage;
+- fingerprint/face/palm/bio-photo import from device;
+- employee association and conflict reconciliation;
+- compatibility metadata and inventory comparison;
+- backup and restore;
+- selected-device distribution/synchronization;
+- remote enrollment where proven supported;
+- per-device credential sync status;
+- guarded device-side and HCIS-master credential deletion;
+- sensitive-operation audit and retention controls.
+
+### ATT-005F — Extended device operations
+
+- attendance photos;
 - messages;
 - duplicate-punch period;
 - safe configuration read/write;
@@ -422,7 +489,7 @@ ATT-005 is an umbrella specification and must be delivered through small reviewa
 - offline transaction import;
 - device error log.
 
-### ATT-005F — Break-glass maintenance and operational polish
+### ATT-005G — Break-glass maintenance and operational polish
 
 - destructive device maintenance with safeguards;
 - exports and saved filters;
@@ -440,7 +507,8 @@ ATT-005 is an umbrella specification and must be delivered through small reviewa
 6. Device commands are durable, auditable and have tracked execution results.
 7. Destructive operations cannot delete HCIS raw attendance evidence.
 8. Employee/device synchronization never creates a second employee source of truth.
-9. Biometric templates/photos are not centralized without a separate approved specification.
-10. All raw attendance invariants from ATT-002/ATT-003/ATT-004 remain valid.
-11. Each implementation slice requires migration recovery notes, tests and CI verification before merge.
-12. Production deployment of each slice remains a human-approved cutover.
+9. HCIS provides a central encrypted biometric credential vault tied to canonical employees, with audited backup/restore/sync/delete behavior and no biometric matching performed by HCIS.
+10. Biometric credential payloads are not exposed in ordinary logs/APIs/UI and cannot be silently deleted by device-maintenance operations.
+11. All raw attendance invariants from ATT-002/ATT-003/ATT-004 remain valid.
+12. Each implementation slice requires migration recovery notes, tests and CI verification before merge.
+13. Production deployment of each slice remains a human-approved cutover.
