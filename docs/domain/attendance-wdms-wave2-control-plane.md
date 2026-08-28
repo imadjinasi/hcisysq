@@ -192,20 +192,22 @@ The latest implemented software head must pass the normal PR quality gate before
 - database integration proving collection ON imports only through explicit active PIN mapping;
 - database integration proving an unmapped PIN is not guessed into an employee vault;
 - database integration proving redacted source-request provenance and source-device `present` evidence;
+- database regression proving biometric audit rows cannot be updated/deleted;
+- database regression proving `destroyed` credentials cannot retain ciphertext/hash/key material;
 - regression proving ATTLOG remains lossless;
 - authorization tests proving non-SUPER_ADMIN actors cannot query the Wave 2 tables;
 - API/UI build and compose validation.
 
-At head `3bbcf45c37975195cd043d1d4b2d420c81b7a0e6`, GitHub Actions Pull Request Validation run #108 passed the full software quality gate.
+At head `3bbcf45c37975195cd043d1d4b2d420c81b7a0e6`, GitHub Actions Pull Request Validation run #108 passed the full software quality gate. Later documentation/contract/lifecycle-test heads must pass the same gate before any readiness decision.
 
 Physical-device validation is a later gate and must not be replaced by synthetic CI.
 
 ## Contract status
 
-The runtime Wave 2 Admin surface currently consists of:
+The runtime Wave 2 Admin surface consists of:
 
 - `GET /admin/attendance/adms/devices/{deviceId}/roster`;
 - `GET /admin/attendance/adms/biometrics`;
 - `GET /admin/attendance/adms/devices/{deviceId}/biometric-inventory`.
 
-The authoritative `docs/api/openapi.yaml` still needs these three metadata-only routes synchronized before Wave 2 can be considered contract-complete. Until that synchronization is committed and CI re-passes, PR #17 remains a draft even though the runtime implementation/tests are green.
+`docs/api/attendance-adms-wave2.openapi.yaml` contains the self-contained metadata-only contract fragment. The authoritative `docs/api/openapi.yaml` now aggregates all three paths through external Path Item `$ref` entries. The aggregate synchronization commit changed only those three references (`+9 / -0` versus the previous branch head), leaving the existing Leave, Organization and Wave 1 contract untouched.
