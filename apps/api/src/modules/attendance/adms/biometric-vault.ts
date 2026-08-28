@@ -29,6 +29,29 @@ function sanitizeSafeMetadata(input: Record<string, unknown> | undefined) {
   return output;
 }
 
+function containsControlCharacter(value: string) {
+  return Array.from(value).some((character) => {
+    const codePoint = character.codePointAt(0) ?? 0;
+    return codePoint <= 0x1f || codePoint === 0x7f;
+  });
+}
+
+function normalizeVendorFormat(value: string) {
+  const normalized = value.trim();
+  if (!normalized || normalized.length > 120 || containsControlCharacter(normalized)) {
+    throw new Error("Biometric vendor format is invalid");
+  }
+  return normalized;
+}
+
+function optionalBoundedText(value: string | null | undefined, max: number, label: string) {
+  if (value === null || value === undefined) return null;
+  if (!value || value.length > max || containsControlCharacter(value)) {
+    throw new Error(`${label} is invalid`);
+  }
+  return value;
+}
+
 export type ImportBiometricCredentialInput = {
   employeeId: string;
   modality: BiometricModality;
@@ -62,20 +85,32 @@ export type BiometricCredentialMetadata = {
   updatedAt: Date;
 };
 
-async function findCredentialByHash(
+async function findCredentialByIdentity(
   client: PoolClient,
-  employeeId: string,
-  modality: BiometricModality,
-  payloadSha256: string,
+  input: {
+    employeeId: string;
+    modality: BiometricModality;
+    vendorFormat: string;
+    slotIndex: number | null;
+    payloadSha256: string;
+  },
 ) {
   const result = await client.query<{ id: string }>(
     `SELECT id
      FROM attendance_biometric_credentials
      WHERE employee_id = $1
        AND modality = $2
-       AND payload_sha256 = $3
+       AND vendor_format = $3
+       AND slot_index IS NOT DISTINCT FROM $4::integer
+       AND payload_sha256 = $5
      LIMIT 1`,
-    [employeeId, modality, payloadSha256],
+    [
+      input.employeeId,
+      input.modality,
+      input.vendorFormat,
+      input.slotIndex,
+      input.payloadSha256,
+    ],
   );
   return result.rows[0]?.id ?? null;
 }
@@ -85,11 +120,28 @@ export async function importBiometricCredential(
   config: ApiConfig,
   input: ImportBiometricCredentialInput,
 ): Promise<{ credentialId: string; created: boolean }> {
+  if (input.slotIndex !== null && (!Number.isInteger(input.slotIndex) || input.slotIndex < 0 || input.slotIndex > 255)) {
+    throw new Error("Biometric slot index is invalid");
+  }
+  const vendorFormat = normalizeVendorFormat(input.vendorFormat);
+  const vendorVersion = optionalBoundedText(input.vendorVersion, 120, "Biometric vendor version");
+  const sourcePin = optionalBoundedText(input.sourcePin, 128, "Biometric source PIN");
+  if (input.capturedAt && Number.isNaN(input.capturedAt.getTime())) {
+    throw new Error("Biometric capture timestamp is invalid");
+  }
+
   const payloadSha256 = createHash("sha256").update(input.payload).digest("hex");
+  const identity = {
+    employeeId: input.employeeId,
+    modality: input.modality,
+    vendorFormat,
+    slotIndex: input.slotIndex,
+    payloadSha256,
+  };
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const existing = await findCredentialByHash(client, input.employeeId, input.modality, payloadSha256);
+    const existing = await findCredentialByIdentity(client, identity);
     if (existing) {
       await client.query("COMMIT");
       return { credentialId: existing, created: false };
@@ -101,7 +153,7 @@ export async function importBiometricCredential(
       employeeId: input.employeeId,
       modality: input.modality,
       slotIndex: input.slotIndex,
-      vendorFormat: input.vendorFormat,
+      vendorFormat,
     };
     const encrypted = encryptBiometricPayload(input.payload, context, config);
     const safeMetadata = sanitizeSafeMetadata(input.safeMetadata);
@@ -124,10 +176,10 @@ export async function importBiometricCredential(
         input.employeeId,
         input.modality,
         input.slotIndex,
-        input.vendorFormat,
-        input.vendorVersion ?? null,
+        vendorFormat,
+        vendorVersion,
         input.originDeviceId ?? null,
-        input.sourcePin ?? null,
+        sourcePin,
         input.capturedAt ?? null,
         encrypted.sha256,
         encrypted.byteLength,
@@ -141,7 +193,7 @@ export async function importBiometricCredential(
     );
 
     if (!inserted.rowCount) {
-      const raced = await findCredentialByHash(client, input.employeeId, input.modality, payloadSha256);
+      const raced = await findCredentialByIdentity(client, identity);
       if (!raced) throw new Error("Biometric credential dedupe conflict could not be resolved");
       await client.query("COMMIT");
       return { credentialId: raced, created: false };
@@ -160,7 +212,7 @@ export async function importBiometricCredential(
         JSON.stringify({
           modality: input.modality,
           slotIndex: input.slotIndex,
-          vendorFormat: input.vendorFormat,
+          vendorFormat,
           source: safeMetadata.source ?? "device",
         }),
       ],
