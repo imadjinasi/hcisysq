@@ -17,13 +17,16 @@ import {
 } from "./protocol.js";
 import { projectAdmsRequest } from "./projection.js";
 import { getAdmsAttlogTransferStamp, persistAdmsIngress } from "./repository.js";
+import { observeDeviceRosterEntries } from "./roster.js";
 import { observeDetectedAdmsDevice } from "./wave1.js";
 import {
   deviceDataAcknowledgementBody,
   extractProtocolTable,
   isSensitiveProtocolTable,
   looksLikeAttlogPayload,
+  parseSafeDeviceRosterRecords,
   shouldRedactDeviceDataBody,
+  type SafeDeviceRosterRecord,
 } from "./wave2-protocol.js";
 
 function directHostname(hostHeader: string | undefined): string | null {
@@ -144,6 +147,7 @@ export async function registerAdmsIngressRoutes(
       const commandResults: ParsedDeviceCommandResult[] = [];
       let attlogText: string | null = null;
       let decodedDeviceText: string | null = null;
+      let observedRosterRecords: SafeDeviceRosterRecord[] = [];
       let redactJournalBody = false;
       let classification = "protocol_discovery";
       if (capture.body && capture.body.length > 0) {
@@ -179,6 +183,12 @@ export async function registerAdmsIngressRoutes(
                 ? "sensitive_device_data_redacted"
                 : "device_data_redacted";
               safeMetadata.bodyRedaction = classification;
+              if (protocolTable === "OPERLOG" || protocolTable === "USERINFO") {
+                observedRosterRecords = parseSafeDeviceRosterRecords(text);
+                if (observedRosterRecords.length > 0) {
+                  safeMetadata.safeRosterRecordCount = String(observedRosterRecords.length);
+                }
+              }
             }
           } catch {
             classification = "unsupported_encoding";
@@ -232,6 +242,22 @@ export async function registerAdmsIngressRoutes(
         quarantines,
         successResponseBody,
       });
+
+      if (result.accepted && result.deviceId && observedRosterRecords.length > 0) {
+        try {
+          await observeDeviceRosterEntries(pool, {
+            deviceId: result.deviceId,
+            sourceRequestId: result.requestId,
+            observedAt: receivedAt,
+            records: observedRosterRecords,
+          });
+        } catch (error) {
+          request.log.error(
+            { err: error, requestId: result.requestId, deviceId: result.deviceId },
+            "ADMS safe roster observation failed after redacted durable capture",
+          );
+        }
+      }
 
       const projectionRequestIds = new Set(result.recoveredRequestIds);
       if (result.accepted && result.insertedEvents > 0) projectionRequestIds.add(result.requestId);
