@@ -106,12 +106,17 @@ export function parseSafeDeviceRosterRecords(text: string): SafeDeviceRosterReco
   return records;
 }
 
+export function isAttlogDeviceData(input: { table: string | null; text: string }) {
+  if (input.table !== null) return input.table === "ATTLOG";
+  return looksLikeAttlogPayload(input.text);
+}
+
 /**
  * Request-journal payloads are useful forensic evidence for attendance, but roster credentials,
  * passwords and biometric template data must never be retained there in plaintext. A POST to
- * /iclock/cdata is therefore considered routine-journal-safe only when it is explicitly ATTLOG
- * or structurally matches the eleven-field ATTLOG record contract. All other non-empty cdata
- * payloads are redacted from the journal while retaining their hash, length and safe metadata.
+ * /iclock/cdata is therefore considered routine-journal-safe only when it is explicitly ATTLOG,
+ * or when no table was supplied and the payload structurally matches the eleven-field ATTLOG
+ * contract. An explicit non-ATTLOG table always wins over shape-based fallback.
  */
 export function shouldRedactDeviceDataBody(input: {
   method: string;
@@ -120,7 +125,5 @@ export function shouldRedactDeviceDataBody(input: {
   text: string;
 }) {
   if (input.method !== "POST" || input.path !== "/iclock/cdata" || input.text.length === 0) return false;
-  if (input.table === "ATTLOG") return false;
-  if (looksLikeAttlogPayload(input.text)) return false;
-  return true;
+  return !isAttlogDeviceData({ table: input.table, text: input.text });
 }
