@@ -212,7 +212,7 @@ export async function registerAdmsIngressRoutes(
                   safeMetadata.biometricRecordCount = String(parsedBiometrics.records.length);
                 }
                 if (parsedBiometrics.rejectedRecords > 0) {
-                  safeMetadata.biometricRejectedRecordCount = String(parsedBiometrics.rejectedRecords.length);
+                  safeMetadata.biometricRejectedRecordCount = String(parsedBiometrics.rejectedRecords);
                 }
               }
             }
