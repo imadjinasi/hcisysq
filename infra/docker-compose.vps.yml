@@ -49,7 +49,9 @@ services:
       timeout: 5s
       retries: 12
     networks:
-      - backend
+      backend:
+        aliases:
+          - hcis-api-internal
     mem_limit: ${API_MEMORY_LIMIT:-192m}
 
   web:
