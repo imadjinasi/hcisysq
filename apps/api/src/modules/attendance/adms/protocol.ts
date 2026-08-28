@@ -17,6 +17,7 @@ export type ParsedDeviceCommandResult = {
   commandNumber: string;
   returnCode: number;
   command: string;
+  safeOptions: Record<string, string>;
 };
 
 export type AttlogQuarantine = {
@@ -29,6 +30,27 @@ export type AttlogQuarantine = {
   rawLine: string;
   details: Record<string, string | number | boolean>;
 };
+
+const SAFE_INFO_OPTION_KEYS = new Set([
+  "DeviceName",
+  "FWVersion",
+  "IPAddress",
+  "MAC",
+  "MACAddress",
+  "Platform",
+  "PushVersion",
+  "PushProtVer",
+  "UserCount",
+  "FPCount",
+  "FaceCount",
+  "PalmCount",
+  "TransactionCount",
+  "AttLogCount",
+  "MaxUserCount",
+  "MaxAttLogCount",
+  "MaxFingerCount",
+  "MaxFaceCount",
+]);
 
 function sha256(value: string | Uint8Array) {
   return createHash("sha256").update(value).digest("hex");
@@ -94,13 +116,29 @@ export function parseAttlogText(
   return { events, quarantines };
 }
 
+function parseSafeInfoOption(rawLine: string): [string, string] | null {
+  const separator = rawLine.indexOf("=");
+  if (separator <= 0) return null;
+  const key = rawLine.slice(0, separator).trim();
+  const value = rawLine.slice(separator + 1).trim();
+  if (!SAFE_INFO_OPTION_KEYS.has(key)) return null;
+  if (!value || value.length > 256 || containsControlCharacter(value)) return null;
+  return [key, value];
+}
+
+function looksLikeCommandResult(rawLine: string) {
+  return /(?:^|&)ID=[^&]+/.test(rawLine) && /(?:^|&)Return=[^&]+/.test(rawLine) && /(?:^|&)CMD=/.test(rawLine);
+}
+
 export function parseDeviceCommandResultText(
   text: string,
 ): { results: ParsedDeviceCommandResult[]; quarantines: AttlogQuarantine[] } {
   const results: ParsedDeviceCommandResult[] = [];
   const quarantines: AttlogQuarantine[] = [];
+  const lines = text.split(/\r\n|\n|\r/);
 
-  for (const rawLine of text.split(/\r\n|\n|\r/)) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const rawLine = lines[index] ?? "";
     if (!rawLine) continue;
     const params = new URLSearchParams(rawLine);
     const commandNumber = params.get("ID") ?? "";
@@ -128,7 +166,20 @@ export function parseDeviceCommandResultText(
       continue;
     }
 
-    results.push({ rawLine, commandNumber, returnCode, command });
+    const safeOptions: Record<string, string> = {};
+    if (command === "INFO") {
+      let nextIndex = index + 1;
+      while (nextIndex < lines.length) {
+        const optionLine = lines[nextIndex] ?? "";
+        if (looksLikeCommandResult(optionLine)) break;
+        const option = parseSafeInfoOption(optionLine);
+        if (option) safeOptions[option[0]] = option[1];
+        nextIndex += 1;
+      }
+      index = nextIndex - 1;
+    }
+
+    results.push({ rawLine, commandNumber, returnCode, command, safeOptions });
   }
 
   return { results, quarantines };
@@ -148,7 +199,7 @@ export function attlogRangeWireCommand(startTime: string, endTime: string) {
 export function deviceCommandWireBody(commandNumber: string | number, wireCommand: string) {
   const number = String(commandNumber);
   if (!/^[1-9]\d{0,18}$/.test(number)) throw new Error("Invalid ADMS command number");
-  if (wireCommand !== "LOG" && !attlogRangeCommandPattern.test(wireCommand)) {
+  if (wireCommand !== "LOG" && wireCommand !== "INFO" && !attlogRangeCommandPattern.test(wireCommand)) {
     throw new Error("Unsupported ADMS wire command");
   }
   return `C:${number}:${wireCommand}\n`;
@@ -266,6 +317,12 @@ function localPartsAt(date: Date, timezone: string): LocalParts {
     year: get("year"), month: get("month"), day: get("day"),
     hour: get("hour"), minute: get("minute"), second: get("second"),
   };
+}
+
+export function formatDeviceLocalTimestamp(date: Date, timezone: string) {
+  const parts = localPartsAt(date, timezone);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${parts.year}-${pad(parts.month)}-${pad(parts.day)} ${pad(parts.hour)}:${pad(parts.minute)}:${pad(parts.second)}`;
 }
 
 function sameParts(left: LocalParts, right: LocalParts) {
