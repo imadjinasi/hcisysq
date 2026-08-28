@@ -22,8 +22,8 @@ import { observeDetectedAdmsDevice } from "./wave1.js";
 import {
   deviceDataAcknowledgementBody,
   extractProtocolTable,
+  isAttlogDeviceData,
   isSensitiveProtocolTable,
-  looksLikeAttlogPayload,
   parseSafeDeviceRosterRecords,
   shouldRedactDeviceDataBody,
   type SafeDeviceRosterRecord,
@@ -153,6 +153,16 @@ export async function registerAdmsIngressRoutes(
       if (capture.body && capture.body.length > 0) {
         if (!acceptsUtf8(contentType, contentEncoding)) {
           classification = "unsupported_encoding";
+          const nonAttendanceCdata =
+            request.method === "POST" &&
+            url.pathname === "/iclock/cdata" &&
+            protocolTable !== "ATTLOG";
+          if (nonAttendanceCdata) {
+            redactJournalBody = true;
+            safeMetadata.bodyRedaction = isSensitiveProtocolTable(protocolTable)
+              ? "sensitive_device_data_redacted"
+              : "device_data_redacted";
+          }
           quarantines.push({ reason: "UNSUPPORTED_ENCODING", rawLine: "", details: {} });
         } else {
           try {
@@ -166,7 +176,7 @@ export async function registerAdmsIngressRoutes(
             } else if (
               request.method === "POST" &&
               url.pathname === "/iclock/cdata" &&
-              (protocolTable === "ATTLOG" || looksLikeAttlogPayload(text))
+              isAttlogDeviceData({ table: protocolTable, text })
             ) {
               classification = "attlog";
               attlogText = text;
@@ -192,6 +202,16 @@ export async function registerAdmsIngressRoutes(
             }
           } catch {
             classification = "unsupported_encoding";
+            const nonAttendanceCdata =
+              request.method === "POST" &&
+              url.pathname === "/iclock/cdata" &&
+              protocolTable !== "ATTLOG";
+            if (nonAttendanceCdata) {
+              redactJournalBody = true;
+              safeMetadata.bodyRedaction = isSensitiveProtocolTable(protocolTable)
+                ? "sensitive_device_data_redacted"
+                : "device_data_redacted";
+            }
             quarantines.push({ reason: "UNSUPPORTED_ENCODING", rawLine: "", details: {} });
           }
         }
@@ -218,8 +238,10 @@ export async function registerAdmsIngressRoutes(
             ? "OK"
             : attlogText
               ? attlogAcknowledgementBody(attlogText)
-              : redactJournalBody && decodedDeviceText !== null
-                ? deviceDataAcknowledgementBody(decodedDeviceText)
+              : redactJournalBody
+                ? decodedDeviceText !== null
+                  ? deviceDataAcknowledgementBody(decodedDeviceText)
+                  : "OK"
                 : null;
 
       const result = await persistAdmsIngress(pool, {
