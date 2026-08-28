@@ -118,6 +118,15 @@ export function optionsAllHandshakeBody(url: URL, serial: string | null, attlogS
   ].join("\n");
 }
 
+/**
+ * PUSH SDK devices poll this endpoint even when the server has no command to send.
+ * The vendor protocol requires a literal two-byte "OK" response in that idle case;
+ * an empty 200 response is not protocol-equivalent for all firmware generations.
+ */
+export function getRequestIdleAcknowledgementBody(url: URL): string | null {
+  return url.pathname === "/iclock/getrequest" ? "OK" : null;
+}
+
 export function extractAttlogStamp(url: URL): string | null {
   const value = url.searchParams.get("Stamp") ?? url.searchParams.get("stamp");
   if (!value || value.length > 256 || containsControlCharacter(value)) return null;
