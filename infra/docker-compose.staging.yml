@@ -57,6 +57,8 @@ services:
       retries: 12
     networks:
       backend:
+        aliases:
+          - hcis-staging-api
       sq_platform_staging:
         aliases:
           - hcis-api-staging
