@@ -52,6 +52,37 @@ Fields such as device password and unknown vendor fields are discarded. They are
 
 The roster Admin API is intentionally labelled `observed_only` and `completeSnapshot: false`. Absence from the current observation table is **not** interpreted as “missing on device” until a full roster-query behavior is physically validated and a snapshot-completion boundary exists.
 
+## Passive biometric upload boundary
+
+The PUSH manuals document spontaneous enrolled-template upload through `POST /iclock/cdata?...&table=OPERLOG` using records such as:
+
+```text
+FP PIN=<pin><TAB>FID=<0-9><TAB>Size=<base64-length><TAB>Valid=<0|1|3><TAB>TMP=<base64>
+FACE PIN=<pin><TAB>FID=<slot><TAB>SIZE=<base64-length><TAB>VALID=<0|1><TAB>TMP=<base64>
+```
+
+Wave 2 may passively consume these records without issuing a query command to the device. The rules are deliberately strict:
+
+- only `OPERLOG` FP/FACE records are candidates;
+- declared encoded size must exactly match the template text length;
+- template text must be strict canonical base64 inside the ingress size boundary;
+- fingerprint FID is limited to the documented 0–9 range;
+- invalid templates (`Valid=0`) are not vaulted;
+- duress fingerprint (`Valid=3`) is retained only as safe boolean metadata;
+- the exact base64 text is treated as opaque vendor payload and encrypted; HCIS does not decode or interpret biometric features;
+- request-journal body remains `NULL` even when the payload is successfully vaulted.
+
+A passive template is eligible for the vault only when all of these are true:
+
+1. `BIOMETRIC_COLLECTION_ENABLED=1` with a valid biometric keyring;
+2. the source device is already trusted and `active`;
+3. the exact device PIN resolves at receipt time through one explicit effective `attendance_adms_employee_mappings` row;
+4. the mapped employee is currently `active`.
+
+HCIS never maps biometric payloads by employee number, name, card number, unit, or external ID. If the PIN is unmapped, ambiguous, or belongs to an inactive employee, the payload is acknowledged/redacted but is not added to the employee vault. A future explicit query can recover it only after that query path has been hardware-validated.
+
+When an eligible mapped vault write fails, the server does not intentionally hide the failure behind a success response. The redacted request journal remains durable and the device may retry; exact credential dedupe makes retries safe.
+
 ## Biometric vault
 
 The HCIS vault is independent from the ADMS request journal.
@@ -68,6 +99,8 @@ The HCIS vault is independent from the ADMS request journal.
 - lifecycle (`active`, `retired`, `destroyed`).
 
 HCIS does not normalize an opaque vendor template into a biometric interpretation. The payload is treated as bytes that belong to a specific vendor format/version.
+
+Credential dedupe is scoped to employee, modality, vendor format, slot and payload hash. Identical bytes in different slots/formats remain distinct credentials.
 
 ### Encryption
 
@@ -149,6 +182,10 @@ Software quality gate must include:
 - synthetic AES-GCM/key-rotation tests;
 - database integration proving synthetic payload ciphertext differs from plaintext;
 - database integration proving sensitive USER/OPERLOG plaintext is not retained in the request journal;
+- passive FP/FACE framing tests for size/base64/slot/validity boundaries;
+- database integration proving passive collection OFF creates no vault row;
+- database integration proving collection ON imports only through explicit active PIN mapping;
+- database integration proving an unmapped PIN is not guessed into an employee vault;
 - regression proving ATTLOG remains lossless;
 - authorization tests proving non-SUPER_ADMIN actors cannot query the Wave 2 tables;
 - API/UI build and compose validation.
