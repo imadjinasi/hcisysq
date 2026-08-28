@@ -5,6 +5,7 @@ import type { ApiConfig } from "./config/env.js";
 import { createPool } from "./db/pool.js";
 import { registerAdmsAdminRoutes } from "./modules/attendance/adms/admin-routes.js";
 import { registerAdmsIngressRoutes } from "./modules/attendance/adms/routes.js";
+import { registerAdmsWave1AdminRoutes } from "./modules/attendance/adms/wave1-admin-routes.js";
 import { registerAttendanceRoutes } from "./modules/attendance/routes.js";
 import { registerAccountActivationAdminRoutes } from "./modules/auth/admin-account-activation-routes.js";
 import { registerAccountActivationRoutes } from "./modules/auth/activation-routes.js";
@@ -53,6 +54,7 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerEmployeeContactAdminRoutes(app, pool, config);
   await registerAttendanceRoutes(app, pool, config);
   await registerAdmsAdminRoutes(app, pool, config);
+  await registerAdmsWave1AdminRoutes(app, pool, config);
   await registerLeaveAdminRoutes(app, pool, config);
   await registerLeaveCalendarAdminRoutes(app, pool, config);
   await registerEmployeeLeaveRoutes(app, pool, config);
