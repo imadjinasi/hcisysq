@@ -7,7 +7,10 @@ import { z } from "zod";
 import type { ApiConfig } from "../../../config/env.js";
 import { requirePrincipalFromCookie } from "../../auth/authorization.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../../auth/service.js";
-import { attlogRangeWireCommand } from "./protocol.js";
+import {
+  attlogRangeWireCommand,
+  formatDeviceLocalTimestamp,
+} from "./protocol.js";
 
 const detectedIdSchema = z.object({ detectedId: z.string().uuid() });
 const deviceIdSchema = z.object({ deviceId: z.string().uuid() });
@@ -20,6 +23,12 @@ const rangeSchema = z.object({
   startAt: z.string().datetime({ offset: true }),
   endAt: z.string().datetime({ offset: true }),
 });
+
+type AdminCommandReason =
+  | "admin_sync_new"
+  | "admin_range_recovery"
+  | "admin_read_information";
+type AdminCommandType = "sync_new" | "data_query" | "read_info";
 
 async function authenticate(
   auth: AuthService,
@@ -47,27 +56,11 @@ function validTimezone(value: string) {
   }
 }
 
-function localTimestamp(value: Date, timezone: string) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(value);
-  const read = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((part) => part.type === type)?.value ?? "";
-  return `${read("year")}-${read("month")}-${read("day")} ${read("hour")}:${read("minute")}:${read("second")}`;
-}
-
 async function writeAudit(
   client: PoolClient,
   input: {
     actorAccountId: string;
-    action: "device_claimed" | "transfer_requested" | "command_cancelled";
+    action: "device_claimed" | "transfer_requested" | "command_requested" | "command_cancelled";
     deviceId: string | null;
     beforeState: unknown;
     afterState: unknown;
@@ -208,6 +201,7 @@ export async function registerAdmsWave1AdminRoutes(
       medianIntervalSeconds: number | null;
       lastCommandActivityAt: Date | null;
       lastTransactionActivityAt: Date | null;
+      lastSuccessfulSyncAt: Date | null;
     }>(
       `WITH recent AS (
          SELECT received_at,
@@ -233,7 +227,12 @@ export async function registerAdmsWave1AdminRoutes(
          d.connectivity_timeout_seconds AS "timeoutOverride",
          cadence.median_gap::float8 AS "medianIntervalSeconds",
          (SELECT max(updated_at) FROM attendance_adms_commands WHERE device_id = d.id) AS "lastCommandActivityAt",
-         (SELECT max(received_at) FROM attendance_adms_events WHERE device_id = d.id) AS "lastTransactionActivityAt"
+         (SELECT max(received_at) FROM attendance_adms_events WHERE device_id = d.id) AS "lastTransactionActivityAt",
+         (SELECT max(completed_at)
+          FROM attendance_adms_commands
+          WHERE device_id = d.id
+            AND status = 'succeeded'
+            AND reason IN ('registration_recovery', 'admin_sync_new', 'admin_range_recovery', 'scheduled_reconciliation')) AS "lastSuccessfulSyncAt"
        FROM attendance_adms_devices d
        CROSS JOIN cadence
        WHERE d.id = $1`,
@@ -270,6 +269,7 @@ export async function registerAdmsWave1AdminRoutes(
         offlineAt: offlineAt?.toISOString() ?? null,
         lastCommandActivityAt: row.lastCommandActivityAt?.toISOString() ?? null,
         lastTransactionActivityAt: row.lastTransactionActivityAt?.toISOString() ?? null,
+        lastSuccessfulSyncAt: row.lastSuccessfulSyncAt?.toISOString() ?? null,
       },
     });
   });
@@ -290,6 +290,7 @@ export async function registerAdmsWave1AdminRoutes(
          attempt_count AS "attemptCount",
          requested_range_start AS "requestedRangeStart",
          requested_range_end AS "requestedRangeEnd",
+         expires_at AS "expiresAt",
          delivered_at AS "deliveredAt",
          acknowledged_at AS "acknowledgedAt",
          completed_at AS "completedAt",
@@ -307,16 +308,33 @@ export async function registerAdmsWave1AdminRoutes(
     return reply.send({ items: result.rows });
   });
 
+  app.post("/admin/attendance/adms/devices/:deviceId/commands/read-information", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply);
+    if (!principal) return;
+    const params = deviceIdSchema.safeParse(request.params);
+    if (!params.success) return reply.status(400).send({ code: "INVALID_ADMS_DEVICE", message: "ID mesin tidak valid." });
+    return queueDeviceCommand(pool, reply, principal.id, params.data.deviceId, {
+      commandType: "read_info",
+      wireCommand: "INFO",
+      reason: "admin_read_information",
+      rangeStart: null,
+      rangeEnd: null,
+      auditAction: "command_requested",
+    });
+  });
+
   app.post("/admin/attendance/adms/devices/:deviceId/transfers/sync-new", async (request, reply) => {
     const principal = await authenticate(auth, request, reply);
     if (!principal) return;
     const params = deviceIdSchema.safeParse(request.params);
     if (!params.success) return reply.status(400).send({ code: "INVALID_ADMS_DEVICE", message: "ID mesin tidak valid." });
-    return queueTransfer(pool, reply, principal.id, params.data.deviceId, {
+    return queueDeviceCommand(pool, reply, principal.id, params.data.deviceId, {
+      commandType: "sync_new",
       wireCommand: "LOG",
       reason: "admin_sync_new",
       rangeStart: null,
       rangeEnd: null,
+      auditAction: "transfer_requested",
     });
   });
 
@@ -342,14 +360,16 @@ export async function registerAdmsWave1AdminRoutes(
       return reply.status(409).send({ code: "ADMS_DEVICE_NOT_ACTIVE", message: "Historical upload hanya dapat diminta ke mesin aktif." });
     }
     const wireCommand = attlogRangeWireCommand(
-      localTimestamp(startAt, device.rows[0].timezone),
-      localTimestamp(endAt, device.rows[0].timezone),
+      formatDeviceLocalTimestamp(startAt, device.rows[0].timezone),
+      formatDeviceLocalTimestamp(endAt, device.rows[0].timezone),
     );
-    return queueTransfer(pool, reply, principal.id, params.data.deviceId, {
+    return queueDeviceCommand(pool, reply, principal.id, params.data.deviceId, {
+      commandType: "data_query",
       wireCommand,
       reason: "admin_range_recovery",
       rangeStart: startAt,
       rangeEnd: endAt,
+      auditAction: "transfer_requested",
     });
   });
 
@@ -438,16 +458,18 @@ export async function registerAdmsWave1AdminRoutes(
   });
 }
 
-async function queueTransfer(
+async function queueDeviceCommand(
   pool: Pool,
   reply: FastifyReply,
   actorAccountId: string,
   deviceId: string,
   input: {
+    commandType: AdminCommandType;
     wireCommand: string;
-    reason: "admin_sync_new" | "admin_range_recovery";
+    reason: AdminCommandReason;
     rangeStart: Date | null;
     rangeEnd: Date | null;
+    auditAction: "transfer_requested" | "command_requested";
   },
 ) {
   const client = await pool.connect();
@@ -469,12 +491,21 @@ async function queueTransfer(
     const inserted = await client.query(
       `INSERT INTO attendance_adms_commands (
          id, device_id, command_type, wire_command, reason, status,
-         requested_by_account_id, requested_range_start, requested_range_end
-       ) VALUES ($1, $2, 'sync_new', $3, $4, 'pending', $5, $6, $7)
-       RETURNING id, command_number::text AS "commandNumber", command_type AS "commandType", wire_command AS "wireCommand", status, created_at AS "createdAt"`,
+         requested_by_account_id, requested_range_start, requested_range_end, expires_at
+       ) VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, $8, now() + interval '24 hours')
+       RETURNING
+         id,
+         command_number::text AS "commandNumber",
+         command_type AS "commandType",
+         wire_command AS "wireCommand",
+         reason,
+         status,
+         expires_at AS "expiresAt",
+         created_at AS "createdAt"`,
       [
         commandId,
         deviceId,
+        input.commandType,
         input.wireCommand,
         input.reason,
         actorAccountId,
@@ -490,12 +521,17 @@ async function queueTransfer(
         randomUUID(),
         commandId,
         actorAccountId,
-        JSON.stringify({ reason: input.reason, rangeStart: input.rangeStart, rangeEnd: input.rangeEnd }),
+        JSON.stringify({
+          reason: input.reason,
+          commandType: input.commandType,
+          rangeStart: input.rangeStart,
+          rangeEnd: input.rangeEnd,
+        }),
       ],
     );
     await writeAudit(client, {
       actorAccountId,
-      action: "transfer_requested",
+      action: input.auditAction,
       deviceId,
       beforeState: null,
       afterState: inserted.rows[0],
