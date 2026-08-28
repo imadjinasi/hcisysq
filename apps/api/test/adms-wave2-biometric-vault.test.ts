@@ -31,7 +31,7 @@ describe.skipIf(!databaseUrl)("ATT-005 Wave 2 encrypted biometric vault", () => 
     await pool.end();
   });
 
-  it("stores only an AES-GCM envelope and deduplicates a synthetic opaque payload", async () => {
+  it("stores only AES-GCM envelopes and deduplicates within exact format/slot identity", async () => {
     const employeeId = randomUUID();
     const employeeNumber = `W2-${randomUUID()}`;
     const deviceId = randomUUID();
@@ -62,7 +62,7 @@ describe.skipIf(!databaseUrl)("ATT-005 Wave 2 encrypted biometric vault", () => 
         ignoredSecret: "must-not-copy",
       },
     });
-    const second = await importBiometricCredential(pool, vaultConfig(), {
+    const duplicate = await importBiometricCredential(pool, vaultConfig(), {
       employeeId,
       modality: "fingerprint",
       slotIndex: 2,
@@ -71,9 +71,21 @@ describe.skipIf(!databaseUrl)("ATT-005 Wave 2 encrypted biometric vault", () => 
       sourcePin: "0042",
       payload,
     });
+    const otherSlot = await importBiometricCredential(pool, vaultConfig(), {
+      employeeId,
+      modality: "fingerprint",
+      slotIndex: 3,
+      vendorFormat: "zkteco-fp-opaque",
+      originDeviceId: deviceId,
+      sourcePin: "0042",
+      payload,
+      safeMetadata: { source: "synthetic_integration_test" },
+    });
 
     expect(first.created).toBe(true);
-    expect(second).toEqual({ credentialId: first.credentialId, created: false });
+    expect(duplicate).toEqual({ credentialId: first.credentialId, created: false });
+    expect(otherSlot.created).toBe(true);
+    expect(otherSlot.credentialId).not.toBe(first.credentialId);
 
     const stored = await pool.query<{
       payloadCiphertext: Buffer;
@@ -109,9 +121,9 @@ describe.skipIf(!databaseUrl)("ATT-005 Wave 2 encrypted biometric vault", () => 
     expect(JSON.stringify(stored.rows[0]?.safeMetadata)).not.toContain("must-not-copy");
 
     const metadata = await listBiometricCredentialMetadata(pool, { employeeId });
-    expect(metadata).toHaveLength(1);
-    expect(metadata[0]).toMatchObject({
-      id: first.credentialId,
+    expect(metadata).toHaveLength(2);
+    expect(metadata.map((item) => item.slotIndex).sort()).toEqual([2, 3]);
+    expect(metadata.find((item) => item.id === first.credentialId)).toMatchObject({
       employeeId,
       modality: "fingerprint",
       slotIndex: 2,
