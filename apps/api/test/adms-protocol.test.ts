@@ -85,8 +85,8 @@ describe("ADMS iClock protocol", () => {
     );
     expect(parsed.quarantines).toEqual([]);
     expect(parsed.results).toEqual([
-      { rawLine: "ID=42&Return=0&CMD=LOG", commandNumber: "42", returnCode: 0, command: "LOG" },
-      { rawLine: "ID=43&Return=-1&CMD=LOG", commandNumber: "43", returnCode: -1, command: "LOG" },
+      { rawLine: "ID=42&Return=0&CMD=LOG", commandNumber: "42", returnCode: 0, command: "LOG", safeOptions: {} },
+      { rawLine: "ID=43&Return=-1&CMD=LOG", commandNumber: "43", returnCode: -1, command: "LOG", safeOptions: {} },
     ]);
 
     const malformed = parseDeviceCommandResultText("ID=nope&Return=0&CMD=LOG");
