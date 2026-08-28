@@ -11,7 +11,9 @@ import {
   extractSerialCandidate,
   getRequestIdleAcknowledgementBody,
   optionsAllHandshakeBody,
+  parseDeviceCommandResultText,
   type AttlogQuarantine,
+  type ParsedDeviceCommandResult,
 } from "./protocol.js";
 import { projectAdmsRequest } from "./projection.js";
 import { getAdmsAttlogTransferStamp, persistAdmsIngress } from "./repository.js";
@@ -125,6 +127,7 @@ export async function registerAdmsIngressRoutes(
       if (contentEncoding) safeMetadata.contentEncoding = contentEncoding;
 
       const quarantines: AttlogQuarantine[] = [];
+      const commandResults: ParsedDeviceCommandResult[] = [];
       let attlogText: string | null = null;
       let classification = "protocol_discovery";
       if (capture.body && capture.body.length > 0) {
@@ -134,7 +137,12 @@ export async function registerAdmsIngressRoutes(
         } else {
           try {
             const text = new TextDecoder("utf-8", { fatal: true }).decode(capture.body);
-            if (text.includes("\t")) {
+            if (request.method === "POST" && url.pathname === "/iclock/devicecmd") {
+              classification = "device_command_result";
+              const parsed = parseDeviceCommandResultText(text);
+              commandResults.push(...parsed.results);
+              quarantines.push(...parsed.quarantines);
+            } else if (text.includes("\t")) {
               classification = "attlog";
               attlogText = text;
             }
@@ -154,9 +162,11 @@ export async function registerAdmsIngressRoutes(
         request.method === "GET"
           ? optionsAllHandshakeBody(url, serialCandidate, configuredAttlogStamp ?? "None") ??
             getRequestIdleAcknowledgementBody(url)
-          : attlogText
-            ? attlogAcknowledgementBody(attlogText)
-            : null;
+          : url.pathname === "/iclock/devicecmd"
+            ? "OK"
+            : attlogText
+              ? attlogAcknowledgementBody(attlogText)
+              : null;
 
       const result = await persistAdmsIngress(pool, {
         receivedAt,
@@ -174,17 +184,20 @@ export async function registerAdmsIngressRoutes(
         classification,
         attlogText,
         attlogStamp,
+        commandResults,
         quarantines,
         successResponseBody,
       });
 
-      if (result.accepted && result.insertedEvents > 0) {
+      const projectionRequestIds = new Set(result.recoveredRequestIds);
+      if (result.accepted && result.insertedEvents > 0) projectionRequestIds.add(result.requestId);
+      for (const projectionRequestId of projectionRequestIds) {
         try {
-          await projectAdmsRequest(pool, result.requestId);
+          await projectAdmsRequest(pool, projectionRequestId);
         } catch (error) {
           request.log.error(
-            { err: error, requestId: result.requestId, deviceId: result.deviceId },
-            "ADMS attendance projection failed after durable capture",
+            { err: error, requestId: projectionRequestId, deviceId: result.deviceId },
+            "ADMS attendance projection failed after durable capture/recovery",
           );
         }
       }
