@@ -44,13 +44,13 @@ Detection is not trust:
 - unknown ATTLOG remains unaccepted and quarantined;
 - no device command is issued to an unclaimed serial.
 
-An administrator may explicitly claim a detected device. Claim creates the canonical registry row in lifecycle `disabled`, not `active`. Activation remains a separate explicit lifecycle change through the existing device administration surface.
+An administrator may explicitly claim a detected device. Claim creates the canonical registry row in lifecycle `disabled`, not `active`. Activation remains a separate explicit lifecycle change through the existing device administration surface. The claim request body is optional; when omitted, the device timezone defaults to `Asia/Jakarta` and the display name remains unset.
 
 Keeping the detection queue separate from the trusted registry preserves PR #15 registration-after-capture recovery: pre-claim request journal rows keep `device_id = NULL`, so the first active request can recover eligible durable ATTLOG with the original `source_request_id` and exact-event deduplication.
 
 Traffic received after claim while the device is intentionally `disabled` remains disallowed. Claim therefore represents the trust boundary; activation represents permission to accept live attendance traffic.
 
-## Connectivity health
+## Connectivity health and policy
 
 Connectivity and lifecycle are separate concepts.
 
@@ -66,6 +66,16 @@ If there is insufficient request-cadence evidence and no override, connectivity 
 
 The Admin API exposes the observed median request interval, effective timeout, predicted offline timestamp, last successful request, last source IP, last command activity, and last raw-transaction activity.
 
+Super Admin can set an explicit timeout override from 30–3600 seconds or clear it to return to adaptive mode. Policy changes are audited as device updates rather than hidden operational state.
+
+## Safe device telemetry
+
+Wave 1 retains safe transport metadata observed on ADMS requests for registered devices under `attendance_adms_devices.metadata.transportObserved`.
+
+The currently captured transport metadata is deliberately narrow and may include values such as PUSH version and language plus the observation timestamp. It does not expose raw request bodies through the Admin telemetry endpoint.
+
+Registry `model` and `firmware_version` remain explicit device metadata. A model or firmware value is not inferred when the current device transport has not supplied authoritative evidence for it.
+
 ## Transaction transfer commands
 
 Wave 1 keeps the existing documented non-destructive `LOG` command for requesting current/new transaction transfer.
@@ -76,7 +86,7 @@ Historical recovery uses the ZKTeco PUSH data-query command shape:
 C:<command-id>:DATA QUERY ATTLOG StartTime=YYYY-MM-DD HH:mm:ss<TAB>EndTime=YYYY-MM-DD HH:mm:ss
 ```
 
-The application does not accept arbitrary wire command text from Admin requests. Wire serialization is allowlisted to `LOG` and the validated ATTLOG range-query form.
+The application does not accept arbitrary wire command text from Admin requests. Wire serialization is allowlisted to `LOG` and the validated ATTLOG range-query form. The repository command model treats the stored wire command as validated command text instead of incorrectly typing every durable transfer as the literal `LOG` command.
 
 Historical range requests:
 
@@ -95,7 +105,7 @@ Wave 1 exposes recent durable command state including:
 
 - command number;
 - operation/reason;
-- wire command summary;
+- allowlisted wire command;
 - status;
 - attempt count;
 - requested range;
@@ -106,19 +116,52 @@ Pending commands may be cancelled. Delivered commands are not presented as safel
 
 The existing retry behavior remains bounded and is used only for the current non-destructive/idempotent transaction-transfer operations. ATTLOG retransmission remains safe because raw event identity is exact-deduplicated.
 
+## Historical reconciliation semantics
+
+A bounded range command now has a reconciliation read model. The purpose is to show evidence that HCIS can actually prove, not to manufacture WDMS-style completeness claims from unavailable data.
+
+For each recent historical range command, the Admin API can show:
+
+- current persisted raw-event count whose occurrence time falls inside the requested range;
+- how many such persisted events were received at or after command delivery;
+- first and last persisted occurrence in the range;
+- the number of ATTLOG journal requests observed after delivery.
+
+The response intentionally reports `expectedCount: null` when the physical device has not supplied an expected row count. It also reports `duplicatesObserved: null` rather than pretending the immutable fact table can reconstruct every exact duplicate rejected at insertion time.
+
+This is therefore labelled **persisted-range coverage**, not a proof that a physical device has no missing rows. Hardware validation remains necessary for transaction completeness claims.
+
 ## Admin UI
 
-`Admin HCIS > Mesin Fingerprint` now adds a Wave 1 operational panel with:
+`Admin HCIS > Mesin Fingerprint` now adds Wave 1 operational surfaces with:
 
 - multi-device cards rather than relying only on the legacy dropdown;
 - lifecycle and connectivity displayed separately;
 - last activity and effective timeout diagnostics;
+- editable connectivity timeout override with adaptive fallback;
+- safe observed transport telemetry;
 - sync-new transaction action;
 - bounded historical range upload action;
 - recent command state and pending cancellation;
+- persisted-range reconciliation summaries;
+- recent immutable raw transactions with explicit effective PIN-to-employee mapping when available;
 - detected/untrusted device queue with explicit claim.
 
-The existing PIN-mapping and raw-attendance administration surface remains available below it.
+The existing PIN-mapping and detailed raw-attendance administration surface remains available below it.
+
+## API contract
+
+`docs/api/openapi.yaml` is synchronized with the Wave 1 routes for:
+
+- detected-device discovery and claim;
+- connectivity health and policy;
+- safe telemetry;
+- command listing and pending cancellation;
+- sync-new and bounded attendance-range transfers;
+- recent raw transactions;
+- persisted-range reconciliation.
+
+The contract continues to distinguish software implementation from production/hardware verification.
 
 ## Migration and recovery
 
@@ -139,7 +182,7 @@ Rollback of application code may leave additive Wave 1 tables/columns unused. Do
 
 ## Verification status
 
-GitHub Actions for the Wave 1 draft PR has run clean migration, typecheck, lint, automated tests, build, and compose validation successfully on synthetic data.
+Earlier Wave 1 draft heads passed GitHub Actions clean migration, typecheck, lint, automated tests, build, and compose validation on synthetic data. Every subsequent software cleanup head must pass the same quality gate before the PR is declared ready for review.
 
 Production deployment remains a human-approved cutover.
 
