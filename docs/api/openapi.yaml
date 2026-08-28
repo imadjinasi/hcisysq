@@ -333,6 +333,495 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /admin/attendance/adms/detected-devices:
+    get:
+      tags: [Attendance]
+      operationId: listDetectedAdmsDevices
+      summary: List detected ADMS serials that have not been automatically trusted
+      responses:
+        '200':
+          description: Detection queue ordered with unclaimed devices first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, serialNumber, status, firstSeenAt, lastSeenAt, observedCount]
+                      properties:
+                        id: { type: string, format: uuid }
+                        serialNumber: { type: string }
+                        status: { type: string, enum: [detected, claimed, ignored] }
+                        firstSeenAt: { type: string, format: date-time }
+                        lastSeenAt: { type: string, format: date-time }
+                        lastIp: { type: [string, 'null'] }
+                        observedCount: { type: integer, minimum: 1 }
+                        safeMetadata: { type: object, additionalProperties: true }
+                        claimedDeviceId: { type: [string, 'null'], format: uuid }
+                        claimedAt: { type: [string, 'null'], format: date-time }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/attendance/adms/detected-devices/{detectedId}/claim:
+    post:
+      tags: [Attendance]
+      operationId: claimDetectedAdmsDevice
+      summary: Explicitly trust a detected serial by creating a disabled registry device
+      parameters:
+        - name: detectedId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                displayName: { type: [string, 'null'], maxLength: 160 }
+                timezone: { type: string, default: Asia/Jakarta, maxLength: 100 }
+      responses:
+        '201':
+          description: Trusted registry row created in disabled lifecycle; activation remains separate
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Detection already processed or serial already registered }
+
+  /admin/attendance/adms/devices/{deviceId}/health:
+    get:
+      tags: [Attendance]
+      operationId: getAdmsDeviceHealth
+      summary: Read server-derived connectivity independently from device lifecycle
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Connectivity and cadence evidence
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [item]
+                properties:
+                  item:
+                    type: object
+                    required: [deviceId, lifecycle, connectivityStatus]
+                    properties:
+                      deviceId: { type: string, format: uuid }
+                      lifecycle: { type: string, enum: [active, disabled, quarantined] }
+                      connectivityStatus: { type: string, enum: [online, offline, unknown] }
+                      lastSeenAt: { type: [string, 'null'], format: date-time }
+                      lastSuccessfulRequestAt: { type: [string, 'null'], format: date-time }
+                      lastIp: { type: [string, 'null'] }
+                      observedMedianRequestIntervalSeconds: { type: [number, 'null'] }
+                      connectivityTimeoutOverrideSeconds: { type: [integer, 'null'], minimum: 30, maximum: 3600 }
+                      effectiveConnectivityTimeoutSeconds: { type: [integer, 'null'] }
+                      offlineAt: { type: [string, 'null'], format: date-time }
+                      lastCommandActivityAt: { type: [string, 'null'], format: date-time }
+                      lastTransactionActivityAt: { type: [string, 'null'], format: date-time }
+                      lastSuccessfulSyncAt: { type: [string, 'null'], format: date-time }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/attendance/adms/devices/{deviceId}/connectivity-policy:
+    patch:
+      tags: [Attendance]
+      operationId: updateAdmsConnectivityPolicy
+      summary: Set a per-device connectivity timeout override or return to adaptive mode
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [timeoutSeconds]
+              properties:
+                timeoutSeconds: { type: [integer, 'null'], minimum: 30, maximum: 3600 }
+      responses:
+        '200': { description: Audited connectivity policy update }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/attendance/adms/devices/{deviceId}/reconciliation-policy:
+    patch:
+      tags: [Attendance]
+      operationId: updateAdmsReconciliationPolicy
+      summary: Configure periodic bounded reconciliation; disabled by default
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled, intervalMinutes, lookbackHours]
+              properties:
+                enabled: { type: boolean }
+                intervalMinutes: { type: integer, minimum: 60, maximum: 10080 }
+                lookbackHours: { type: integer, minimum: 1, maximum: 744 }
+      responses:
+        '200': { description: Audited reconciliation policy update }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/attendance/adms/devices/{deviceId}/telemetry:
+    get:
+      tags: [Attendance]
+      operationId: getAdmsDeviceTelemetry
+      summary: Read safe registry, transport, and INFO telemetry without raw request bodies
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Safe device telemetry, INFO evidence, and reconciliation policy
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [item]
+                properties:
+                  item:
+                    type: object
+                    required: [deviceId, reconciliationEnabled, reconciliationIntervalMinutes, reconciliationLookbackHours]
+                    properties:
+                      deviceId: { type: string, format: uuid }
+                      model: { type: [string, 'null'] }
+                      firmwareVersion: { type: [string, 'null'] }
+                      transportObserved: { type: [object, 'null'], additionalProperties: true }
+                      infoObserved: { type: [object, 'null'], additionalProperties: true, description: Allowlisted INFO result options only. }
+                      firstSeenAt: { type: [string, 'null'], format: date-time }
+                      lastSeenAt: { type: [string, 'null'], format: date-time }
+                      lastSuccessfulRequestAt: { type: [string, 'null'], format: date-time }
+                      lastIp: { type: [string, 'null'] }
+                      reconciliationEnabled: { type: boolean }
+                      reconciliationIntervalMinutes: { type: integer, minimum: 60, maximum: 10080 }
+                      reconciliationLookbackHours: { type: integer, minimum: 1, maximum: 744 }
+                      reconciliationLastRequestedAt: { type: [string, 'null'], format: date-time }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/attendance/adms/devices/{deviceId}/commands:
+    get:
+      tags: [Attendance]
+      operationId: listAdmsDeviceCommands
+      summary: List recent durable commands for a trusted device
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Recent command state and result metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, commandNumber, commandType, wireCommand, reason, status, attemptCount, createdAt, updatedAt]
+                      properties:
+                        id: { type: string, format: uuid }
+                        commandNumber: { type: string }
+                        commandType: { type: string, enum: [sync_new, data_query, read_info] }
+                        wireCommand: { type: string, description: Allowlisted LOG, INFO, or DATA QUERY ATTLOG range command only. }
+                        reason: { type: string, enum: [registration_recovery, admin_sync_new, admin_range_recovery, admin_read_information, scheduled_reconciliation] }
+                        status: { type: string, enum: [pending, delivered, acknowledged, succeeded, failed, expired, cancelled] }
+                        attemptCount: { type: integer, minimum: 0 }
+                        requestedRangeStart: { type: [string, 'null'], format: date-time }
+                        requestedRangeEnd: { type: [string, 'null'], format: date-time }
+                        expiresAt: { type: [string, 'null'], format: date-time }
+                        deliveredAt: { type: [string, 'null'], format: date-time }
+                        acknowledgedAt: { type: [string, 'null'], format: date-time }
+                        completedAt: { type: [string, 'null'], format: date-time }
+                        returnCode: { type: [integer, 'null'] }
+                        resultCommand: { type: [string, 'null'] }
+                        createdAt: { type: string, format: date-time }
+                        updatedAt: { type: string, format: date-time }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/attendance/adms/devices/{deviceId}/commands/read-information:
+    post:
+      tags: [Attendance]
+      operationId: requestAdmsReadInformation
+      summary: Queue the documented read-only INFO command for an active device
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '201': { description: Durable INFO command queued with TTL }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Device is not active or another command is active }
+
+  /admin/attendance/adms/devices/{deviceId}/transfers/sync-new:
+    post:
+      tags: [Attendance]
+      operationId: requestAdmsSyncNew
+      summary: Queue the documented non-destructive LOG command for new transactions
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '201': { description: Durable transfer command queued with TTL }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Device is not active or another command is active }
+
+  /admin/attendance/adms/devices/{deviceId}/transfers/attendance-range:
+    post:
+      tags: [Attendance]
+      operationId: requestAdmsAttendanceRange
+      summary: Queue a bounded DATA QUERY ATTLOG historical transaction request
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [startAt, endAt]
+              properties:
+                startAt: { type: string, format: date-time }
+                endAt: { type: string, format: date-time, description: Must be at or after startAt and no more than 31 days later. }
+      responses:
+        '201': { description: Durable historical transfer command queued with TTL }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Device is not active or another command is active }
+
+  /admin/attendance/adms/commands/{commandId}/cancel:
+    post:
+      tags: [Attendance]
+      operationId: cancelAdmsCommand
+      summary: Cancel a command only while it is still pending delivery
+      parameters:
+        - name: commandId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Pending command cancelled and audited }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Command has already been delivered or completed }
+
+  /admin/attendance/adms/devices/{deviceId}/transactions:
+    get:
+      tags: [Attendance]
+      operationId: listAdmsDeviceTransactions
+      summary: List recent immutable raw transaction facts with effective explicit PIN mapping when available
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Up to 200 recent raw transactions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, pin, occurredAtRaw, occurredAt, receivedAt, sourceRequestId]
+                      properties:
+                        id: { type: string, format: uuid }
+                        pin: { type: string, description: Leading zeroes are significant. }
+                        occurredAtRaw: { type: string }
+                        occurredAt: { type: string, format: date-time }
+                        receivedAt: { type: string, format: date-time }
+                        sourceRequestId: { type: string, format: uuid }
+                        employeeId: { type: [string, 'null'], format: uuid }
+                        employeeNumber: { type: [string, 'null'] }
+                        employeeName: { type: [string, 'null'] }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/attendance/adms/devices/{deviceId}/reconciliation:
+    get:
+      tags: [Attendance]
+      operationId: listAdmsRangeReconciliation
+      summary: Read persisted coverage for recent bounded ATTLOG range transfers without inventing device counts
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Persisted range coverage; expected and rejected-duplicate counts remain null when the device did not report them
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [coverageBasis, expectedCount, duplicatesObserved, note, items]
+                properties:
+                  coverageBasis: { type: string, const: persisted_range }
+                  expectedCount: { type: 'null' }
+                  duplicatesObserved: { type: 'null' }
+                  note: { type: string }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [commandId, commandNumber, reason, status, requestedRangeStart, requestedRangeEnd, currentPersistedCount, persistedSinceDeliveryCount, attlogRequestCount, createdAt]
+                      properties:
+                        commandId: { type: string, format: uuid }
+                        commandNumber: { type: string }
+                        reason: { type: string, enum: [admin_range_recovery, scheduled_reconciliation] }
+                        status: { type: string }
+                        requestedRangeStart: { type: string, format: date-time }
+                        requestedRangeEnd: { type: string, format: date-time }
+                        deliveredAt: { type: [string, 'null'], format: date-time }
+                        completedAt: { type: [string, 'null'], format: date-time }
+                        createdAt: { type: string, format: date-time }
+                        currentPersistedCount: { type: integer, minimum: 0 }
+                        persistedSinceDeliveryCount: { type: integer, minimum: 0 }
+                        firstOccurredAt: { type: [string, 'null'], format: date-time }
+                        lastOccurredAt: { type: [string, 'null'], format: date-time }
+                        attlogRequestCount: { type: integer, minimum: 0 }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/attendance/adms/devices/{deviceId}/logs:
+    get:
+      tags: [Attendance]
+      operationId: getAdmsDeviceLogs
+      summary: Read safe operational request, command, quarantine, and Admin audit summaries
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Operational logs with raw ADMS request bodies explicitly excluded
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [rawRequestBodiesExposed, requests, commandEvents, quarantines, adminAudit]
+                properties:
+                  rawRequestBodiesExposed: { type: boolean, const: false }
+                  requests:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, method, path, classification, responseStatus, bodyByteLength, bodyCaptured, receivedAt]
+                      properties:
+                        id: { type: string, format: uuid }
+                        method: { type: string }
+                        path: { type: string }
+                        classification: { type: string }
+                        responseStatus: { type: integer }
+                        bodyByteLength: { type: integer, minimum: 0 }
+                        bodyCaptured: { type: boolean }
+                        safeMetadata: { type: object, additionalProperties: true }
+                        receivedAt: { type: string, format: date-time }
+                  commandEvents:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, commandId, commandNumber, commandType, eventType, createdAt]
+                      properties:
+                        id: { type: string, format: uuid }
+                        commandId: { type: string, format: uuid }
+                        commandNumber: { type: string }
+                        commandType: { type: string, enum: [sync_new, data_query, read_info] }
+                        eventType: { type: string, enum: [queued, delivered, acknowledged, succeeded, failed, expired, cancelled] }
+                        actorAccountId: { type: [string, 'null'], format: uuid }
+                        requestId: { type: [string, 'null'], format: uuid }
+                        metadata: { type: object, additionalProperties: true }
+                        createdAt: { type: string, format: date-time }
+                  quarantines:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, requestId, reason, details, createdAt]
+                      properties:
+                        id: { type: string, format: uuid }
+                        requestId: { type: string, format: uuid }
+                        reason: { type: string }
+                        details: { type: object, additionalProperties: true }
+                        createdAt: { type: string, format: date-time }
+                  adminAudit:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, actorAccountId, action, createdAt]
+                      properties:
+                        id: { type: string, format: uuid }
+                        actorAccountId: { type: string, format: uuid }
+                        action: { type: string }
+                        beforeState: { type: [object, 'null'], additionalProperties: true }
+                        afterState: { type: [object, 'null'], additionalProperties: true }
+                        createdAt: { type: string, format: date-time }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /admin/attendance/adms/devices/{deviceId}/mappings:
     post:
       tags: [Attendance]
@@ -379,7 +868,6 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
-        '409': { description: Mapping already ended or has not started }
 
   /admin/organization/designer:
     get:

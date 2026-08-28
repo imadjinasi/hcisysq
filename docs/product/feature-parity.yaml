@@ -170,13 +170,14 @@ features:
     module: attendance
     name: WDMS-compatible fingerprint device operations
     legacy_evidence: SQ fingerprint devices use ZKTeco PUSH/ADMS transport; ZKBio WDMS is the accepted operational parity reference for device management
-    target_status: specified
+    target_status: implementing
     priority: core
     risk: critical
     planning_note: Implement all WDMS device-management capabilities that fit internal HCIS, adapting employee/organization/auth concepts to HCIS sources of truth. HCIS includes an encrypted biometric credential vault for backup, restore, enrollment and compatible cross-device synchronization. Delivery uses three large integrated waves with parallel engineering lanes rather than mandatory tiny feature slices; unrelated MTD health screening remains excluded.
     docs:
       - docs/domain/attendance-wdms-device-parity.md
       - docs/domain/attendance-wdms-implementation-plan.md
+      - docs/domain/attendance-wdms-wave1-implementation.md
       - docs/domain/attendance-adms-ingress.md
       - docs/domain/attendance-adms-projection.md
       - docs/domain/attendance-adms-admin.md

@@ -17,6 +17,7 @@ import {
 } from "./protocol.js";
 import { projectAdmsRequest } from "./projection.js";
 import { getAdmsAttlogTransferStamp, persistAdmsIngress } from "./repository.js";
+import { observeDetectedAdmsDevice } from "./wave1.js";
 
 function directHostname(hostHeader: string | undefined): string | null {
   if (!hostHeader || hostHeader.includes(",")) return null;
@@ -125,6 +126,10 @@ export async function registerAdmsIngressRoutes(
       if (userAgent) safeMetadata.userAgent = userAgent;
       if (accept) safeMetadata.accept = accept;
       if (contentEncoding) safeMetadata.contentEncoding = contentEncoding;
+      for (const key of ["pushver", "PushVersion", "language"]) {
+        const value = url.searchParams.get(key);
+        if (value && value.length <= 128) safeMetadata[key] = value;
+      }
 
       const quarantines: AttlogQuarantine[] = [];
       const commandResults: ParsedDeviceCommandResult[] = [];
@@ -154,6 +159,14 @@ export async function registerAdmsIngressRoutes(
       }
 
       const serialCandidate = extractSerialCandidate(url);
+      const requestSourceIp = sourceIp(request);
+      await observeDetectedAdmsDevice(pool, {
+        serialNumber: serialCandidate,
+        sourceIp: requestSourceIp,
+        receivedAt,
+        safeMetadata,
+      });
+
       const attlogStamp = extractAttlogStamp(url);
       const configuredAttlogStamp = serialCandidate
         ? await getAdmsAttlogTransferStamp(pool, serialCandidate)
@@ -174,7 +187,7 @@ export async function registerAdmsIngressRoutes(
         path: url.pathname,
         rawQuery: url.search,
         contentType,
-        sourceIp: sourceIp(request),
+        sourceIp: requestSourceIp,
         safeMetadata,
         serialCandidate,
         body: capture.body,
