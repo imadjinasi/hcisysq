@@ -12,8 +12,20 @@ export type ParsedAttlogEvent = {
   rawLineSha256: string;
 };
 
+export type ParsedDeviceCommandResult = {
+  rawLine: string;
+  commandNumber: string;
+  returnCode: number;
+  command: string;
+};
+
 export type AttlogQuarantine = {
-  reason: "INVALID_FIELD_COUNT" | "INVALID_TIMESTAMP" | "FUTURE_TIMESTAMP" | "UNSUPPORTED_ENCODING";
+  reason:
+    | "INVALID_FIELD_COUNT"
+    | "INVALID_TIMESTAMP"
+    | "FUTURE_TIMESTAMP"
+    | "UNSUPPORTED_ENCODING"
+    | "INVALID_COMMAND_RESULT";
   rawLine: string;
   details: Record<string, string | number | boolean>;
 };
@@ -80,6 +92,52 @@ export function parseAttlogText(
     });
   }
   return { events, quarantines };
+}
+
+export function parseDeviceCommandResultText(
+  text: string,
+): { results: ParsedDeviceCommandResult[]; quarantines: AttlogQuarantine[] } {
+  const results: ParsedDeviceCommandResult[] = [];
+  const quarantines: AttlogQuarantine[] = [];
+
+  for (const rawLine of text.split(/\r\n|\n|\r/)) {
+    if (!rawLine) continue;
+    const params = new URLSearchParams(rawLine);
+    const commandNumber = params.get("ID") ?? "";
+    const returnRaw = params.get("Return") ?? "";
+    const command = (params.get("CMD") ?? "").trim();
+    const returnCode = Number(returnRaw);
+    const valid =
+      /^[1-9]\d{0,18}$/.test(commandNumber) &&
+      /^-?\d+$/.test(returnRaw) &&
+      Number.isSafeInteger(returnCode) &&
+      command.length > 0 &&
+      command.length <= 256 &&
+      !containsControlCharacter(command);
+
+    if (!valid) {
+      quarantines.push({
+        reason: "INVALID_COMMAND_RESULT",
+        rawLine,
+        details: {
+          hasId: Boolean(commandNumber),
+          hasReturn: Boolean(returnRaw),
+          hasCommand: Boolean(command),
+        },
+      });
+      continue;
+    }
+
+    results.push({ rawLine, commandNumber, returnCode, command });
+  }
+
+  return { results, quarantines };
+}
+
+export function deviceCommandWireBody(commandNumber: string | number, wireCommand: "LOG") {
+  const number = String(commandNumber);
+  if (!/^[1-9]\d{0,18}$/.test(number)) throw new Error("Invalid ADMS command number");
+  return `C:${number}:${wireCommand}\n`;
 }
 
 export function extractSerialCandidate(url: URL): string | null {
