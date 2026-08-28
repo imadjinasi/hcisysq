@@ -21,6 +21,7 @@ export function AccountMenu({ user, variant }: AccountMenuProps) {
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -29,7 +30,9 @@ export function AccountMenu({ user, variant }: AccountMenuProps) {
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key !== "Escape") return;
+      setOpen(false);
+      triggerRef.current?.focus();
     };
 
     document.addEventListener("pointerdown", closeOnOutsidePointer);
@@ -54,6 +57,7 @@ export function AccountMenu({ user, variant }: AccountMenuProps) {
   return (
     <div ref={rootRef} className={cn("relative", variant === "sidebar" && "w-full")}>
       <button
+        ref={triggerRef}
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
