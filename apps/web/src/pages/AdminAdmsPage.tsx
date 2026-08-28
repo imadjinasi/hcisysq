@@ -2,6 +2,7 @@ import { AlertTriangle } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { AdminAdmsPanel } from "@/components/attendance/AdminAdmsPanel";
+import { AdminAdmsWave1Details } from "@/components/attendance/AdminAdmsWave1Details";
 import { AdminAdmsWave1Operations } from "@/components/attendance/AdminAdmsWave1Operations";
 import { AdminShell } from "@/layouts/AdminShell";
 import {
@@ -59,6 +60,7 @@ export function AdminAdmsPage() {
         </div>
       ) : null}
       <AdminAdmsWave1Operations />
+      <AdminAdmsWave1Details />
       <AdminAdmsPanel employees={employees} />
     </AdminShell>
   );
