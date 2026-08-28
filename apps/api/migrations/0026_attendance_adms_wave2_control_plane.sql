@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS attendance_biometric_credentials (
   vendor_format text NOT NULL CHECK (length(vendor_format) BETWEEN 1 AND 120),
   vendor_version text NULL CHECK (vendor_version IS NULL OR length(vendor_version) <= 120),
   origin_device_id uuid NULL REFERENCES attendance_adms_devices(id) ON DELETE SET NULL,
+  source_request_id uuid NULL REFERENCES attendance_adms_request_journal(id) ON DELETE SET NULL,
   source_pin text NULL CHECK (source_pin IS NULL OR length(source_pin) BETWEEN 1 AND 128),
   captured_at timestamptz NULL,
   imported_at timestamptz NOT NULL DEFAULT now(),
@@ -81,6 +82,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS attendance_biometric_credentials_active_dedupe
 
 CREATE INDEX IF NOT EXISTS attendance_biometric_credentials_employee_idx
   ON attendance_biometric_credentials (employee_id, lifecycle, modality, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS attendance_biometric_credentials_source_request_idx
+  ON attendance_biometric_credentials (source_request_id)
+  WHERE source_request_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS attendance_biometric_device_states (
   credential_id uuid NOT NULL REFERENCES attendance_biometric_credentials(id) ON DELETE CASCADE,
