@@ -134,9 +134,23 @@ export function parseDeviceCommandResultText(
   return { results, quarantines };
 }
 
-export function deviceCommandWireBody(commandNumber: string | number, wireCommand: "LOG") {
+const deviceTimestampPattern = "\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}";
+const attlogRangeCommandPattern = new RegExp(
+  `^DATA QUERY ATTLOG StartTime=${deviceTimestampPattern}\\tEndTime=${deviceTimestampPattern}$`,
+);
+
+export function attlogRangeWireCommand(startTime: string, endTime: string) {
+  const command = `DATA QUERY ATTLOG StartTime=${startTime}\tEndTime=${endTime}`;
+  if (!attlogRangeCommandPattern.test(command)) throw new Error("Invalid ADMS ATTLOG range command");
+  return command;
+}
+
+export function deviceCommandWireBody(commandNumber: string | number, wireCommand: string) {
   const number = String(commandNumber);
   if (!/^[1-9]\d{0,18}$/.test(number)) throw new Error("Invalid ADMS command number");
+  if (wireCommand !== "LOG" && !attlogRangeCommandPattern.test(wireCommand)) {
+    throw new Error("Unsupported ADMS wire command");
+  }
   return `C:${number}:${wireCommand}\n`;
 }
 
