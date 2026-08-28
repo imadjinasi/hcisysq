@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type { Pool } from "pg";
 
 import type { SafeDeviceRosterRecord } from "./wave2-protocol.js";
@@ -22,8 +24,8 @@ export async function observeDeviceRosterEntries(
            id, device_id, pin, display_name, card_number, privilege, verify_mode,
            safe_metadata, source_request_id, first_seen_at, last_seen_at
          ) VALUES (
-           gen_random_uuid(), $1, $2, $3, $4, $5, $6,
-           $7::jsonb, $8, $9, $9
+           $1, $2, $3, $4, $5, $6, $7,
+           $8::jsonb, $9, $10, $10
          )
          ON CONFLICT (device_id, pin) DO UPDATE
          SET display_name = EXCLUDED.display_name,
@@ -36,6 +38,7 @@ export async function observeDeviceRosterEntries(
              last_seen_at = GREATEST(attendance_adms_device_roster_entries.last_seen_at, EXCLUDED.last_seen_at),
              updated_at = now()`,
         [
+          randomUUID(),
           input.deviceId,
           record.pin,
           record.displayName,
