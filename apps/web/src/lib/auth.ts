@@ -72,17 +72,40 @@ export async function getCurrentSession(): Promise<AuthSession | null> {
   }
 }
 
-export async function logout(): Promise<void> {
+/**
+ * Clears the HCIS session. Returns true when navigation to the SQ Identity
+ * end-session endpoint has already been initiated and callers must not replace it
+ * with a local redirect.
+ */
+export async function logout(): Promise<boolean> {
   const response = await fetch("/api/auth/logout", {
     method: "POST",
     headers: { Accept: "application/json" },
   });
 
-  if (response.status === 204) return;
+  if (response.status === 204) return false;
   if (!response.ok) throw await readError(response);
 
   const payload = (await response.json()) as { logoutUrl?: string | null };
-  if (payload.logoutUrl) window.location.assign(payload.logoutUrl);
+  if (!payload.logoutUrl) return false;
+
+  window.location.assign(payload.logoutUrl);
+  return true;
+}
+
+export function oidcLoginFailureMessage(category: string | null): string | null {
+  switch (category) {
+    case "access_denied":
+      return "Identitas Anda berhasil dikenali oleh SQ Identity, tetapi akun ini belum memiliki akses ke HCIS. Hubungi administrator SQ jika akses diperlukan.";
+    case "access_unavailable":
+      return "HCIS belum dapat memverifikasi hak akses Anda. Silakan coba lagi beberapa saat.";
+    case "account_inactive":
+      return "Akun HCIS Anda sedang tidak aktif. Hubungi Human Capital jika status ini perlu diperiksa.";
+    case "oidc_failed":
+      return "Masuk melalui SQ Identity belum berhasil. Silakan coba lagi.";
+    default:
+      return null;
+  }
 }
 
 export function landingPath(
