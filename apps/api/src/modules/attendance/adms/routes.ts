@@ -306,6 +306,7 @@ export async function registerAdmsIngressRoutes(
         // Returning a server error lets the device retry while the already-durable journal remains redacted.
         await importMappedPassiveBiometrics(pool, config, {
           deviceId: result.deviceId,
+          sourceRequestId: result.requestId,
           observedAt: receivedAt,
           records: passiveBiometricCandidates,
         });
