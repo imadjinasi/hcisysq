@@ -14,7 +14,7 @@ describe("OIDC login failure copy", () => {
 
   it("does not render arbitrary query-string values as login errors", () => {
     expect(oidcLoginFailureMessage("OIDC_ACCOUNT_NOT_MAPPED")).toBeNull();
-    expect(oidcLoginFailureMessage("token=secret" )).toBeNull();
+    expect(oidcLoginFailureMessage("token=secret")).toBeNull();
     expect(oidcLoginFailureMessage(null)).toBeNull();
   });
 });
