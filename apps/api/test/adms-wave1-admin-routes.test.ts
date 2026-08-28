@@ -14,7 +14,12 @@ const config = {
   AUTH_SESSION_TTL_HOURS: 8,
 };
 
-function createPool(principalType: "EMPLOYEE" | "SUPER_ADMIN") {
+const deviceId = "00000000-0000-4000-8000-000000000501";
+
+function createPool(
+  principalType: "EMPLOYEE" | "SUPER_ADMIN",
+  rangeTargetLifecycle: "active" | "disabled" | null = null,
+) {
   const query = vi.fn(async (sql: string) => {
     if (sql.includes("FROM auth_sessions s")) {
       return {
@@ -51,6 +56,14 @@ function createPool(principalType: "EMPLOYEE" | "SUPER_ADMIN") {
         ],
         rowCount: 1,
       };
+    }
+    if (sql.includes("SELECT timezone, lifecycle FROM attendance_adms_devices WHERE id = $1")) {
+      return rangeTargetLifecycle === null
+        ? { rows: [], rowCount: 0 }
+        : {
+            rows: [{ timezone: "Asia/Jakarta", lifecycle: rangeTargetLifecycle }],
+            rowCount: 1,
+          };
     }
     throw new Error(`Unexpected SQL in ADMS Wave 1 admin test: ${sql}`);
   });
@@ -96,5 +109,45 @@ describe("ATT-005 Wave 1 admin authorization", () => {
       query.mock.calls.some(([sql]) => String(sql).includes("attendance_adms_detected_devices")),
     ).toBe(false);
     await app.close();
+  });
+
+  it("returns 404 for a missing historical-range target and 409 for an inactive target", async () => {
+    const missingPool = createPool("SUPER_ADMIN", null);
+    const missingApp = Fastify({ logger: false });
+    await registerAdmsWave1AdminRoutes(missingApp, missingPool.pool, config);
+    const missing = await missingApp.inject({
+      method: "POST",
+      url: `/admin/attendance/adms/devices/${deviceId}/transfers/attendance-range`,
+      headers: {
+        cookie: "hcis_session=test-token",
+        "content-type": "application/json",
+      },
+      payload: {
+        startAt: "2026-08-27T00:00:00+07:00",
+        endAt: "2026-08-28T00:00:00+07:00",
+      },
+    });
+    expect(missing.statusCode).toBe(404);
+    expect(missing.json()).toMatchObject({ code: "ADMS_DEVICE_NOT_FOUND" });
+    await missingApp.close();
+
+    const inactivePool = createPool("SUPER_ADMIN", "disabled");
+    const inactiveApp = Fastify({ logger: false });
+    await registerAdmsWave1AdminRoutes(inactiveApp, inactivePool.pool, config);
+    const inactive = await inactiveApp.inject({
+      method: "POST",
+      url: `/admin/attendance/adms/devices/${deviceId}/transfers/attendance-range`,
+      headers: {
+        cookie: "hcis_session=test-token",
+        "content-type": "application/json",
+      },
+      payload: {
+        startAt: "2026-08-27T00:00:00+07:00",
+        endAt: "2026-08-28T00:00:00+07:00",
+      },
+    });
+    expect(inactive.statusCode).toBe(409);
+    expect(inactive.json()).toMatchObject({ code: "ADMS_DEVICE_NOT_ACTIVE" });
+    await inactiveApp.close();
   });
 });
