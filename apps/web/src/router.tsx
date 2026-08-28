@@ -10,6 +10,7 @@ import {
 import { getCurrentSession, landingPath } from "@/lib/auth";
 import { AccountActivationPage } from "@/pages/AccountActivationPage";
 import { AdminAccessPage } from "@/pages/AdminAccessPage";
+import { AdminAdmsPage } from "@/pages/AdminAdmsPage";
 import { AdminAttendancePage } from "@/pages/AdminAttendancePage";
 import { AdminEmployeeDetailRoutePage } from "@/pages/AdminEmployeeDetailRoutePage";
 import { AdminEmployeeImportHistoryPage } from "@/pages/AdminEmployeeImportHistoryPage";
@@ -190,6 +191,13 @@ const adminAttendanceRoute = createRoute({
   component: AdminAttendancePage,
 });
 
+const adminAdmsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/attendance/devices",
+  beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
+  component: AdminAdmsPage,
+});
+
 const adminLeaveRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/leave",
@@ -246,6 +254,7 @@ const routeTree = rootRoute.addChildren([
   adminEmployeeImportHistoryRoute,
   adminOrganizationRoute,
   adminAttendanceRoute,
+  adminAdmsRoute,
   adminLeaveRoute,
   adminLeaveCalendarRoute,
   adminPayslipsRoute,
