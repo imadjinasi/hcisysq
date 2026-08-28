@@ -64,17 +64,27 @@ The Wave 1 health projection derives an effective connectivity timeout from:
 
 If there is insufficient request-cadence evidence and no override, connectivity is `unknown` rather than guessed.
 
-The Admin API exposes the observed median request interval, effective timeout, predicted offline timestamp, last successful request, last source IP, last command activity, and last raw-transaction activity.
+The Admin API exposes the observed median request interval, effective timeout, predicted offline timestamp, last successful request, last source IP, last command activity, last successful sync, and last raw-transaction activity.
 
 Super Admin can set an explicit timeout override from 30–3600 seconds or clear it to return to adaptive mode. Policy changes are audited as device updates rather than hidden operational state.
 
-## Safe device telemetry
+## Safe device telemetry and Read Information
 
 Wave 1 retains safe transport metadata observed on ADMS requests for registered devices under `attendance_adms_devices.metadata.transportObserved`.
 
 The currently captured transport metadata is deliberately narrow and may include values such as PUSH version and language plus the observation timestamp. It does not expose raw request bodies through the Admin telemetry endpoint.
 
-Registry `model` and `firmware_version` remain explicit device metadata. A model or firmware value is not inferred when the current device transport has not supplied authoritative evidence for it.
+Wave 1 also supports the documented read-only `INFO` command. The wire serializer only permits the literal allowlisted command:
+
+```text
+C:<command-id>:INFO
+```
+
+Successful INFO response options are filtered through an explicit allowlist before being stored under `attendance_adms_devices.metadata.infoObserved`. The allowlist covers operational evidence such as firmware, platform/PUSH version and supported user/fingerprint/face/palm/transaction counters. Unknown INFO options are ignored rather than copied into the operational read model.
+
+`FWVersion`, when returned by a successful INFO result, may refresh `firmware_version`. Platform/device-name values are retained as observed telemetry and are not automatically treated as a canonical model number when the protocol does not prove that equivalence.
+
+No arbitrary remote-command input, shell command, or generic wire-command field is exposed to Admin users.
 
 ## Transaction transfer commands
 
@@ -86,7 +96,7 @@ Historical recovery uses the ZKTeco PUSH data-query command shape:
 C:<command-id>:DATA QUERY ATTLOG StartTime=YYYY-MM-DD HH:mm:ss<TAB>EndTime=YYYY-MM-DD HH:mm:ss
 ```
 
-The application does not accept arbitrary wire command text from Admin requests. Wire serialization is allowlisted to `LOG` and the validated ATTLOG range-query form. The repository command model treats the stored wire command as validated command text instead of incorrectly typing every durable transfer as the literal `LOG` command.
+The application does not accept arbitrary wire command text from Admin requests. Wire serialization is allowlisted to `LOG`, `INFO`, and the validated ATTLOG range-query form. The repository command model treats the stored wire command as validated command text instead of incorrectly typing every durable transfer as the literal `LOG` command.
 
 Historical range requests:
 
@@ -99,37 +109,74 @@ Historical range requests:
 
 `ATTLOGStamp=0 + CHECK` is not the primary historical-recovery UX.
 
-## Command observability
+The accepted WDMS parity reference includes an “upload all transactions” action. No separate documented PUSH wire command for “all” has been proven for the current physical device/firmware, so Wave 1 does **not** invent one. Full-history recovery must be orchestrated from proven bounded range commands only after the lower-bound/completeness strategy is validated against physical-device behavior.
+
+## Command state and observability
 
 Wave 1 exposes recent durable command state including:
 
 - command number;
-- operation/reason;
+- command type and reason;
 - allowlisted wire command;
 - status;
 - attempt count;
 - requested range;
+- expiry timestamp;
 - delivery/acknowledgement/completion timestamps;
 - return code and result command.
 
 Pending commands may be cancelled. Delivered commands are not presented as safely cancellable because the device may already have received them.
 
-The existing retry behavior remains bounded and is used only for the current non-destructive/idempotent transaction-transfer operations. ATTLOG retransmission remains safe because raw event identity is exact-deduplicated.
+All current Wave 1 commands are read-only/non-destructive (`LOG`, `INFO`, bounded ATTLOG range query), so bounded retry remains safe. ATTLOG retransmission remains safe because raw event identity is exact-deduplicated.
+
+Commands have a TTL. Active commands whose TTL elapses transition to `expired`, retain their command history, and emit an immutable `expired` command event. Late device results for an already expired/cancelled command are quarantined instead of silently rewriting terminal history.
+
+The active-command constraint allows only one pending/delivered/acknowledged command per device at a time. This prevents an INFO request, manual transfer and scheduled reconciliation from racing each other on the device polling channel.
+
+## Periodic bounded reconciliation
+
+A per-device reconciliation policy is implemented with:
+
+- `reconciliation_enabled` — default `false`;
+- `reconciliation_interval_minutes` — default 1440 minutes, configurable from 60 to 10080;
+- `reconciliation_lookback_hours` — default 48 hours, configurable from 1 to 744;
+- `reconciliation_last_requested_at` — last automatically queued window.
+
+The scheduler runs opportunistically on an active device poll. It queues a reconciliation only when:
+
+- reconciliation is explicitly enabled;
+- the configured interval is due;
+- no other active command exists for the device.
+
+The automatic command is always a bounded `DATA QUERY ATTLOG` request. It never exceeds the 31-day safety boundary, receives a command TTL, and is disabled by default so merging software does not automatically increase device traffic before the physical canary/policy decision.
 
 ## Historical reconciliation semantics
 
-A bounded range command now has a reconciliation read model. The purpose is to show evidence that HCIS can actually prove, not to manufacture WDMS-style completeness claims from unavailable data.
+A bounded range command has a reconciliation read model. The purpose is to show evidence that HCIS can actually prove, not to manufacture WDMS-style completeness claims from unavailable data.
 
-For each recent historical range command, the Admin API can show:
+For each recent manual or scheduled historical range command, the Admin API can show:
 
 - current persisted raw-event count whose occurrence time falls inside the requested range;
 - how many such persisted events were received at or after command delivery;
 - first and last persisted occurrence in the range;
 - the number of ATTLOG journal requests observed after delivery.
 
-The response intentionally reports `expectedCount: null` when the physical device has not supplied an expected row count. It also reports `duplicatesObserved: null` rather than pretending the immutable fact table can reconstruct every exact duplicate rejected at insertion time.
+The response intentionally reports `expectedCount: null` when the physical device has not supplied an expected row count for that specific requested range. A general device `TransactionCount` obtained from INFO is not treated as an expected count for an arbitrary date range.
+
+It also reports `duplicatesObserved: null` rather than pretending the immutable fact table can reconstruct every exact duplicate rejected at insertion time.
 
 This is therefore labelled **persisted-range coverage**, not a proof that a physical device has no missing rows. Hardware validation remains necessary for transaction completeness claims.
+
+## Safe operational logs
+
+Wave 1 exposes an Admin Logs read model with recent:
+
+- request metadata (method/path/classification/status/body size/capture status/safe metadata);
+- command lifecycle events;
+- quarantine summaries;
+- immutable Admin audit events.
+
+Raw request bodies are deliberately excluded from this Admin log endpoint. The durable request journal remains the underlying forensic source, but the routine UI does not casually expose raw ADMS payloads.
 
 ## Admin UI
 
@@ -137,29 +184,35 @@ This is therefore labelled **persisted-range coverage**, not a proof that a phys
 
 - multi-device cards rather than relying only on the legacy dropdown;
 - lifecycle and connectivity displayed separately;
-- last activity and effective timeout diagnostics;
+- last activity, last successful sync, and effective timeout diagnostics;
 - editable connectivity timeout override with adaptive fallback;
 - safe observed transport telemetry;
+- explicit `Read Information` command for active devices;
+- safe INFO counters/firmware evidence after a successful result;
 - sync-new transaction action;
 - bounded historical range upload action;
-- recent command state and pending cancellation;
+- configurable periodic bounded reconciliation, default OFF;
+- recent command state, expiry, and pending cancellation;
 - persisted-range reconciliation summaries;
 - recent immutable raw transactions with explicit effective PIN-to-employee mapping when available;
+- safe request/command/quarantine/Admin logs;
 - detected/untrusted device queue with explicit claim.
 
 The existing PIN-mapping and detailed raw-attendance administration surface remains available below it.
 
 ## API contract
 
-`docs/api/openapi.yaml` is synchronized with the Wave 1 routes for:
+`docs/api/openapi.yaml` is the authoritative route contract and must remain synchronized with the Wave 1 surface for:
 
 - detected-device discovery and claim;
 - connectivity health and policy;
-- safe telemetry;
-- command listing and pending cancellation;
+- safe transport/INFO telemetry;
+- reconciliation policy;
+- command listing, Read Information, expiry and pending cancellation;
 - sync-new and bounded attendance-range transfers;
 - recent raw transactions;
-- persisted-range reconciliation.
+- persisted-range reconciliation;
+- safe operational logs.
 
 The contract continues to distinguish software implementation from production/hardware verification.
 
@@ -182,15 +235,17 @@ Rollback of application code may leave additive Wave 1 tables/columns unused. Do
 
 ## Verification status
 
-Earlier Wave 1 draft heads passed GitHub Actions clean migration, typecheck, lint, automated tests, build, and compose validation on synthetic data. Every subsequent software cleanup head must pass the same quality gate before the PR is declared ready for review.
+Wave 1 software heads are required to pass GitHub Actions clean migration, typecheck, lint, automated tests, build, and compose validation. Synthetic integration coverage includes default-disabled reconciliation, enabled bounded reconciliation scheduling, and INFO allowlist persistence.
 
 Production deployment remains a human-approved cutover.
 
 Hardware-dependent checks still required before Wave 1 is declared production-complete:
 
 - fresh physical punch realtime canary — **PENDING CANARY**;
+- physical `INFO` command/result against a target device;
 - bounded `DATA QUERY ATTLOG` request against a physical target device;
 - retransmission/dedup evidence from that bounded historical request;
-- online/offline transition observation using real device polling cadence.
+- online/offline transition observation using real device polling cadence;
+- validate a safe full-history orchestration strategy before offering “upload all” as a parity action.
 
-Biometric vault, roster synchronization, remote enrollment, messages, firmware, reboot, and destructive maintenance remain outside this Wave 1 implementation.
+Biometric vault, roster synchronization, remote enrollment, messages, firmware update, reboot, and destructive maintenance remain outside this Wave 1 implementation.
