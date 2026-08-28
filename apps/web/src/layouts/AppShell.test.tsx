@@ -38,3 +38,13 @@ describe("AppShell organization-wide Human Capital navigation", () => {
     expect(html).toContain('href="/app/hc/attendance-resolution"');
   });
 });
+
+describe("AppShell account affordances", () => {
+  it("renders account-menu triggers in both the sidebar and responsive header", () => {
+    const html = renderWithHcCapability(false);
+
+    expect(html.match(/aria-haspopup="menu"/g)).toHaveLength(2);
+    expect(html).toContain('aria-label="Menu akun Pegawai Sintetis"');
+    expect(html).toContain('aria-expanded="false"');
+  });
+});
