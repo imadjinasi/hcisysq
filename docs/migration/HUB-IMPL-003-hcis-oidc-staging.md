@@ -47,6 +47,26 @@ The callback route suppresses request logging because the callback URL contains 
 
 New session creation fails closed for invalid or expired callback state, invalid OIDC validation, missing mapping, inactive local account, denied Application Access, or unavailable Application Access verification.
 
+AUTH-003 adds only safe browser-facing failure categories after the callback has failed:
+- `HCIS_ACCESS_DENIED` -> `access_denied`;
+- `APPLICATION_ACCESS_UNAVAILABLE` -> `access_unavailable`;
+- `ACCOUNT_INACTIVE` -> `account_inactive`;
+- all mapping/provider/callback/unexpected failures -> `oidc_failed`.
+
+The browser category never contains the OIDC subject, authorization code, token, provider detail, or raw backend error message.
+
+## Employee account/session UX
+
+`AUTH-003` adds a shared account menu to the employee shell:
+- the top-right avatar/profile opens the menu on desktop and mobile;
+- the desktop sidebar user card opens the same menu;
+- `Akun Saya` is reserved for the future SQ Account Center and remains visibly unavailable until that platform target exists;
+- `Keluar` calls the existing `/auth/logout` contract and lets a single navigation decision follow either the SQ Identity end-session URL or the local HCIS entry.
+
+HCIS does not add local password, MFA, recovery, or shared-security settings to fill the future SQ Account Center gap.
+
+The Keycloak logout confirmation currently observed in staging remains part of the approved secure flow. This UX work does not hide or bypass that IdP confirmation.
+
 ## Database migration
 
 `0020_hub_oidc_identity_mapping.sql` adds:
@@ -111,7 +131,7 @@ docker compose \
 ```
 
 Before browser UAT, verify from the VPS/container path that:
-- `https://login-staging.sabilulquran.or.id/realms/sq-staff-staging/.well-known/openid-configuration` is reachable;
+- `https://login.sabilulquran.or.id/realms/sq-staff-staging/.well-known/openid-configuration` is reachable;
 - `sq-hub-api-staging:3100` resolves from the HCIS API container over `sq_platform_staging`;
 - the HCIS API `/health` endpoint is healthy;
 - `https://hcis-staging.sabilulquran.or.id` terminates TLS and reaches `hcis-staging-web`.
