@@ -1,0 +1,242 @@
+openapi: 3.1.0
+info:
+  title: HCIS YSQ ATT-005 Wave 2 OpenAPI Fragment
+  version: 0.0.1
+  description: |
+    Reviewable contract fragment for ATT-005 Wave 2 metadata-only Admin routes.
+    This file does not replace docs/api/openapi.yaml. The authoritative aggregate
+    remains incomplete until these paths are merged there.
+tags:
+  - name: Attendance
+paths:
+  /admin/attendance/adms/devices/{deviceId}/roster:
+    get:
+      tags: [Attendance]
+      operationId: listObservedAdmsDeviceRoster
+      summary: List safe roster observations for one trusted device
+      description: |
+        Returns only allowlisted roster observations. This is not a complete device snapshot:
+        absence from this list must not be interpreted as proof that a user is missing on-device.
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: Safe observed roster with current explicit HCIS PIN mapping when available
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [inventorySemantics, completeSnapshot, note, items]
+                properties:
+                  inventorySemantics:
+                    type: string
+                    const: observed_only
+                  completeSnapshot:
+                    type: boolean
+                    const: false
+                  note:
+                    type: string
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ObservedAdmsRosterItem'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/attendance/adms/biometrics:
+    get:
+      tags: [Attendance]
+      operationId: listAdmsBiometricCredentialMetadata
+      summary: List biometric vault metadata without payload/envelope/key material
+      description: |
+        SUPER_ADMIN metadata-only surface. It never returns plaintext template bytes,
+        ciphertext, payload hash, IV, authentication tag, encryption key ID, or key material.
+      parameters:
+        - name: employeeId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: originDeviceId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: modality
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [fingerprint, face, palm, bio_photo]
+      responses:
+        '200':
+          description: Vault credential metadata only
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [collectionEnabled, rawPayloadExposed, items]
+                properties:
+                  collectionEnabled:
+                    type: boolean
+                  rawPayloadExposed:
+                    type: boolean
+                    const: false
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AdmsBiometricCredentialMetadata'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/attendance/adms/devices/{deviceId}/biometric-inventory:
+    get:
+      tags: [Attendance]
+      operationId: listAdmsDeviceKnownBiometricReplicaState
+      summary: List known biometric replica evidence for one trusted device
+      description: |
+        Evidence-driven state only. A missing state is not inferred because another device
+        has never been queried. The routine response excludes device payload hashes and vault
+        payload/envelope/key material.
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: Known replica state metadata only
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [inventorySemantics, rawPayloadExposed, items]
+                properties:
+                  inventorySemantics:
+                    type: string
+                    const: known_replica_state
+                  rawPayloadExposed:
+                    type: boolean
+                    const: false
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AdmsBiometricReplicaMetadata'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  parameters:
+    DeviceId:
+      name: deviceId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    Unauthenticated:
+      description: Authentication required
+    Forbidden:
+      description: SUPER_ADMIN authorization required
+    NotFound:
+      description: Trusted ADMS device not found
+    ValidationError:
+      description: Request validation failed
+
+  schemas:
+    ObservedAdmsRosterItem:
+      type: object
+      required:
+        [id, pin, firstSeenAt, lastSeenAt, sourceRequestId, mappingStatus]
+      properties:
+        id: { type: string, format: uuid }
+        pin:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Leading zeroes are significant.
+        displayName: { type: [string, 'null'], maxLength: 160 }
+        cardNumber: { type: [string, 'null'], maxLength: 160 }
+        privilege: { type: [string, 'null'], maxLength: 80 }
+        verifyMode: { type: [string, 'null'], maxLength: 80 }
+        safeMetadata:
+          type: object
+          additionalProperties: true
+          description: Allowlisted non-secret device roster metadata only.
+        firstSeenAt: { type: string, format: date-time }
+        lastSeenAt: { type: string, format: date-time }
+        sourceRequestId: { type: [string, 'null'], format: uuid }
+        mappingId: { type: [string, 'null'], format: uuid }
+        employeeId: { type: [string, 'null'], format: uuid }
+        employeeNumber: { type: [string, 'null'] }
+        employeeName: { type: [string, 'null'] }
+        employeeStatus: { type: [string, 'null'] }
+        mappingStatus:
+          type: string
+          enum: [mapped, unmapped]
+
+    AdmsBiometricCredentialMetadata:
+      type: object
+      required:
+        [id, employeeId, employeeNumber, employeeName, employeeStatus, modality, vendorFormat, importedAt, lifecycle, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        employeeId: { type: string, format: uuid }
+        employeeNumber: { type: string }
+        employeeName: { type: string }
+        employeeStatus: { type: string }
+        modality:
+          type: string
+          enum: [fingerprint, face, palm, bio_photo]
+        slotIndex: { type: [integer, 'null'], minimum: 0, maximum: 255 }
+        vendorFormat: { type: string, maxLength: 120 }
+        vendorVersion: { type: [string, 'null'], maxLength: 120 }
+        originDeviceId: { type: [string, 'null'], format: uuid }
+        originDeviceSerial: { type: [string, 'null'] }
+        sourcePin:
+          type: [string, 'null']
+          description: Device-local PIN; leading zeroes are significant.
+        capturedAt: { type: [string, 'null'], format: date-time }
+        importedAt: { type: string, format: date-time }
+        lifecycle:
+          type: string
+          enum: [active, retired, destroyed]
+        payloadByteLength:
+          type: [integer, 'null']
+          minimum: 0
+          description: Size metadata only; payload and cryptographic envelope are not exposed.
+        safeMetadata:
+          type: object
+          additionalProperties: true
+          description: Allowlisted non-secret credential metadata only.
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    AdmsBiometricReplicaMetadata:
+      type: object
+      required:
+        [credentialId, state, employeeId, employeeNumber, employeeName, modality, vaultVendorFormat, credentialLifecycle]
+      properties:
+        credentialId: { type: string, format: uuid }
+        state:
+          type: string
+          enum: [unknown, missing, present, stale, conflict, pending, succeeded, failed]
+        deviceVendorFormat: { type: [string, 'null'], maxLength: 120 }
+        observedAt: { type: [string, 'null'], format: date-time }
+        lastSyncedAt: { type: [string, 'null'], format: date-time }
+        lastErrorCode: { type: [string, 'null'], maxLength: 120 }
+        safeMetadata:
+          type: object
+          additionalProperties: true
+        employeeId: { type: string, format: uuid }
+        employeeNumber: { type: string }
+        employeeName: { type: string }
+        modality:
+          type: string
+          enum: [fingerprint, face, palm, bio_photo]
+        slotIndex: { type: [integer, 'null'], minimum: 0, maximum: 255 }
+        vaultVendorFormat: { type: string, maxLength: 120 }
+        vaultVendorVersion: { type: [string, 'null'], maxLength: 120 }
+        credentialLifecycle:
+          type: string
+          enum: [active, retired, destroyed]
