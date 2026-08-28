@@ -212,7 +212,7 @@ export async function registerAdmsIngressRoutes(
                   safeMetadata.biometricRecordCount = String(parsedBiometrics.records.length);
                 }
                 if (parsedBiometrics.rejectedRecords > 0) {
-                  safeMetadata.biometricRejectedRecordCount = String(parsedBiometrics.rejectedRecords);
+                  safeMetadata.biometricRejectedRecordCount = String(parsedBiometrics.rejectedRecords.length);
                 }
               }
             }
@@ -230,6 +230,24 @@ export async function registerAdmsIngressRoutes(
             }
             quarantines.push({ reason: "UNSUPPORTED_ENCODING", rawLine: "", details: {} });
           }
+        }
+      }
+
+      if (
+        !capture.bodyCaptured &&
+        capture.bodyByteLength > 0 &&
+        request.method === "POST" &&
+        url.pathname === "/iclock/cdata"
+      ) {
+        safeMetadata.bodyCapture = "hash_only_oversize";
+        if (protocolTable === "ATTLOG") {
+          classification = "attlog_oversize_rejected";
+        } else {
+          redactJournalBody = true;
+          classification = isSensitiveProtocolTable(protocolTable)
+            ? "sensitive_device_data_redacted"
+            : "device_data_redacted";
+          safeMetadata.bodyRedaction = classification;
         }
       }
 
