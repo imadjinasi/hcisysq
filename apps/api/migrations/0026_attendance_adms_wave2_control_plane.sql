@@ -70,7 +70,13 @@ CREATE TABLE IF NOT EXISTS attendance_biometric_credentials (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS attendance_biometric_credentials_active_dedupe_idx
-  ON attendance_biometric_credentials (employee_id, modality, payload_sha256)
+  ON attendance_biometric_credentials (
+    employee_id,
+    modality,
+    vendor_format,
+    COALESCE(slot_index, -1),
+    payload_sha256
+  )
   WHERE payload_sha256 IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS attendance_biometric_credentials_employee_idx
