@@ -75,6 +75,15 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
     }
     if (
       databaseError.code === "23514" &&
+      databaseError.message === "ADMS employee mapping overlaps existing mapping"
+    ) {
+      return reply.status(409).send({
+        code: "ADMS_MAPPING_OVERLAP",
+        message: "Rentang mapping PIN bertabrakan dengan histori mapping yang sudah ada.",
+      });
+    }
+    if (
+      databaseError.code === "23514" &&
       [
         "attendance resolution is already final",
         "attendance resolution is awaiting employee decision",
