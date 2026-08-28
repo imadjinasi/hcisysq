@@ -12,6 +12,7 @@ import {
   optionsAllHandshakeBody,
   type AttlogQuarantine,
 } from "./protocol.js";
+import { projectAdmsRequest } from "./projection.js";
 import { getAdmsAttlogTransferStamp, persistAdmsIngress } from "./repository.js";
 
 function directHostname(hostHeader: string | undefined): string | null {
@@ -174,6 +175,17 @@ export async function registerAdmsIngressRoutes(
         quarantines,
         successResponseBody,
       });
+
+      if (result.accepted && result.insertedEvents > 0) {
+        try {
+          await projectAdmsRequest(pool, result.requestId);
+        } catch (error) {
+          request.log.error(
+            { err: error, requestId: result.requestId, deviceId: result.deviceId },
+            "ADMS attendance projection failed after durable capture",
+          );
+        }
+      }
 
       reply.header("cache-control", "no-store");
       reply.header("x-content-type-options", "nosniff");
