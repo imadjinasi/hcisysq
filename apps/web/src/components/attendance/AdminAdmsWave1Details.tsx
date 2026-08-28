@@ -1,4 +1,13 @@
-import { Activity, Database, Gauge, RefreshCw, Save, ServerCog } from "lucide-react";
+import {
+  Activity,
+  Database,
+  FileClock,
+  Gauge,
+  Info,
+  RefreshCw,
+  Save,
+  ServerCog,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { listAdmsDevices, type AdmsDevice } from "@/lib/attendance";
@@ -9,6 +18,7 @@ type Health = {
   connectivityTimeoutOverrideSeconds: number | null;
   effectiveConnectivityTimeoutSeconds: number | null;
   observedMedianRequestIntervalSeconds: number | null;
+  lastSuccessfulSyncAt: string | null;
 };
 
 type Telemetry = {
@@ -16,10 +26,15 @@ type Telemetry = {
   model: string | null;
   firmwareVersion: string | null;
   transportObserved: Record<string, unknown> | null;
+  infoObserved: Record<string, unknown> | null;
   firstSeenAt: string | null;
   lastSeenAt: string | null;
   lastSuccessfulRequestAt: string | null;
   lastIp: string | null;
+  reconciliationEnabled: boolean;
+  reconciliationIntervalMinutes: number;
+  reconciliationLookbackHours: number;
+  reconciliationLastRequestedAt: string | null;
 };
 
 type Transaction = {
@@ -37,6 +52,7 @@ type Transaction = {
 type ReconciliationItem = {
   commandId: string;
   commandNumber: string;
+  reason: string;
   status: string;
   requestedRangeStart: string;
   requestedRangeEnd: string;
@@ -56,6 +72,39 @@ type Reconciliation = {
   duplicatesObserved: null;
   note: string;
   items: ReconciliationItem[];
+};
+
+type SafeLogs = {
+  rawRequestBodiesExposed: false;
+  requests: Array<{
+    id: string;
+    method: string;
+    path: string;
+    classification: string;
+    responseStatus: number;
+    bodyByteLength: number;
+    bodyCaptured: boolean;
+    receivedAt: string;
+  }>;
+  commandEvents: Array<{
+    id: string;
+    commandId: string;
+    commandNumber: string;
+    commandType: string;
+    eventType: string;
+    createdAt: string;
+  }>;
+  quarantines: Array<{
+    id: string;
+    reason: string;
+    details: Record<string, unknown>;
+    createdAt: string;
+  }>;
+  adminAudit: Array<{
+    id: string;
+    action: string;
+    createdAt: string;
+  }>;
 };
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -88,8 +137,12 @@ export function AdminAdmsWave1Details() {
   const [telemetry, setTelemetry] = useState<Telemetry | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [reconciliation, setReconciliation] = useState<Reconciliation | null>(null);
+  const [logs, setLogs] = useState<SafeLogs | null>(null);
   const [timeoutInput, setTimeoutInput] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [reconciliationEnabled, setReconciliationEnabled] = useState(false);
+  const [reconciliationInterval, setReconciliationInterval] = useState("1440");
+  const [reconciliationLookback, setReconciliationLookback] = useState("48");
+  const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadDevices = useCallback(async () => {
@@ -108,10 +161,17 @@ export function AdminAdmsWave1Details() {
       setTelemetry(null);
       setTransactions([]);
       setReconciliation(null);
+      setLogs(null);
       return;
     }
     try {
-      const [healthResponse, telemetryResponse, transactionResponse, reconciliationResponse] = await Promise.all([
+      const [
+        healthResponse,
+        telemetryResponse,
+        transactionResponse,
+        reconciliationResponse,
+        logResponse,
+      ] = await Promise.all([
         readJson<{ item: Health }>(
           await fetch(`/api/admin/attendance/adms/devices/${deviceId}/health`, { credentials: "include" }),
         ),
@@ -124,16 +184,23 @@ export function AdminAdmsWave1Details() {
         readJson<Reconciliation>(
           await fetch(`/api/admin/attendance/adms/devices/${deviceId}/reconciliation`, { credentials: "include" }),
         ),
+        readJson<SafeLogs>(
+          await fetch(`/api/admin/attendance/adms/devices/${deviceId}/logs`, { credentials: "include" }),
+        ),
       ]);
       setHealth(healthResponse.item);
       setTelemetry(telemetryResponse.item);
       setTransactions(transactionResponse.items);
       setReconciliation(reconciliationResponse);
+      setLogs(logResponse);
       setTimeoutInput(
         healthResponse.item.connectivityTimeoutOverrideSeconds === null
           ? ""
           : String(healthResponse.item.connectivityTimeoutOverrideSeconds),
       );
+      setReconciliationEnabled(telemetryResponse.item.reconciliationEnabled);
+      setReconciliationInterval(String(telemetryResponse.item.reconciliationIntervalMinutes));
+      setReconciliationLookback(String(telemetryResponse.item.reconciliationLookbackHours));
       setError(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Detail operasi mesin tidak dapat dimuat.");
@@ -165,7 +232,7 @@ export function AdminAdmsWave1Details() {
       setError("Timeout override harus 30-3600 detik, atau kosongkan untuk adaptive mode.");
       return;
     }
-    setBusy(true);
+    setBusy("connectivity");
     try {
       await readJson(
         await fetch(`/api/admin/attendance/adms/devices/${selected.id}/connectivity-policy`, {
@@ -179,18 +246,71 @@ export function AdminAdmsWave1Details() {
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Connectivity policy gagal disimpan.");
     } finally {
-      setBusy(false);
+      setBusy(null);
+    }
+  };
+
+  const saveReconciliation = async () => {
+    if (!selected) return;
+    const intervalMinutes = Number(reconciliationInterval);
+    const lookbackHours = Number(reconciliationLookback);
+    if (!Number.isInteger(intervalMinutes) || intervalMinutes < 60 || intervalMinutes > 10080) {
+      setError("Interval reconciliation harus 60-10080 menit.");
+      return;
+    }
+    if (!Number.isInteger(lookbackHours) || lookbackHours < 1 || lookbackHours > 744) {
+      setError("Lookback reconciliation harus 1-744 jam (maksimal 31 hari).");
+      return;
+    }
+    setBusy("reconciliation");
+    try {
+      await readJson(
+        await fetch(`/api/admin/attendance/adms/devices/${selected.id}/reconciliation-policy`, {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            enabled: reconciliationEnabled,
+            intervalMinutes,
+            lookbackHours,
+          }),
+        }),
+      );
+      await loadSelected(selected.id);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Reconciliation policy gagal disimpan.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const readInformation = async () => {
+    if (!selected || selected.lifecycle !== "active") return;
+    setBusy("info");
+    try {
+      await readJson(
+        await fetch(`/api/admin/attendance/adms/devices/${selected.id}/commands/read-information`, {
+          method: "POST",
+          credentials: "include",
+        }),
+      );
+      await loadSelected(selected.id);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Read Information gagal dijadwalkan.");
+    } finally {
+      setBusy(null);
     }
   };
 
   const transportEntries = Object.entries(telemetry?.transportObserved ?? {})
     .filter(([key]) => ["pushver", "PushVersion", "language", "observedAt"].includes(key));
+  const infoEntries = Object.entries(telemetry?.infoObserved ?? {});
 
   return (
     <section className="mt-5 rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-bold text-brand-heading">Transactions & Reconciliation</h2>
+          <h2 className="text-base font-bold text-brand-heading">Transactions, Reconciliation & Logs</h2>
           <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">
             Raw punch tetap fakta immutable. Reconciliation hanya menunjukkan persisted coverage yang dapat dibuktikan; HCIS tidak menebak expected count atau jumlah duplicate yang sudah ditolak dedup.
           </p>
@@ -198,7 +318,7 @@ export function AdminAdmsWave1Details() {
         <button
           type="button"
           onClick={() => void loadSelected(selectedId)}
-          disabled={!selectedId}
+          disabled={!selectedId || busy !== null}
           className="inline-flex h-9 items-center gap-2 rounded-xl border border-border px-3 text-xs font-semibold disabled:opacity-50"
         >
           <RefreshCw className="h-3.5 w-3.5" /> Segarkan detail
@@ -247,10 +367,7 @@ export function AdminAdmsWave1Details() {
                 label="Median request"
                 value={health.observedMedianRequestIntervalSeconds === null ? "—" : `${Math.round(health.observedMedianRequestIntervalSeconds)}s`}
               />
-              <Stat
-                label="Mode"
-                value={health.connectivityTimeoutOverrideSeconds === null ? "Adaptive" : "Override"}
-              />
+              <Stat label="Last sync sukses" value={fmt(health.lastSuccessfulSyncAt)} />
             </div>
             <label className="mt-4 block text-xs font-semibold text-muted-foreground">
               Override timeout (detik)
@@ -264,7 +381,7 @@ export function AdminAdmsWave1Details() {
                 />
                 <button
                   type="button"
-                  disabled={busy}
+                  disabled={busy !== null}
                   onClick={() => void saveTimeout()}
                   className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-primary px-3 text-xs font-bold text-white disabled:opacity-50"
                 >
@@ -275,59 +392,162 @@ export function AdminAdmsWave1Details() {
           </div>
 
           <div className="rounded-xl border border-border/70 p-4">
-            <div className="flex items-center gap-2 text-sm font-bold text-brand-heading">
-              <ServerCog className="h-4 w-4" /> Telemetry aman
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-sm font-bold text-brand-heading">
+                <ServerCog className="h-4 w-4" /> Telemetry aman
+              </div>
+              <button
+                type="button"
+                disabled={busy !== null || selected.lifecycle !== "active"}
+                onClick={() => void readInformation()}
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-2 text-[11px] font-bold disabled:opacity-50"
+              >
+                <Info className="h-3.5 w-3.5" /> Read Information
+              </button>
             </div>
             <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
               <Stat label="Model registry" value={telemetry?.model ?? "—"} />
-              <Stat label="Firmware registry" value={telemetry?.firmwareVersion ?? "—"} />
+              <Stat label="Firmware" value={telemetry?.firmwareVersion ?? "—"} />
               <Stat label="IP terakhir" value={telemetry?.lastIp ?? "—"} />
               <Stat label="Request sukses" value={fmt(telemetry?.lastSuccessfulRequestAt ?? null)} />
             </div>
-            <div className="mt-4 space-y-2">
-              {transportEntries.map(([key, value]) => (
-                <div key={key} className="flex justify-between gap-3 rounded-lg bg-surface px-3 py-2 text-xs">
-                  <span className="font-semibold text-muted-foreground">{key}</span>
-                  <span className="break-all text-right font-mono text-brand-heading">{displayObserved(value)}</span>
-                </div>
+            <div className="mt-4 max-h-60 space-y-2 overflow-auto">
+              {infoEntries.map(([key, value]) => (
+                <ObservedRow key={`info-${key}`} label={key} value={displayObserved(value)} />
               ))}
-              {transportEntries.length === 0 ? (
-                <div className="text-xs text-muted-foreground">Belum ada metadata transport yang teramati.</div>
+              {transportEntries.map(([key, value]) => (
+                <ObservedRow key={`transport-${key}`} label={key} value={displayObserved(value)} />
+              ))}
+              {infoEntries.length === 0 && transportEntries.length === 0 ? (
+                <div className="text-xs text-muted-foreground">Belum ada metadata transport/INFO yang teramati.</div>
               ) : null}
             </div>
           </div>
 
           <div className="rounded-xl border border-border/70 p-4">
             <div className="flex items-center gap-2 text-sm font-bold text-brand-heading">
-              <Database className="h-4 w-4" /> Historical reconciliation
+              <Database className="h-4 w-4" /> Reconciliation policy
             </div>
-            <div className="mt-3 space-y-2">
-              {(reconciliation?.items ?? []).slice(0, 5).map((item) => (
-                <div key={item.commandId} className="rounded-lg bg-surface p-3 text-xs">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-mono font-bold text-brand-heading">C:{item.commandNumber}</span>
-                    <span className="font-semibold text-muted-foreground">{item.status}</span>
-                  </div>
-                  <div className="mt-2 text-muted-foreground">
-                    {fmt(item.requestedRangeStart)} → {fmt(item.requestedRangeEnd)}
-                  </div>
-                  <div className="mt-2 grid grid-cols-3 gap-2">
-                    <Stat label="Persisted" value={String(item.currentPersistedCount)} />
-                    <Stat label="Sejak delivery" value={String(item.persistedSinceDeliveryCount)} />
-                    <Stat label="ATTLOG req" value={String(item.attlogRequestCount)} />
-                  </div>
-                </div>
-              ))}
-              {(reconciliation?.items.length ?? 0) === 0 ? (
-                <div className="text-xs text-muted-foreground">Belum ada historical range command.</div>
-              ) : null}
+            <label className="mt-3 flex items-center gap-2 text-xs font-semibold text-brand-heading">
+              <input
+                type="checkbox"
+                checked={reconciliationEnabled}
+                onChange={(event) => setReconciliationEnabled(event.target.checked)}
+              />
+              Aktifkan periodic bounded reconciliation
+            </label>
+            <p className="mt-2 text-[11px] leading-4 text-muted-foreground">
+              Default OFF. Saat diaktifkan, HCIS hanya menjadwalkan DATA QUERY ATTLOG dengan window maksimal 31 hari; tidak ada command “upload all” buatan.
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <label className="text-[11px] font-semibold text-muted-foreground">
+                Interval (menit)
+                <input
+                  inputMode="numeric"
+                  value={reconciliationInterval}
+                  onChange={(event) => setReconciliationInterval(event.target.value)}
+                  className="mt-1 h-9 w-full rounded-lg border border-border px-2 text-xs"
+                />
+              </label>
+              <label className="text-[11px] font-semibold text-muted-foreground">
+                Lookback (jam)
+                <input
+                  inputMode="numeric"
+                  value={reconciliationLookback}
+                  onChange={(event) => setReconciliationLookback(event.target.value)}
+                  className="mt-1 h-9 w-full rounded-lg border border-border px-2 text-xs"
+                />
+              </label>
             </div>
-            {reconciliation ? (
-              <p className="mt-3 text-[11px] leading-4 text-muted-foreground">{reconciliation.note}</p>
-            ) : null}
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={() => void saveReconciliation()}
+              className="mt-3 inline-flex h-9 items-center gap-2 rounded-xl bg-brand-primary px-3 text-xs font-bold text-white disabled:opacity-50"
+            >
+              <Save className="h-3.5 w-3.5" /> Simpan policy
+            </button>
+            <div className="mt-3 text-[11px] text-muted-foreground">
+              Last scheduled: {fmt(telemetry?.reconciliationLastRequestedAt ?? null)}
+            </div>
           </div>
         </div>
       ) : null}
+
+      <div className="mt-5 grid gap-4 xl:grid-cols-2">
+        <div className="rounded-xl border border-border/70 p-4">
+          <div className="flex items-center gap-2 text-sm font-bold text-brand-heading">
+            <Database className="h-4 w-4" /> Historical reconciliation
+          </div>
+          <div className="mt-3 space-y-2">
+            {(reconciliation?.items ?? []).slice(0, 8).map((item) => (
+              <div key={item.commandId} className="rounded-lg bg-surface p-3 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono font-bold text-brand-heading">C:{item.commandNumber}</span>
+                  <span className="font-semibold text-muted-foreground">{item.reason} · {item.status}</span>
+                </div>
+                <div className="mt-2 text-muted-foreground">
+                  {fmt(item.requestedRangeStart)} → {fmt(item.requestedRangeEnd)}
+                </div>
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  <Stat label="Persisted" value={String(item.currentPersistedCount)} />
+                  <Stat label="Sejak delivery" value={String(item.persistedSinceDeliveryCount)} />
+                  <Stat label="ATTLOG req" value={String(item.attlogRequestCount)} />
+                </div>
+              </div>
+            ))}
+            {(reconciliation?.items.length ?? 0) === 0 ? (
+              <div className="text-xs text-muted-foreground">Belum ada historical range command.</div>
+            ) : null}
+          </div>
+          {reconciliation ? (
+            <p className="mt-3 text-[11px] leading-4 text-muted-foreground">{reconciliation.note}</p>
+          ) : null}
+        </div>
+
+        <div className="rounded-xl border border-border/70 p-4">
+          <div className="flex items-center gap-2 text-sm font-bold text-brand-heading">
+            <FileClock className="h-4 w-4" /> Logs aman
+          </div>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Raw request body tidak diekspos. Yang ditampilkan hanya metadata request, lifecycle command, quarantine summary, dan immutable Admin audit.
+          </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <LogList
+              title="Request"
+              items={(logs?.requests ?? []).slice(0, 6).map((item) => ({
+                id: item.id,
+                primary: `${item.method} ${item.path} · ${item.responseStatus}`,
+                secondary: `${item.classification} · ${item.bodyByteLength} B · ${fmt(item.receivedAt)}`,
+              }))}
+            />
+            <LogList
+              title="Command"
+              items={(logs?.commandEvents ?? []).slice(0, 6).map((item) => ({
+                id: item.id,
+                primary: `C:${item.commandNumber} · ${item.eventType}`,
+                secondary: `${item.commandType} · ${fmt(item.createdAt)}`,
+              }))}
+            />
+            <LogList
+              title="Quarantine"
+              items={(logs?.quarantines ?? []).slice(0, 6).map((item) => ({
+                id: item.id,
+                primary: item.reason,
+                secondary: fmt(item.createdAt),
+              }))}
+            />
+            <LogList
+              title="Admin audit"
+              items={(logs?.adminAudit ?? []).slice(0, 6).map((item) => ({
+                id: item.id,
+                primary: item.action,
+                secondary: fmt(item.createdAt),
+              }))}
+            />
+          </div>
+        </div>
+      </div>
 
       <div className="mt-5 rounded-xl border border-border/70 p-4">
         <div className="flex items-center gap-2 text-sm font-bold text-brand-heading">
@@ -375,6 +595,38 @@ export function AdminAdmsWave1Details() {
         </div>
       </div>
     </section>
+  );
+}
+
+function ObservedRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between gap-3 rounded-lg bg-surface px-3 py-2 text-xs">
+      <span className="font-semibold text-muted-foreground">{label}</span>
+      <span className="break-all text-right font-mono text-brand-heading">{value}</span>
+    </div>
+  );
+}
+
+function LogList({
+  title,
+  items,
+}: {
+  title: string;
+  items: Array<{ id: string; primary: string; secondary: string }>;
+}) {
+  return (
+    <div>
+      <div className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{title}</div>
+      <div className="mt-2 space-y-2">
+        {items.map((item) => (
+          <div key={item.id} className="rounded-lg bg-surface px-3 py-2 text-[11px]">
+            <div className="font-semibold text-brand-heading">{item.primary}</div>
+            <div className="mt-1 text-muted-foreground">{item.secondary}</div>
+          </div>
+        ))}
+        {items.length === 0 ? <div className="text-[11px] text-muted-foreground">Belum ada data.</div> : null}
+      </div>
+    </div>
   );
 }
 
