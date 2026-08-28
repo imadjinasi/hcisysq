@@ -3,7 +3,7 @@ info:
   title: HCIS YSQ API
   version: 0.0.1
   description: |
-    Kontrak awal untuk vertical slice identity, employee profile, dan leave.
+    Kontrak awal untuk vertical slice identity, employee profile, leave, organization, dan attendance operations.
     Status dokumen DRAFT; endpoint belum menyatakan implementasi telah tersedia.
 servers:
   - url: https://api.example.invalid
@@ -16,6 +16,7 @@ tags:
   - name: Leave
   - name: Approvals
   - name: Organization
+  - name: Attendance
 
 paths:
   /health:
@@ -231,6 +232,154 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Problem'
+
+  /admin/attendance/adms/devices:
+    get:
+      tags: [Attendance]
+      operationId: listAdmsDevices
+      summary: List registered ADMS fingerprint devices
+      responses:
+        '200':
+          description: Device registry with current mapping and unmapped-PIN counts
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/AdmsDevice' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Attendance]
+      operationId: registerAdmsDevice
+      summary: Explicitly register an ADMS device serial
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [serialNumber]
+              properties:
+                serialNumber: { type: string, minLength: 1, maxLength: 128 }
+                displayName: { type: [string, 'null'], maxLength: 160 }
+                timezone: { type: string, default: Asia/Jakarta, maxLength: 100 }
+      responses:
+        '201':
+          description: Registered active device
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [item]
+                properties:
+                  item: { $ref: '#/components/schemas/AdmsDevice' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: Serial already registered }
+
+  /admin/attendance/adms/devices/{deviceId}:
+    parameters:
+      - name: deviceId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Attendance]
+      operationId: getAdmsDevice
+      summary: Read ADMS device observability and mapping detail
+      responses:
+        '200':
+          description: Device, mapping history, observed PINs, recent raw events, and quarantine outcomes; raw request body is excluded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdmsDeviceDetail' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Attendance]
+      operationId: updateAdmsDevice
+      summary: Update lifecycle or operational device metadata
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                displayName: { type: [string, 'null'], maxLength: 160 }
+                lifecycle: { type: string, enum: [active, disabled, quarantined] }
+                timezone: { type: string, maxLength: 100 }
+                model: { type: [string, 'null'], maxLength: 160 }
+                firmwareVersion: { type: [string, 'null'], maxLength: 160 }
+      responses:
+        '200':
+          description: Updated audited device
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [item]
+                properties:
+                  item: { $ref: '#/components/schemas/AdmsDevice' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/attendance/adms/devices/{deviceId}/mappings:
+    post:
+      tags: [Attendance]
+      operationId: createAdmsEmployeeMapping
+      summary: Map an observed device PIN to an active HCIS employee
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pin, employeeId]
+              properties:
+                pin: { type: string, minLength: 1, maxLength: 128, description: Leading zeroes are significant. }
+                employeeId: { type: string, format: uuid }
+                effectiveFrom: { type: string, format: date-time, description: Must be within the last 62 days and not materially in the future. }
+      responses:
+        '201':
+          description: Mapping created and eligible raw history re-projected on a bounded basis
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Active or effective-window mapping conflict }
+
+  /admin/attendance/adms/mappings/{mappingId}:
+    delete:
+      tags: [Attendance]
+      operationId: endAdmsEmployeeMapping
+      summary: End an active mapping at server current time without deleting history
+      parameters:
+        - name: mappingId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Mapping effective window closed and audited }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Mapping already ended or has not started }
 
   /admin/organization/designer:
     get:
@@ -586,6 +735,82 @@ components:
             $ref: '#/components/schemas/ValidationProblem'
 
   schemas:
+    AdmsDevice:
+      type: object
+      required: [id, serialNumber, lifecycle, timezone, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        serialNumber: { type: string }
+        displayName: { type: [string, 'null'] }
+        lifecycle: { type: string, enum: [active, disabled, quarantined] }
+        timezone: { type: string }
+        model: { type: [string, 'null'] }
+        firmwareVersion: { type: [string, 'null'] }
+        firstSeenAt: { type: [string, 'null'], format: date-time }
+        lastSeenAt: { type: [string, 'null'], format: date-time }
+        lastSuccessfulRequestAt: { type: [string, 'null'], format: date-time }
+        lastIp: { type: [string, 'null'] }
+        activeMappingCount: { type: integer, minimum: 0 }
+        unmappedPinCount: { type: integer, minimum: 0 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    AdmsDeviceDetail:
+      type: object
+      required: [item, mappings, observedPins, recentEvents, recentQuarantines]
+      properties:
+        item: { $ref: '#/components/schemas/AdmsDevice' }
+        mappings:
+          type: array
+          items:
+            type: object
+            required: [id, pin, employeeId, effectiveFrom, createdAt]
+            properties:
+              id: { type: string, format: uuid }
+              pin: { type: string }
+              employeeId: { type: string, format: uuid }
+              employeeNumber: { type: string }
+              employeeName: { type: string }
+              effectiveFrom: { type: string, format: date-time }
+              effectiveTo: { type: [string, 'null'], format: date-time }
+              createdAt: { type: string, format: date-time }
+        observedPins:
+          type: array
+          items:
+            type: object
+            required: [pin, eventCount, firstEventAt, lastEventAt]
+            properties:
+              pin: { type: string, description: Leading zeroes are significant. }
+              eventCount: { type: integer, minimum: 1 }
+              firstEventAt: { type: string, format: date-time }
+              lastEventAt: { type: string, format: date-time }
+              mappingId: { type: [string, 'null'], format: uuid }
+              employeeId: { type: [string, 'null'], format: uuid }
+              employeeNumber: { type: [string, 'null'] }
+              employeeName: { type: [string, 'null'] }
+        recentEvents:
+          type: array
+          items:
+            type: object
+            required: [id, pin, occurredAt, receivedAt, sourceRequestId]
+            properties:
+              id: { type: string, format: uuid }
+              pin: { type: string }
+              occurredAt: { type: string, format: date-time }
+              receivedAt: { type: string, format: date-time }
+              sourceRequestId: { type: string, format: uuid }
+        recentQuarantines:
+          type: array
+          items:
+            type: object
+            required: [id, reason, details, createdAt, requestId]
+            properties:
+              id: { type: string, format: uuid }
+              reason: { type: string }
+              details: { type: object, additionalProperties: true }
+              createdAt: { type: string, format: date-time }
+              requestId: { type: string, format: uuid }
+
     OrganizationDraft:
       type: object
       required: [id, name, effectiveOn, status, createdAt]
