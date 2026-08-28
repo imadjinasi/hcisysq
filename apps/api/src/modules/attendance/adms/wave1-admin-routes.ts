@@ -127,7 +127,7 @@ export async function registerAdmsWave1AdminRoutes(
     const principal = await authenticate(auth, request, reply);
     if (!principal) return;
     const params = detectedIdSchema.safeParse(request.params);
-    const body = claimSchema.safeParse(request.body);
+    const body = claimSchema.safeParse(request.body ?? {});
     if (!params.success || !body.success || !validTimezone(body.data.timezone)) {
       return reply.status(400).send({ code: "INVALID_ADMS_CLAIM", message: "Data claim mesin tidak valid." });
     }
