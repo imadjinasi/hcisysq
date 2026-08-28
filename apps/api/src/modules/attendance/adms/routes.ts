@@ -5,6 +5,11 @@ import type { Pool } from "pg";
 
 import type { ApiConfig } from "../../../config/env.js";
 import {
+  importMappedPassiveBiometrics,
+  parsePassiveBiometricCandidates,
+  type PassiveBiometricCandidate,
+} from "./biometric-ingress.js";
+import {
   ADMS_MAX_BODY_BYTES,
   attlogAcknowledgementBody,
   extractAttlogStamp,
@@ -148,6 +153,7 @@ export async function registerAdmsIngressRoutes(
       let attlogText: string | null = null;
       let decodedDeviceText: string | null = null;
       let observedRosterRecords: SafeDeviceRosterRecord[] = [];
+      let passiveBiometricCandidates: PassiveBiometricCandidate[] = [];
       let redactJournalBody = false;
       let classification = "protocol_discovery";
       if (capture.body && capture.body.length > 0) {
@@ -197,6 +203,16 @@ export async function registerAdmsIngressRoutes(
                 observedRosterRecords = parseSafeDeviceRosterRecords(text);
                 if (observedRosterRecords.length > 0) {
                   safeMetadata.safeRosterRecordCount = String(observedRosterRecords.length);
+                }
+              }
+              if (protocolTable === "OPERLOG") {
+                const parsedBiometrics = parsePassiveBiometricCandidates(text, protocolTable);
+                passiveBiometricCandidates = parsedBiometrics.records;
+                if (parsedBiometrics.records.length > 0) {
+                  safeMetadata.biometricRecordCount = String(parsedBiometrics.records.length);
+                }
+                if (parsedBiometrics.rejectedRecords > 0) {
+                  safeMetadata.biometricRejectedRecordCount = String(parsedBiometrics.rejectedRecords);
                 }
               }
             }
@@ -275,10 +291,24 @@ export async function registerAdmsIngressRoutes(
           });
         } catch (error) {
           request.log.error(
-            { err: error, requestId: result.requestId, deviceId: result.deviceId },
+            {
+              error: error instanceof Error ? error.message : "unknown roster observation error",
+              requestId: result.requestId,
+              deviceId: result.deviceId,
+            },
             "ADMS safe roster observation failed after redacted durable capture",
           );
         }
+      }
+
+      if (result.accepted && result.deviceId && passiveBiometricCandidates.length > 0) {
+        // Do not swallow vault failures when collection is enabled and a mapped candidate is eligible.
+        // Returning a server error lets the device retry while the already-durable journal remains redacted.
+        await importMappedPassiveBiometrics(pool, config, {
+          deviceId: result.deviceId,
+          observedAt: receivedAt,
+          records: passiveBiometricCandidates,
+        });
       }
 
       const projectionRequestIds = new Set(result.recoveredRequestIds);
