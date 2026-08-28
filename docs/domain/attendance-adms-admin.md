@@ -66,32 +66,37 @@ UI tidak menampilkan atau mengedit biometric template.
 
 ## Deployment contract
 
-API menerima `ADMS_INGRESS_HOST`. Staging/production compose meneruskan variable tersebut ke API container dan API juga berada pada edge network agar reverse proxy dapat meneruskan dedicated ADMS host langsung ke port API.
+Production API menerima `ADMS_INGRESS_HOST=adms.sabilulquran.or.id`. Production compose meneruskan variable tersebut ke API container dan API berada pada edge network agar reverse proxy dapat meneruskan dedicated ADMS host langsung ke port API.
 
-Dedicated Caddy host harus:
+Tidak ada ingress ADMS staging terpisah. Staging HCIS tetap memakai konfigurasi existing tanpa ADMS hostname.
 
+Dedicated Caddy host production harus:
+
+- menggunakan `http://adms.sabilulquran.or.id` selama HTTPS capability firmware belum terbukti;
 - meneruskan `/iclock/*` langsung ke HCIS API, bukan SPA web;
 - tidak melakukan response caching;
 - membatasi request body selaras dengan application cap 512 KiB;
 - mempertahankan Host header agar API dapat memverifikasi `ADMS_INGRESS_HOST`;
 - tidak membuka Admin API pada host machine-only tersebut sebagai surface yang disarankan.
 
-Nama DNS aktual dan production cutover membutuhkan human approval sesuai `AGENTS.md`.
+DNS aktual dan production cutover membutuhkan human approval sesuai `AGENTS.md`.
 
-## Canary
+## Production canary
 
-Sebelum mengarahkan mesin produksi:
+Tidak ada setup staging ADMS kedua. Validasi awal dilakukan langsung pada production ingress menggunakan satu mesin terkontrol sebelum mesin lain diarahkan.
 
-1. deploy migration/API/UI;
-2. set `ADMS_INGRESS_HOST` dan dedicated DNS/reverse-proxy;
-3. register serial mesin di HCIS dalam lifecycle `active`;
-4. arahkan satu mesin canary;
+Urutannya:
+
+1. deploy migration/API/UI production;
+2. set `ADMS_INGRESS_HOST=adms.sabilulquran.or.id`, DNS, dan dedicated Caddy route;
+3. register serial satu mesin canary di HCIS dalam lifecycle `active`;
+4. arahkan hanya mesin tersebut ke `http://adms.sabilulquran.or.id`;
 5. verifikasi options handshake, request journal, last seen, raw event dan cursor;
-6. lakukan satu synthetic/non-sensitive test punch yang diizinkan operasional;
+6. lakukan satu test punch operasional yang diizinkan;
 7. map PIN secara eksplisit;
 8. verifikasi `attendance_daily_records.source = integration` dan provenance `adms:*`;
 9. replay/duplicate tidak menggandakan raw event atau canonical attendance;
-10. baru perluas ke mesin lain setelah canary dinyatakan sehat.
+10. baru arahkan mesin lain setelah canary production dinyatakan sehat.
 
 ## Acceptance criteria
 
@@ -103,6 +108,6 @@ Sebelum mengarahkan mesin produksi:
 6. Mapping end tidak menghapus histori mapping.
 7. UI menampilkan loading/error/empty state dan tidak memaparkan raw request body.
 8. Device detail menampilkan observed PIN, mapping, recent event, dan quarantine.
-9. Dedicated ingress host dapat diproxy langsung ke API dengan `ADMS_INGRESS_HOST` yang sama.
+9. Dedicated production ingress host `adms.sabilulquran.or.id` dapat diproxy langsung ke API dengan `ADMS_INGRESS_HOST` yang sama.
 10. Production DNS/migration/cutover tidak dilakukan tanpa human approval.
 11. Typecheck, lint, test, build, migration, dan compose validation harus lulus sebelum ATT-004 dinyatakan verified.
