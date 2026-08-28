@@ -62,7 +62,7 @@ type DeviceRow = {
 type CommandRow = {
   id: string;
   commandNumber: string;
-  wireCommand: "LOG";
+  wireCommand: string;
   status: string;
   attemptCount: number;
 };
