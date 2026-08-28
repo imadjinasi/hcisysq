@@ -6,8 +6,10 @@ import type { Pool, PoolClient } from "pg";
 import {
   ADMS_MAX_BODY_BYTES,
   attlogEventIdentity,
+  attlogRangeWireCommand,
   deviceCommandWireBody,
   extractAttlogStamp,
+  formatDeviceLocalTimestamp,
   parseAttlogText,
   type AttlogQuarantine,
   type ParsedAttlogEvent,
@@ -57,6 +59,10 @@ type DeviceRow = {
   timezone: string;
   createdAt: Date;
   preRegistrationRecoveryCompletedAt: Date | null;
+  reconciliationEnabled: boolean;
+  reconciliationIntervalMinutes: number;
+  reconciliationLookbackHours: number;
+  reconciliationLastRequestedAt: Date | null;
 };
 
 type CommandRow = {
@@ -96,7 +102,11 @@ async function loadDeviceForUpdate(client: PoolClient, serialCandidate: string |
        lifecycle,
        timezone,
        created_at AS "createdAt",
-       pre_registration_recovery_completed_at AS "preRegistrationRecoveryCompletedAt"
+       pre_registration_recovery_completed_at AS "preRegistrationRecoveryCompletedAt",
+       reconciliation_enabled AS "reconciliationEnabled",
+       reconciliation_interval_minutes AS "reconciliationIntervalMinutes",
+       reconciliation_lookback_hours AS "reconciliationLookbackHours",
+       reconciliation_last_requested_at AS "reconciliationLastRequestedAt"
      FROM attendance_adms_devices
      WHERE serial_number = $1
      FOR UPDATE`,
@@ -266,11 +276,11 @@ async function recoverPreRegistrationAttlog(
   const commandId = randomUUID();
   const queued = await client.query<{ id: string }>(
     `INSERT INTO attendance_adms_commands (
-       id, device_id, command_type, wire_command, dedupe_key, reason, status
-     ) VALUES ($1, $2, 'sync_new', 'LOG', $3, 'registration_recovery', 'pending')
+       id, device_id, command_type, wire_command, dedupe_key, reason, status, expires_at
+     ) VALUES ($1, $2, 'sync_new', 'LOG', $3, 'registration_recovery', 'pending', $4::timestamptz + interval '24 hours')
      ON CONFLICT DO NOTHING
      RETURNING id`,
-    [commandId, device.id, `registration_recovery:${device.id}`],
+    [commandId, device.id, `registration_recovery:${device.id}`, completedAt],
   );
   if (queued.rowCount) {
     await client.query(
@@ -282,6 +292,94 @@ async function recoverPreRegistrationAttlog(
   }
 
   return { insertedEvents, duplicateEvents, requestIds: [...requestIds] };
+}
+
+async function expireActiveCommands(
+  client: PoolClient,
+  deviceId: string,
+  receivedAt: Date,
+) {
+  const expired = await client.query<{ id: string }>(
+    `UPDATE attendance_adms_commands
+     SET status = 'expired',
+         completed_at = COALESCE(completed_at, $2),
+         updated_at = $2
+     WHERE device_id = $1
+       AND status IN ('pending', 'delivered', 'acknowledged')
+       AND expires_at IS NOT NULL
+       AND expires_at <= $2
+     RETURNING id`,
+    [deviceId, receivedAt],
+  );
+  for (const command of expired.rows) {
+    await client.query(
+      `INSERT INTO attendance_adms_command_events (
+         id, command_id, event_type, metadata
+       ) VALUES ($1, $2, 'expired', $3::jsonb)`,
+      [randomUUID(), command.id, JSON.stringify({ reason: "command_ttl_elapsed" })],
+    );
+  }
+}
+
+async function queueScheduledReconciliationIfDue(
+  client: PoolClient,
+  device: DeviceRow,
+  receivedAt: Date,
+) {
+  if (!device.reconciliationEnabled) return;
+  const lastRequestedAt = device.reconciliationLastRequestedAt?.getTime() ?? null;
+  const intervalMs = device.reconciliationIntervalMinutes * 60_000;
+  if (lastRequestedAt !== null && receivedAt.getTime() - lastRequestedAt < intervalMs) return;
+
+  const active = await client.query<{ id: string }>(
+    `SELECT id
+     FROM attendance_adms_commands
+     WHERE device_id = $1
+       AND status IN ('pending', 'delivered', 'acknowledged')
+     LIMIT 1`,
+    [device.id],
+  );
+  if (active.rows[0]) return;
+
+  const rangeEnd = receivedAt;
+  const rangeStart = new Date(receivedAt.getTime() - device.reconciliationLookbackHours * 3_600_000);
+  const wireCommand = attlogRangeWireCommand(
+    formatDeviceLocalTimestamp(rangeStart, device.timezone),
+    formatDeviceLocalTimestamp(rangeEnd, device.timezone),
+  );
+  const commandId = randomUUID();
+  await client.query(
+    `INSERT INTO attendance_adms_commands (
+       id, device_id, command_type, wire_command, reason, status,
+       requested_range_start, requested_range_end, expires_at
+     ) VALUES (
+       $1, $2, 'data_query', $3, 'scheduled_reconciliation', 'pending',
+       $4, $5, $5::timestamptz + interval '6 hours'
+     )`,
+    [commandId, device.id, wireCommand, rangeStart, rangeEnd],
+  );
+  await client.query(
+    `INSERT INTO attendance_adms_command_events (
+       id, command_id, event_type, metadata
+     ) VALUES ($1, $2, 'queued', $3::jsonb)`,
+    [
+      randomUUID(),
+      commandId,
+      JSON.stringify({
+        reason: "scheduled_reconciliation",
+        automatic: true,
+        rangeStart: rangeStart.toISOString(),
+        rangeEnd: rangeEnd.toISOString(),
+      }),
+    ],
+  );
+  await client.query(
+    `UPDATE attendance_adms_devices
+     SET reconciliation_last_requested_at = $2,
+         updated_at = GREATEST(updated_at, $2)
+     WHERE id = $1`,
+    [device.id, receivedAt],
+  );
 }
 
 async function takePendingCommand(
@@ -298,7 +396,7 @@ async function takePendingCommand(
        attempt_count AS "attemptCount"
      FROM attendance_adms_commands
      WHERE device_id = $1
-       AND command_type = 'sync_new'
+       AND (expires_at IS NULL OR expires_at > $2)
        AND (
          status = 'pending'
          OR (
@@ -325,6 +423,37 @@ async function takePendingCommand(
     [command.id, receivedAt],
   );
   return { ...command, status: "delivered", attemptCount: command.attemptCount + 1 };
+}
+
+async function applySafeInfoResult(
+  client: PoolClient,
+  deviceId: string,
+  receivedAt: Date,
+  result: ParsedDeviceCommandResult,
+) {
+  if (result.command !== "INFO" || result.returnCode < 0 || Object.keys(result.safeOptions).length === 0) return;
+  const infoObserved = {
+    ...result.safeOptions,
+    observedAt: receivedAt.toISOString(),
+  };
+  await client.query(
+    `UPDATE attendance_adms_devices
+     SET metadata = jsonb_set(
+           metadata,
+           '{infoObserved}',
+           COALESCE(metadata -> 'infoObserved', '{}'::jsonb) || $2::jsonb,
+           true
+         ),
+         firmware_version = COALESCE(NULLIF($3, ''), firmware_version),
+         updated_at = GREATEST(updated_at, $4)
+     WHERE id = $1`,
+    [
+      deviceId,
+      JSON.stringify(infoObserved),
+      result.safeOptions.FWVersion ?? "",
+      receivedAt,
+    ],
+  );
 }
 
 async function applyCommandResult(
@@ -376,6 +505,16 @@ async function applyCommandResult(
       },
     };
   }
+  if (command.status === "expired" || command.status === "cancelled") {
+    return {
+      applied: false,
+      quarantine: {
+        reason: "COMMAND_RESULT_AFTER_TERMINAL",
+        rawLine: result.rawLine,
+        details: { commandNumber: result.commandNumber, terminalStatus: command.status },
+      },
+    };
+  }
 
   const status = result.returnCode === -5000 ? "acknowledged" : result.returnCode >= 0 ? "succeeded" : "failed";
   const completed = status === "succeeded" || status === "failed";
@@ -399,6 +538,7 @@ async function applyCommandResult(
       result.rawLine,
     ],
   );
+  await applySafeInfoResult(client, deviceId, receivedAt, result);
   await client.query(
     `INSERT INTO attendance_adms_command_events (
        id, command_id, event_type, request_id, metadata
@@ -408,7 +548,11 @@ async function applyCommandResult(
       command.id,
       status,
       requestId,
-      JSON.stringify({ returnCode: result.returnCode, command: result.command }),
+      JSON.stringify({
+        returnCode: result.returnCode,
+        command: result.command,
+        safeOptions: result.safeOptions,
+      }),
     ],
   );
   return { applied: true, quarantine: null };
@@ -442,6 +586,8 @@ export async function persistAdmsIngress(
       input.method === "GET" &&
       input.path === "/iclock/getrequest"
     ) {
+      await expireActiveCommands(client, device.id, input.receivedAt);
+      await queueScheduledReconciliationIfDue(client, device, input.receivedAt);
       deliveredCommand = await takePendingCommand(client, device.id, input.receivedAt);
       if (deliveredCommand) {
         responseBody = deviceCommandWireBody(
