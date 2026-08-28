@@ -6,6 +6,7 @@ const envSchema = z
     HOST: z.string().min(1).default("127.0.0.1"),
     PORT: z.coerce.number().int().min(1).max(65535).default(3001),
     DATABASE_URL: z.string().min(1),
+    ADMS_INGRESS_HOST: z.string().trim().min(1).optional(),
     AUTH_MODE: z.enum(["local", "oidc"]).default("local"),
     AUTH_ENCRYPTION_KEY: z.string().regex(/^[a-fA-F0-9]{64}$/).optional(),
     AUTH_SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(168).default(8),

@@ -3,6 +3,7 @@ import type { Pool } from "pg";
 
 import type { ApiConfig } from "./config/env.js";
 import { createPool } from "./db/pool.js";
+import { registerAdmsIngressRoutes } from "./modules/attendance/adms/routes.js";
 import { registerAttendanceRoutes } from "./modules/attendance/routes.js";
 import { registerAccountActivationAdminRoutes } from "./modules/auth/admin-account-activation-routes.js";
 import { registerAccountActivationRoutes } from "./modules/auth/activation-routes.js";
@@ -40,6 +41,7 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   );
 
   await registerSystemRoutes(app, pool);
+  await registerAdmsIngressRoutes(app, pool, config);
   await registerAuthRoutes(app, pool, config);
   await registerAccountActivationRoutes(app, pool);
   await registerAccountActivationAdminRoutes(app, pool, config);
