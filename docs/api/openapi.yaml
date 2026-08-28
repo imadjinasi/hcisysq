@@ -822,6 +822,15 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /admin/attendance/adms/devices/{deviceId}/roster:
+    $ref: './attendance-adms-wave2.openapi.yaml#/paths/~1admin~1attendance~1adms~1devices~1%7BdeviceId%7D~1roster'
+
+  /admin/attendance/adms/biometrics:
+    $ref: './attendance-adms-wave2.openapi.yaml#/paths/~1admin~1attendance~1adms~1biometrics'
+
+  /admin/attendance/adms/devices/{deviceId}/biometric-inventory:
+    $ref: './attendance-adms-wave2.openapi.yaml#/paths/~1admin~1attendance~1adms~1devices~1%7BdeviceId%7D~1biometric-inventory'
+
   /admin/attendance/adms/devices/{deviceId}/mappings:
     post:
       tags: [Attendance]
