@@ -12,6 +12,11 @@ const deviceIdSchema = z.object({ deviceId: z.string().uuid() });
 const connectivityPolicySchema = z.object({
   timeoutSeconds: z.number().int().min(30).max(3600).nullable(),
 });
+const reconciliationPolicySchema = z.object({
+  enabled: z.boolean(),
+  intervalMinutes: z.number().int().min(60).max(10080),
+  lookbackHours: z.number().int().min(1).max(744),
+});
 
 async function authenticate(
   auth: AuthService,
@@ -127,6 +132,86 @@ export async function registerAdmsWave1OpsRoutes(
     }
   });
 
+  app.patch("/admin/attendance/adms/devices/:deviceId/reconciliation-policy", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply);
+    if (!principal) return;
+    const params = deviceIdSchema.safeParse(request.params);
+    const body = reconciliationPolicySchema.safeParse(request.body);
+    if (!params.success || !body.success) {
+      return reply.status(400).send({
+        code: "INVALID_ADMS_RECONCILIATION_POLICY",
+        message: "Policy reconciliation tidak valid. Interval 60-10080 menit dan lookback 1-744 jam.",
+      });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const found = await client.query<{
+        id: string;
+        reconciliationEnabled: boolean;
+        reconciliationIntervalMinutes: number;
+        reconciliationLookbackHours: number;
+        reconciliationLastRequestedAt: Date | null;
+      }>(
+        `SELECT
+           id,
+           reconciliation_enabled AS "reconciliationEnabled",
+           reconciliation_interval_minutes AS "reconciliationIntervalMinutes",
+           reconciliation_lookback_hours AS "reconciliationLookbackHours",
+           reconciliation_last_requested_at AS "reconciliationLastRequestedAt"
+         FROM attendance_adms_devices
+         WHERE id = $1
+         FOR UPDATE`,
+        [params.data.deviceId],
+      );
+      const current = found.rows[0];
+      if (!current) {
+        await client.query("ROLLBACK");
+        return reply.status(404).send({ code: "ADMS_DEVICE_NOT_FOUND", message: "Mesin tidak ditemukan." });
+      }
+
+      const updated = await client.query(
+        `UPDATE attendance_adms_devices
+         SET reconciliation_enabled = $2,
+             reconciliation_interval_minutes = $3,
+             reconciliation_lookback_hours = $4,
+             reconciliation_last_requested_at = CASE
+               WHEN $2::boolean AND NOT reconciliation_enabled THEN NULL
+               ELSE reconciliation_last_requested_at
+             END,
+             updated_at = now()
+         WHERE id = $1
+         RETURNING
+           id,
+           reconciliation_enabled AS "reconciliationEnabled",
+           reconciliation_interval_minutes AS "reconciliationIntervalMinutes",
+           reconciliation_lookback_hours AS "reconciliationLookbackHours",
+           reconciliation_last_requested_at AS "reconciliationLastRequestedAt"`,
+        [
+          current.id,
+          body.data.enabled,
+          body.data.intervalMinutes,
+          body.data.lookbackHours,
+        ],
+      );
+      await writeDeviceAudit(client, {
+        actorAccountId: principal.id,
+        deviceId: current.id,
+        beforeState: current,
+        afterState: updated.rows[0],
+      });
+      await client.query("COMMIT");
+      reply.header("Cache-Control", "no-store");
+      return reply.send({ item: updated.rows[0] });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  });
+
   app.get("/admin/attendance/adms/devices/:deviceId/telemetry", async (request, reply) => {
     const principal = await authenticate(auth, request, reply);
     if (!principal) return;
@@ -140,20 +225,30 @@ export async function registerAdmsWave1OpsRoutes(
       model: string | null;
       firmwareVersion: string | null;
       transportObserved: Record<string, unknown> | null;
+      infoObserved: Record<string, unknown> | null;
       firstSeenAt: Date | null;
       lastSeenAt: Date | null;
       lastSuccessfulRequestAt: Date | null;
       lastIp: string | null;
+      reconciliationEnabled: boolean;
+      reconciliationIntervalMinutes: number;
+      reconciliationLookbackHours: number;
+      reconciliationLastRequestedAt: Date | null;
     }>(
       `SELECT
          id AS "deviceId",
          model,
          firmware_version AS "firmwareVersion",
          metadata -> 'transportObserved' AS "transportObserved",
+         metadata -> 'infoObserved' AS "infoObserved",
          first_seen_at AS "firstSeenAt",
          last_seen_at AS "lastSeenAt",
          last_successful_request_at AS "lastSuccessfulRequestAt",
-         last_ip AS "lastIp"
+         last_ip AS "lastIp",
+         reconciliation_enabled AS "reconciliationEnabled",
+         reconciliation_interval_minutes AS "reconciliationIntervalMinutes",
+         reconciliation_lookback_hours AS "reconciliationLookbackHours",
+         reconciliation_last_requested_at AS "reconciliationLastRequestedAt"
        FROM attendance_adms_devices
        WHERE id = $1`,
       [params.data.deviceId],
@@ -186,6 +281,7 @@ export async function registerAdmsWave1OpsRoutes(
       `SELECT
          c.id AS "commandId",
          c.command_number::text AS "commandNumber",
+         c.reason,
          c.status,
          c.requested_range_start AS "requestedRangeStart",
          c.requested_range_end AS "requestedRangeEnd",
@@ -220,7 +316,7 @@ export async function registerAdmsWave1OpsRoutes(
            AND r.classification = 'attlog'
        ) journal ON true
        WHERE c.device_id = $1
-         AND c.reason = 'admin_range_recovery'
+         AND c.reason IN ('admin_range_recovery', 'scheduled_reconciliation')
          AND c.requested_range_start IS NOT NULL
          AND c.requested_range_end IS NOT NULL
        ORDER BY c.created_at DESC
@@ -233,8 +329,99 @@ export async function registerAdmsWave1OpsRoutes(
       coverageBasis: "persisted_range",
       expectedCount: null,
       duplicatesObserved: null,
-      note: "Perangkat tidak melaporkan expected count. Ringkasan ini menunjukkan cakupan raw event yang tersimpan; duplicate yang ditolak oleh dedup tidak dapat dihitung kembali secara presisi dari tabel fakta immutable.",
+      note: "Perangkat belum memberi expected count per rentang. Ringkasan ini hanya menunjukkan raw event yang benar-benar tersimpan; exact duplicate yang ditolak saat insert tidak direkonstruksi sebagai angka buatan.",
       items: result.rows,
+    });
+  });
+
+  app.get("/admin/attendance/adms/devices/:deviceId/logs", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply);
+    if (!principal) return;
+    const params = deviceIdSchema.safeParse(request.params);
+    if (!params.success) {
+      return reply.status(400).send({ code: "INVALID_ADMS_DEVICE", message: "ID mesin tidak valid." });
+    }
+
+    const exists = await pool.query<{ id: string }>(
+      `SELECT id FROM attendance_adms_devices WHERE id = $1`,
+      [params.data.deviceId],
+    );
+    if (!exists.rows[0]) {
+      return reply.status(404).send({ code: "ADMS_DEVICE_NOT_FOUND", message: "Mesin tidak ditemukan." });
+    }
+
+    const [requests, commandEvents, quarantines, adminAudit] = await Promise.all([
+      pool.query(
+        `SELECT
+           id,
+           method,
+           path,
+           classification,
+           response_status AS "responseStatus",
+           body_byte_length AS "bodyByteLength",
+           body_captured AS "bodyCaptured",
+           safe_metadata AS "safeMetadata",
+           received_at AS "receivedAt"
+         FROM attendance_adms_request_journal
+         WHERE device_id = $1
+         ORDER BY received_at DESC
+         LIMIT 100`,
+        [params.data.deviceId],
+      ),
+      pool.query(
+        `SELECT
+           ce.id,
+           ce.command_id AS "commandId",
+           c.command_number::text AS "commandNumber",
+           c.command_type AS "commandType",
+           ce.event_type AS "eventType",
+           ce.actor_account_id AS "actorAccountId",
+           ce.request_id AS "requestId",
+           ce.metadata,
+           ce.created_at AS "createdAt"
+         FROM attendance_adms_command_events ce
+         JOIN attendance_adms_commands c ON c.id = ce.command_id
+         WHERE c.device_id = $1
+         ORDER BY ce.created_at DESC
+         LIMIT 100`,
+        [params.data.deviceId],
+      ),
+      pool.query(
+        `SELECT
+           id,
+           request_id AS "requestId",
+           reason,
+           details,
+           created_at AS "createdAt"
+         FROM attendance_adms_quarantines
+         WHERE device_id = $1
+         ORDER BY created_at DESC
+         LIMIT 100`,
+        [params.data.deviceId],
+      ),
+      pool.query(
+        `SELECT
+           id,
+           actor_account_id AS "actorAccountId",
+           action,
+           before_state AS "beforeState",
+           after_state AS "afterState",
+           created_at AS "createdAt"
+         FROM attendance_adms_admin_audit_events
+         WHERE device_id = $1
+         ORDER BY created_at DESC
+         LIMIT 100`,
+        [params.data.deviceId],
+      ),
+    ]);
+
+    reply.header("Cache-Control", "no-store");
+    return reply.send({
+      rawRequestBodiesExposed: false,
+      requests: requests.rows,
+      commandEvents: commandEvents.rows,
+      quarantines: quarantines.rows,
+      adminAudit: adminAudit.rows,
     });
   });
 }
