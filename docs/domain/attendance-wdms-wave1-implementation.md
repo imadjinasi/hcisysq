@@ -148,7 +148,7 @@ The scheduler runs opportunistically on an active device poll. It queues a recon
 - the configured interval is due;
 - no other active command exists for the device.
 
-The automatic command is always a bounded `DATA QUERY ATTLOG` request. It never exceeds the 31-day safety boundary, receives a command TTL, and is disabled by default so merging software does not automatically increase device traffic before the physical canary/policy decision.
+The automatic command is always a bounded `DATA QUERY ATTLOG` request. It never exceeds the 31-day safety boundary, receives a command TTL, and is disabled by default so merging software does not automatically increase device traffic before the physical canary/policy decision. Operationally, this policy should remain disabled for a device until the bounded-range command has passed a controlled physical canary on that firmware.
 
 ## Historical reconciliation semantics
 
@@ -159,7 +159,7 @@ For each recent manual or scheduled historical range command, the Admin API can 
 - current persisted raw-event count whose occurrence time falls inside the requested range;
 - how many such persisted events were received at or after command delivery;
 - first and last persisted occurrence in the range;
-- the number of ATTLOG journal requests observed after delivery.
+- the number of post-delivery ATTLOG journal requests that contributed at least one persisted event inside the requested range.
 
 The response intentionally reports `expectedCount: null` when the physical device has not supplied an expected row count for that specific requested range. A general device `TransactionCount` obtained from INFO is not treated as an expected count for an arbitrary date range.
 
