@@ -9,6 +9,7 @@ import {
   attlogAcknowledgementBody,
   extractAttlogStamp,
   extractSerialCandidate,
+  getRequestIdleAcknowledgementBody,
   optionsAllHandshakeBody,
   type AttlogQuarantine,
 } from "./protocol.js";
@@ -151,7 +152,8 @@ export async function registerAdmsIngressRoutes(
         : null;
       const successResponseBody =
         request.method === "GET"
-          ? optionsAllHandshakeBody(url, serialCandidate, configuredAttlogStamp ?? "None")
+          ? optionsAllHandshakeBody(url, serialCandidate, configuredAttlogStamp ?? "None") ??
+            getRequestIdleAcknowledgementBody(url)
           : attlogText
             ? attlogAcknowledgementBody(attlogText)
             : null;
