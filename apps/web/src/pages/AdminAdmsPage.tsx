@@ -2,6 +2,7 @@ import { AlertTriangle } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { AdminAdmsPanel } from "@/components/attendance/AdminAdmsPanel";
+import { AdminAdmsWave1Operations } from "@/components/attendance/AdminAdmsWave1Operations";
 import { AdminShell } from "@/layouts/AdminShell";
 import {
   AdminApiError,
@@ -49,7 +50,7 @@ export function AdminAdmsPage() {
     <AdminShell
       active="attendance-devices"
       title="Mesin Fingerprint"
-      description="Kelola registry ADMS, mapping PIN pegawai, raw punch, dan quarantine. Semua punch tetap diperlakukan sebagai fakta waktu; policy telat, absen, lembur, dan payroll tidak dihitung di sini."
+      description="Kelola connectivity, recovery transaksi, command, registry ADMS, mapping PIN pegawai, raw punch, dan quarantine. Lifecycle mesin tidak sama dengan status online; semua punch tetap diperlakukan sebagai fakta waktu tanpa inferensi telat, absen, lembur, atau payroll."
     >
       {employeeError ? (
         <div className="mb-4 flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
@@ -57,6 +58,7 @@ export function AdminAdmsPage() {
           {employeeError} Registry dan observability tetap dapat digunakan, tetapi mapping baru dinonaktifkan sampai daftar pegawai tersedia.
         </div>
       ) : null}
+      <AdminAdmsWave1Operations />
       <AdminAdmsPanel employees={employees} />
     </AdminShell>
   );
