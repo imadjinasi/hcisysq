@@ -308,12 +308,16 @@ export async function registerAdmsWave1OpsRoutes(
            AND e.occurred_at <= c.requested_range_end
        ) coverage ON true
        LEFT JOIN LATERAL (
-         SELECT count(*)::int AS "attlogRequestCount"
+         SELECT count(DISTINCT r.id)::int AS "attlogRequestCount"
          FROM attendance_adms_request_journal r
+         JOIN attendance_adms_events e ON e.source_request_id = r.id
          WHERE r.device_id = c.device_id
+           AND e.device_id = c.device_id
            AND c.delivered_at IS NOT NULL
            AND r.received_at >= c.delivered_at
            AND r.classification = 'attlog'
+           AND e.occurred_at >= c.requested_range_start
+           AND e.occurred_at <= c.requested_range_end
        ) journal ON true
        WHERE c.device_id = $1
          AND c.reason IN ('admin_range_recovery', 'scheduled_reconciliation')
