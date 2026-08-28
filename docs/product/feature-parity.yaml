@@ -1,7 +1,7 @@
 version: 1
 status: VERIFIED
 source_system: legacy-hcis
-updated_at: 2026-08-22
+updated_at: 2026-08-28
 verification_checkpoint: docs/product/mvp-release-checkpoint.md
 
 status_values:
@@ -165,6 +165,20 @@ features:
     priority: core
     risk: high
     mvp_note: Leave working-calendar rules exist, but attendance schedule and lateness/overtime policy remain outside ATT-001.
+
+  - id: ATT-005
+    module: attendance
+    name: WDMS-compatible fingerprint device operations
+    legacy_evidence: SQ fingerprint devices use ZKTeco PUSH/ADMS transport; ZKBio WDMS is the accepted operational parity reference for device management
+    target_status: specified
+    priority: core
+    risk: critical
+    planning_note: Implement all WDMS device-management capabilities that fit internal HCIS, adapting employee/organization/auth concepts to HCIS sources of truth and excluding central biometric credential storage and unrelated MTD health screening.
+    docs:
+      - docs/domain/attendance-wdms-device-parity.md
+      - docs/domain/attendance-adms-ingress.md
+      - docs/domain/attendance-adms-projection.md
+      - docs/domain/attendance-adms-admin.md
 
   - id: LEAVE-001
     module: leave
