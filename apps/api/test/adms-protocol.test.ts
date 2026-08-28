@@ -5,6 +5,7 @@ import {
   attlogEventIdentity,
   extractAttlogStamp,
   extractSerialCandidate,
+  getRequestIdleAcknowledgementBody,
   optionsAllHandshakeBody,
   parseAttlogText,
 } from "../src/modules/attendance/adms/protocol.js";
@@ -56,6 +57,19 @@ describe("ADMS iClock protocol", () => {
     expect(body).toContain("ATTLOGStamp=9999");
     expect(body).toContain("OPERLOGStamp=None");
     expect(body).toContain("TransFlag=TransData\tAttLog");
+  });
+
+  it("returns vendor idle acknowledgement for getrequest polling only", () => {
+    expect(
+      getRequestIdleAcknowledgementBody(
+        new URL("https://adms.example.test/iclock/getrequest?SN=SPK7245000707"),
+      ),
+    ).toBe("OK");
+    expect(
+      getRequestIdleAcknowledgementBody(
+        new URL("https://adms.example.test/iclock/cdata?SN=SPK7245000707"),
+      ),
+    ).toBe(null);
   });
 
   it("acknowledges durable ATTLOG record count", () => {
