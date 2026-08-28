@@ -80,7 +80,7 @@ export async function registerAdmsIngressRoutes(
 ) {
   await app.register(async (adms) => {
     adms.removeAllContentTypeParsers();
-    adms.addContentTypeParser("*", (request, payload, done) => {
+    adms.addContentTypeParser("*", (_request, payload, done) => {
       const hash = createHash("sha256");
       const chunks: Buffer[] = [];
       let length = 0;
@@ -105,7 +105,7 @@ export async function registerAdmsIngressRoutes(
     });
 
     adms.all("/iclock/*", async (request, reply) => {
-      const expectedHost = config.ADMS_INGRESS_HOST?.toLowerCase().replace(/\.$/, null as never);
+      const expectedHost = config.ADMS_INGRESS_HOST?.toLowerCase().replace(/\.$/, "");
       if (!expectedHost || directHostname(request.headers.host) !== expectedHost) {
         return reply.status(404).send();
       }
