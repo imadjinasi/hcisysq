@@ -81,7 +81,11 @@ A passive template is eligible for the vault only when all of these are true:
 
 HCIS never maps biometric payloads by employee number, name, card number, unit, or external ID. If the PIN is unmapped, ambiguous, or belongs to an inactive employee, the payload is acknowledged/redacted but is not added to the employee vault. A future explicit query can recover it only after that query path has been hardware-validated.
 
-When an eligible mapped vault write fails, the server does not intentionally hide the failure behind a success response. The redacted request journal remains durable and the device may retry; exact credential dedupe makes retries safe.
+Every accepted passive credential keeps `source_request_id` pointing to the redacted request-journal row. The source request therefore preserves transport provenance without preserving plaintext password/template content.
+
+A successful passive upload is also positive evidence that the origin device currently has that template. Wave 2 records `attendance_biometric_device_states.state = 'present'` for the imported/deduplicated credential on the source device, together with the observation timestamp, vendor format and source-request provenance. This is positive evidence only; HCIS still does not infer `missing` merely because another device has never been queried.
+
+When an eligible mapped vault write fails, the failure must not be treated as successful biometric collection. The redacted request evidence remains durable and exact credential dedupe makes a later device retry safe.
 
 ## Biometric vault
 
@@ -94,6 +98,7 @@ The HCIS vault is independent from the ADMS request journal.
 - optional vendor slot/index and source PIN;
 - vendor format/version metadata;
 - optional origin device;
+- redacted source-request provenance;
 - capture/import timestamps;
 - encrypted opaque vendor payload envelope;
 - lifecycle (`active`, `retired`, `destroyed`).
@@ -137,7 +142,7 @@ Wave 2 must not expose destructive production actions until retention, backup, r
 
 `attendance_biometric_device_states` records known evidence for a vault credential on a device with states such as unknown, present, stale, conflict, pending, succeeded or failed.
 
-The state is evidence-driven. HCIS must not infer “missing” merely because a device has never been queried.
+The state is evidence-driven. HCIS must not infer “missing” merely because a device has never been queried. Passive FP/FACE upload is currently the only implemented source of positive `present` evidence; active query/synchronization state remains capability-gated.
 
 ## Admin API and UI
 
@@ -172,9 +177,9 @@ The UI does not expose query/sync/enroll/delete controls yet. Those operations r
 
 Protocol documentation gives candidate read/write command families, but HCIS will not expose them merely because a manual mentions them. Physical firmware validation and explicit allowlisting remain required.
 
-## Verification expectations
+## Verification status
 
-Software quality gate must include:
+The latest implemented software head must pass the normal PR quality gate before this draft advances. The covered checks include:
 
 - clean migration;
 - TypeScript typecheck;
@@ -186,8 +191,21 @@ Software quality gate must include:
 - database integration proving passive collection OFF creates no vault row;
 - database integration proving collection ON imports only through explicit active PIN mapping;
 - database integration proving an unmapped PIN is not guessed into an employee vault;
+- database integration proving redacted source-request provenance and source-device `present` evidence;
 - regression proving ATTLOG remains lossless;
 - authorization tests proving non-SUPER_ADMIN actors cannot query the Wave 2 tables;
 - API/UI build and compose validation.
 
+At head `3bbcf45c37975195cd043d1d4b2d420c81b7a0e6`, GitHub Actions Pull Request Validation run #108 passed the full software quality gate.
+
 Physical-device validation is a later gate and must not be replaced by synthetic CI.
+
+## Contract status
+
+The runtime Wave 2 Admin surface currently consists of:
+
+- `GET /admin/attendance/adms/devices/{deviceId}/roster`;
+- `GET /admin/attendance/adms/biometrics`;
+- `GET /admin/attendance/adms/devices/{deviceId}/biometric-inventory`.
+
+The authoritative `docs/api/openapi.yaml` still needs these three metadata-only routes synchronized before Wave 2 can be considered contract-complete. Until that synchronization is committed and CI re-passes, PR #17 remains a draft even though the runtime implementation/tests are green.
