@@ -24,7 +24,7 @@ describe.skipIf(!databaseUrl)("ATT-005 Wave 2 sensitive ingress redaction", () =
     await pool.end();
   });
 
-  it("acks but never stores USER/OPERLOG plaintext in the request journal", async () => {
+  it("acks USER/OPERLOG, redacts plaintext, and projects only allowlisted roster fields", async () => {
     const deviceId = randomUUID();
     const serial = `SYNTH-W2-${randomUUID()}`;
     await pool.query(
@@ -42,7 +42,7 @@ describe.skipIf(!databaseUrl)("ATT-005 Wave 2 sensitive ingress redaction", () =
     await registerAdmsIngressRoutes(app, pool, config);
 
     const sensitiveBody =
-      "USER PIN=0042\tName=Pegawai Synthetic\tPasswd=do-not-journal\tCard=00001234\n";
+      "USER PIN=0042\tName=Pegawai Synthetic\tPasswd=do-not-journal\tCard=00001234\tPri=0\tVerify=1\tGrp=1\tTZ=0000000100000000\n";
     const response = await app.inject({
       method: "POST",
       url: `/iclock/cdata?SN=${encodeURIComponent(serial)}&table=OPERLOG`,
@@ -87,6 +87,7 @@ describe.skipIf(!databaseUrl)("ATT-005 Wave 2 sensitive ingress redaction", () =
       safeMetadata: {
         protocolTable: "OPERLOG",
         bodyRedaction: "sensitive_device_data_redacted",
+        safeRosterRecordCount: "1",
       },
     });
 
@@ -99,6 +100,38 @@ describe.skipIf(!databaseUrl)("ATT-005 Wave 2 sensitive ingress redaction", () =
       [deviceId],
     );
     expect(plaintextLeak.rows[0]?.count).toBe(0);
+
+    const roster = await pool.query<{
+      pin: string;
+      displayName: string | null;
+      cardNumber: string | null;
+      privilege: string | null;
+      verifyMode: string | null;
+      safeMetadata: Record<string, string>;
+    }>(
+      `SELECT
+         pin,
+         display_name AS "displayName",
+         card_number AS "cardNumber",
+         privilege,
+         verify_mode AS "verifyMode",
+         safe_metadata AS "safeMetadata"
+       FROM attendance_adms_device_roster_entries
+       WHERE device_id = $1`,
+      [deviceId],
+    );
+    expect(roster.rows).toEqual([
+      {
+        pin: "0042",
+        displayName: "Pegawai Synthetic",
+        cardNumber: "00001234",
+        privilege: "0",
+        verifyMode: "1",
+        safeMetadata: { group: "1", timezone: "0000000100000000" },
+      },
+    ]);
+    expect(JSON.stringify(roster.rows)).not.toContain("do-not-journal");
+    expect(JSON.stringify(roster.rows)).not.toContain("Passwd");
 
     await app.close();
   });
