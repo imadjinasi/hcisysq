@@ -22,9 +22,17 @@ function sha256(value: string | Uint8Array) {
   return createHash("sha256").update(value).digest("hex");
 }
 
+function containsControlCharacter(value: string) {
+  for (const character of value) {
+    const codePoint = character.codePointAt(0) ?? 0;
+    if (codePoint <= 0x1f || codePoint === 0x7f) return true;
+  }
+  return false;
+}
+
 export function normalizeDeviceSerial(value: string) {
   const normalized = value.trim();
-  if (!normalized || normalized.length > 128 || /[\u0000-\u001f\u007f]/.test(normalized)) {
+  if (!normalized || normalized.length > 128 || containsControlCharacter(normalized)) {
     throw new Error("Invalid ADMS serial");
   }
   return normalized;
@@ -112,7 +120,7 @@ export function optionsAllHandshakeBody(url: URL, serial: string | null, attlogS
 
 export function extractAttlogStamp(url: URL): string | null {
   const value = url.searchParams.get("Stamp") ?? url.searchParams.get("stamp");
-  if (!value || value.length > 256 || /[\u0000-\u001f\u007f]/.test(value)) return null;
+  if (!value || value.length > 256 || containsControlCharacter(value)) return null;
   return value;
 }
 
