@@ -10,6 +10,9 @@ const envSchema = z
     AUTH_MODE: z.enum(["local", "oidc"]).default("local"),
     AUTH_ENCRYPTION_KEY: z.string().regex(/^[a-fA-F0-9]{64}$/).optional(),
     AUTH_SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(168).default(8),
+    BIOMETRIC_COLLECTION_ENABLED: z.enum(["0", "1"]).optional(),
+    BIOMETRIC_ACTIVE_KEY_ID: z.string().trim().regex(/^[A-Za-z0-9._-]{1,80}$/).optional(),
+    BIOMETRIC_ENCRYPTION_KEYS: z.string().min(1).optional(),
     OIDC_ISSUER: z.string().url().optional(),
     OIDC_CLIENT_ID: z.string().trim().min(1).optional(),
     OIDC_CLIENT_SECRET: z.string().min(1).optional(),
@@ -20,6 +23,43 @@ const envSchema = z
     SQ_HUB_MACHINE_CLIENT_SECRET: z.string().min(1).optional(),
   })
   .superRefine((value, ctx) => {
+    if (value.BIOMETRIC_COLLECTION_ENABLED === "1") {
+      if (!value.BIOMETRIC_ACTIVE_KEY_ID) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["BIOMETRIC_ACTIVE_KEY_ID"],
+          message: "BIOMETRIC_ACTIVE_KEY_ID is required when biometric collection is enabled",
+        });
+      }
+      if (!value.BIOMETRIC_ENCRYPTION_KEYS) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["BIOMETRIC_ENCRYPTION_KEYS"],
+          message: "BIOMETRIC_ENCRYPTION_KEYS is required when biometric collection is enabled",
+        });
+      } else {
+        try {
+          const parsed = JSON.parse(value.BIOMETRIC_ENCRYPTION_KEYS) as unknown;
+          if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("not-object");
+          const entries = Object.entries(parsed as Record<string, unknown>);
+          if (entries.length === 0) throw new Error("empty");
+          for (const [keyId, keyHex] of entries) {
+            if (!/^[A-Za-z0-9._-]{1,80}$/.test(keyId)) throw new Error("key-id");
+            if (typeof keyHex !== "string" || !/^[a-fA-F0-9]{64}$/.test(keyHex)) throw new Error("key-value");
+          }
+          if (value.BIOMETRIC_ACTIVE_KEY_ID && !(value.BIOMETRIC_ACTIVE_KEY_ID in parsed)) {
+            throw new Error("active-key-missing");
+          }
+        } catch {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["BIOMETRIC_ENCRYPTION_KEYS"],
+            message: "BIOMETRIC_ENCRYPTION_KEYS must be a non-empty JSON keyring containing the active 32-byte hex key",
+          });
+        }
+      }
+    }
+
     if (value.AUTH_MODE !== "oidc") return;
 
     if (value.AUTH_SESSION_TTL_HOURS > 12) {
