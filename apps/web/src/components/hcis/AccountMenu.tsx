@@ -1,7 +1,7 @@
 import { ChevronDown, LogOut, UserRound } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { logout } from "@/lib/auth";
+import { logoutFromAccountMenu } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
 export interface AccountMenuUser {
@@ -44,8 +44,7 @@ export function AccountMenu({ user, variant }: AccountMenuProps) {
     setLoggingOut(true);
     setLogoutError(false);
     try {
-      const identityRedirectStarted = await logout();
-      if (!identityRedirectStarted) window.location.assign("/");
+      await logoutFromAccountMenu();
     } catch {
       setLogoutError(true);
       setLoggingOut(false);
