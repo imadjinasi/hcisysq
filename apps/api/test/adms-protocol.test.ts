@@ -3,11 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   attlogAcknowledgementBody,
   attlogEventIdentity,
+  deviceCommandWireBody,
   extractAttlogStamp,
   extractSerialCandidate,
   getRequestIdleAcknowledgementBody,
   optionsAllHandshakeBody,
   parseAttlogText,
+  parseDeviceCommandResultText,
 } from "../src/modules/attendance/adms/protocol.js";
 
 const validLine = "0042\t2026-08-28 07:13:20\t0\t1\t0\t0\t0\t0\t0\t0\t0";
@@ -70,6 +72,26 @@ describe("ADMS iClock protocol", () => {
         new URL("https://adms.example.test/iclock/cdata?SN=SPK7245000707"),
       ),
     ).toBe(null);
+  });
+
+  it("serializes the whitelisted LOG command in PUSH wire format", () => {
+    expect(deviceCommandWireBody("42", "LOG")).toBe("C:42:LOG\n");
+    expect(() => deviceCommandWireBody("0", "LOG")).toThrow("Invalid ADMS command number");
+  });
+
+  it("parses devicecmd acknowledgements and rejects malformed command results", () => {
+    const parsed = parseDeviceCommandResultText(
+      "ID=42&Return=0&CMD=LOG\nID=43&Return=-1&CMD=LOG\n",
+    );
+    expect(parsed.quarantines).toEqual([]);
+    expect(parsed.results).toEqual([
+      { rawLine: "ID=42&Return=0&CMD=LOG", commandNumber: "42", returnCode: 0, command: "LOG" },
+      { rawLine: "ID=43&Return=-1&CMD=LOG", commandNumber: "43", returnCode: -1, command: "LOG" },
+    ]);
+
+    const malformed = parseDeviceCommandResultText("ID=nope&Return=0&CMD=LOG");
+    expect(malformed.results).toEqual([]);
+    expect(malformed.quarantines[0]?.reason).toBe("INVALID_COMMAND_RESULT");
   });
 
   it("acknowledges durable ATTLOG record count", () => {
