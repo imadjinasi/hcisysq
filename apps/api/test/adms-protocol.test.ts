@@ -60,7 +60,7 @@ describe("ADMS iClock protocol", () => {
 
   it("acknowledges durable ATTLOG record count", () => {
     expect(attlogAcknowledgementBody(`${validLine}\n${validLine}\n`)).toBe("OK: 2");
-    expect(attlogAcknowledgementBody(""))toBe(null);
+    expect(attlogAcknowledgementBody("")).toBe(null);
   });
 
   it("uses stable rich event identity", () => {
