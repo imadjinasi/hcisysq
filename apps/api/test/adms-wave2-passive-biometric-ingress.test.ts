@@ -111,7 +111,7 @@ describe.skipIf(!databaseUrl)("ATT-005 Wave 2 passive biometric ingress", () => 
     await app.close();
   });
 
-  it("imports to the mapped active employee only and never journals or audits the template", async () => {
+  it("imports to the mapped active employee only and records redacted provenance plus device presence", async () => {
     const serial = `SYNTH-PASSIVE-ON-${randomUUID()}`;
     const deviceId = await insertDevice(pool, serial);
     const employeeId = await insertEmployee(pool);
@@ -139,11 +139,13 @@ describe.skipIf(!databaseUrl)("ATT-005 Wave 2 passive biometric ingress", () => 
     expect(response.body).toBe("OK: 1");
 
     const journal = await pool.query<{
+      id: string;
       body: Buffer | null;
       bodySha256: string;
       bodyByteLength: number;
     }>(
       `SELECT
+         id,
          body,
          body_sha256 AS "bodySha256",
          body_byte_length AS "bodyByteLength"
@@ -160,6 +162,7 @@ describe.skipIf(!databaseUrl)("ATT-005 Wave 2 passive biometric ingress", () => 
     const credential = await pool.query<{
       id: string;
       mappedEmployeeId: string;
+      sourceRequestId: string;
       modality: "fingerprint";
       slotIndex: number;
       vendorFormat: string;
@@ -175,6 +178,7 @@ describe.skipIf(!databaseUrl)("ATT-005 Wave 2 passive biometric ingress", () => 
       `SELECT
          id,
          employee_id AS "mappedEmployeeId",
+         source_request_id AS "sourceRequestId",
          modality,
          slot_index AS "slotIndex",
          vendor_format AS "vendorFormat",
@@ -193,6 +197,7 @@ describe.skipIf(!databaseUrl)("ATT-005 Wave 2 passive biometric ingress", () => 
     expect(credential.rows).toHaveLength(1);
     expect(credential.rows[0]).toMatchObject({
       mappedEmployeeId: employeeId,
+      sourceRequestId: journal.rows[0]?.id,
       modality: "fingerprint",
       slotIndex: 3,
       vendorFormat: "zkteco-push-fingertmp-base64",
@@ -228,6 +233,35 @@ describe.skipIf(!databaseUrl)("ATT-005 Wave 2 passive biometric ingress", () => 
       config,
     );
     expect(plaintext.toString("utf8")).toBe(tmp);
+
+    const replica = await pool.query<{
+      state: string;
+      devicePayloadSha256: string;
+      deviceVendorFormat: string;
+      observedAt: Date | null;
+      safeMetadata: Record<string, unknown>;
+    }>(
+      `SELECT
+         state,
+         device_payload_sha256 AS "devicePayloadSha256",
+         device_vendor_format AS "deviceVendorFormat",
+         observed_at AS "observedAt",
+         safe_metadata AS "safeMetadata"
+       FROM attendance_biometric_device_states
+       WHERE credential_id = $1 AND device_id = $2`,
+      [credential.rows[0]!.id, deviceId],
+    );
+    expect(replica.rows).toHaveLength(1);
+    expect(replica.rows[0]).toMatchObject({
+      state: "present",
+      devicePayloadSha256: createHash("sha256").update(Buffer.from(tmp, "utf8")).digest("hex"),
+      deviceVendorFormat: "zkteco-push-fingertmp-base64",
+      safeMetadata: {
+        source: "device_passive_upload",
+        sourceRequestId: journal.rows[0]?.id,
+      },
+    });
+    expect(replica.rows[0]?.observedAt).not.toBeNull();
 
     const audit = await pool.query<{ safeMetadata: Record<string, unknown> }>(
       `SELECT safe_metadata AS "safeMetadata"
