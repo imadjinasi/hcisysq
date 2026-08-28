@@ -50,9 +50,11 @@ Mapping, projection attendance native HCIS, dan UI berada pada Go 2/Go 3.
 
 ## Host dan routing
 
-Production harus menyediakan dedicated hostname untuk mesin, dikonfigurasi melalui `ADMS_INGRESS_HOST`, misalnya `adms.hcis.example.id`.
+Production menggunakan dedicated machine hostname `adms.sabilulquran.or.id`, dikonfigurasi melalui `ADMS_INGRESS_HOST=adms.sabilulquran.or.id`.
 
 Request dengan host lain tidak diperlakukan sebagai ADMS ingress. Hanya namespace `/iclock/*` yang diterima oleh adapter.
+
+Tidak ada deployment ADMS staging terpisah. Validasi awal dilakukan sebagai controlled production canary menggunakan satu mesin yang diregistrasi eksplisit sebelum traffic diperluas.
 
 ## Protocol subset
 

@@ -4,6 +4,7 @@ import {
   CalendarDays,
   CalendarRange,
   Clock3,
+  Fingerprint,
   History,
   KeyRound,
   LayoutDashboard,
@@ -28,6 +29,7 @@ export type AdminNavKey =
   | "history"
   | "organization"
   | "attendance"
+  | "attendance-devices"
   | "leave"
   | "leave-calendar"
   | "payslips"
@@ -45,6 +47,7 @@ const navItems: Array<{
   { key: "history", label: "Riwayat Impor", href: "/admin/employees/imports", icon: History },
   { key: "organization", label: "Struktur Organisasi", href: "/admin/organization", icon: Building2 },
   { key: "attendance", label: "Kehadiran", href: "/admin/attendance", icon: Clock3 },
+  { key: "attendance-devices", label: "Mesin Fingerprint", href: "/admin/attendance/devices", icon: Fingerprint },
   { key: "leave", label: "Konfigurasi Cuti", href: "/admin/leave", icon: CalendarDays },
   { key: "leave-calendar", label: "Kalender Kerja", href: "/admin/leave/calendar", icon: CalendarRange },
   { key: "payslips", label: "Payslip", href: "/admin/payslips", icon: WalletCards },

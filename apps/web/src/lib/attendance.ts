@@ -37,6 +37,72 @@ export interface AdminAttendanceListResponse
   items: AdminAttendanceRecord[];
 }
 
+export type AdmsDeviceLifecycle = "active" | "disabled" | "quarantined";
+
+export interface AdmsDevice {
+  id: string;
+  serialNumber: string;
+  displayName: string | null;
+  lifecycle: AdmsDeviceLifecycle;
+  timezone: string;
+  model: string | null;
+  firmwareVersion: string | null;
+  firstSeenAt: string | null;
+  lastSeenAt: string | null;
+  lastSuccessfulRequestAt: string | null;
+  lastIp: string | null;
+  createdAt: string;
+  updatedAt: string;
+  activeMappingCount?: number;
+  unmappedPinCount?: number;
+}
+
+export interface AdmsMapping {
+  id: string;
+  pin: string;
+  employeeId: string;
+  employeeNumber?: string;
+  employeeName?: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  createdAt: string;
+}
+
+export interface AdmsObservedPin {
+  pin: string;
+  eventCount: number;
+  firstEventAt: string;
+  lastEventAt: string;
+  mappingId: string | null;
+  employeeId: string | null;
+  employeeNumber: string | null;
+  employeeName: string | null;
+}
+
+export interface AdmsRecentEvent {
+  id: string;
+  pin: string;
+  occurredAt: string;
+  receivedAt: string;
+  sourceRequestId: string;
+}
+
+export interface AdmsQuarantine {
+  id: string;
+  reason: string;
+  details: Record<string, unknown>;
+  createdAt: string;
+  requestId: string;
+}
+
+export interface AdmsDeviceDetailResponse {
+  item: AdmsDevice;
+  mappings: AdmsMapping[];
+  observedPins: AdmsObservedPin[];
+  recentEvents: AdmsRecentEvent[];
+  recentQuarantines: AdmsQuarantine[];
+}
+
 export class AttendanceApiError extends Error {
   constructor(
     readonly status: number,
@@ -124,6 +190,83 @@ export async function deleteAdminAttendanceRecord(
       headers: { Accept: "application/json" },
     },
   );
+  if (response.ok) return;
+  await readJson<never>(response);
+}
+
+export async function listAdmsDevices(): Promise<{ items: AdmsDevice[] }> {
+  return readJson(
+    await fetch("/api/admin/attendance/adms/devices", {
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    }),
+  );
+}
+
+export async function createAdmsDevice(input: {
+  serialNumber: string;
+  displayName: string | null;
+  timezone?: string;
+}): Promise<{ item: AdmsDevice }> {
+  return readJson(
+    await fetch("/api/admin/attendance/adms/devices", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(input),
+    }),
+  );
+}
+
+export async function getAdmsDevice(deviceId: string): Promise<AdmsDeviceDetailResponse> {
+  return readJson(
+    await fetch(`/api/admin/attendance/adms/devices/${deviceId}`, {
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    }),
+  );
+}
+
+export async function updateAdmsDevice(
+  deviceId: string,
+  input: Partial<{
+    displayName: string | null;
+    lifecycle: AdmsDeviceLifecycle;
+    timezone: string;
+    model: string | null;
+    firmwareVersion: string | null;
+  }>,
+): Promise<{ item: AdmsDevice }> {
+  return readJson(
+    await fetch(`/api/admin/attendance/adms/devices/${deviceId}`, {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(input),
+    }),
+  );
+}
+
+export async function createAdmsMapping(
+  deviceId: string,
+  input: { pin: string; employeeId: string; effectiveFrom?: string },
+): Promise<{ item: AdmsMapping; projection: unknown }> {
+  return readJson(
+    await fetch(`/api/admin/attendance/adms/devices/${deviceId}/mappings`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(input),
+    }),
+  );
+}
+
+export async function endAdmsMapping(mappingId: string): Promise<void> {
+  const response = await fetch(`/api/admin/attendance/adms/mappings/${mappingId}`, {
+    method: "DELETE",
+    credentials: "include",
+    headers: { Accept: "application/json" },
+  });
   if (response.ok) return;
   await readJson<never>(response);
 }

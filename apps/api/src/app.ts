@@ -3,6 +3,7 @@ import type { Pool } from "pg";
 
 import type { ApiConfig } from "./config/env.js";
 import { createPool } from "./db/pool.js";
+import { registerAdmsAdminRoutes } from "./modules/attendance/adms/admin-routes.js";
 import { registerAdmsIngressRoutes } from "./modules/attendance/adms/routes.js";
 import { registerAttendanceRoutes } from "./modules/attendance/routes.js";
 import { registerAccountActivationAdminRoutes } from "./modules/auth/admin-account-activation-routes.js";
@@ -51,6 +52,7 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerOrganizationAdminRoutes(app, pool, config);
   await registerEmployeeContactAdminRoutes(app, pool, config);
   await registerAttendanceRoutes(app, pool, config);
+  await registerAdmsAdminRoutes(app, pool, config);
   await registerLeaveAdminRoutes(app, pool, config);
   await registerLeaveCalendarAdminRoutes(app, pool, config);
   await registerEmployeeLeaveRoutes(app, pool, config);
@@ -69,6 +71,15 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
       return reply.status(409).send({
         code: "LEAVE_REQUEST_OVERLAP",
         message: "Rentang cuti bertabrakan dengan pengajuan aktif lain.",
+      });
+    }
+    if (
+      databaseError.code === "23514" &&
+      databaseError.message === "ADMS employee mapping overlaps existing mapping"
+    ) {
+      return reply.status(409).send({
+        code: "ADMS_MAPPING_OVERLAP",
+        message: "Rentang mapping PIN bertabrakan dengan histori mapping yang sudah ada.",
       });
     }
     if (
