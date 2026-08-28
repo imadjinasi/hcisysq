@@ -34,6 +34,27 @@ function sendAuthError(reply: FastifyReply, error: AuthError) {
   });
 }
 
+export type SafeOidcFailureCategory =
+  | "access_denied"
+  | "access_unavailable"
+  | "account_inactive"
+  | "oidc_failed";
+
+export function safeOidcFailureCategory(error: unknown): SafeOidcFailureCategory {
+  if (!(error instanceof AuthError)) return "oidc_failed";
+
+  switch (error.code) {
+    case "HCIS_ACCESS_DENIED":
+      return "access_denied";
+    case "APPLICATION_ACCESS_UNAVAILABLE":
+      return "access_unavailable";
+    case "ACCOUNT_INACTIVE":
+      return "account_inactive";
+    default:
+      return "oidc_failed";
+  }
+}
+
 export async function registerAuthRoutes(
   app: FastifyInstance,
   pool: Pool,
@@ -138,8 +159,8 @@ export async function registerAuthRoutes(
       const result = await oidcLogin.complete(callbackUrl, requestContext(request));
       reply.header("Set-Cookie", result.setCookie);
       return reply.redirect("/");
-    } catch {
-      return reply.redirect("/?authError=oidc_failed");
+    } catch (error) {
+      return reply.redirect(`/?authError=${safeOidcFailureCategory(error)}`);
     }
   });
 
