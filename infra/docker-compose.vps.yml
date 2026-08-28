@@ -30,6 +30,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       AUTH_ENCRYPTION_KEY: ${AUTH_ENCRYPTION_KEY}
       AUTH_SESSION_TTL_HOURS: ${AUTH_SESSION_TTL_HOURS:-8}
+      ADMS_INGRESS_HOST: ${ADMS_INGRESS_HOST:?set ADMS_INGRESS_HOST}
     command:
       - sh
       - -c
@@ -49,7 +50,10 @@ services:
       timeout: 5s
       retries: 12
     networks:
-      - backend
+      backend:
+      edge_proxy:
+        aliases:
+          - hcis-api
     mem_limit: ${API_MEMORY_LIMIT:-192m}
 
   web:
