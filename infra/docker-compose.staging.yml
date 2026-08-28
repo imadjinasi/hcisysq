@@ -37,7 +37,6 @@ services:
       SQ_HUB_APPLICATION_ACCESS_URL: ${SQ_HUB_APPLICATION_ACCESS_URL:?set SQ_HUB_APPLICATION_ACCESS_URL}
       SQ_HUB_MACHINE_CLIENT_ID: ${SQ_HUB_MACHINE_CLIENT_ID:?set SQ_HUB_MACHINE_CLIENT_ID}
       SQ_HUB_MACHINE_CLIENT_SECRET: ${SQ_HUB_MACHINE_CLIENT_SECRET:?set SQ_HUB_MACHINE_CLIENT_SECRET}
-      ADMS_INGRESS_HOST: ${ADMS_INGRESS_HOST:?set ADMS_INGRESS_HOST}
     command:
       - sh
       - -c
@@ -58,7 +57,6 @@ services:
       retries: 12
     networks:
       backend:
-      edge_proxy:
         aliases:
           - hcis-staging-api
       sq_platform_staging:
