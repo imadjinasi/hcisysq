@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type { Pool } from "pg";
 
 import type { ApiConfig } from "../../../config/env.js";
@@ -138,6 +140,7 @@ export async function importMappedPassiveBiometrics(
   config: ApiConfig,
   input: {
     deviceId: string;
+    sourceRequestId: string;
     observedAt: Date;
     records: PassiveBiometricCandidate[];
   },
@@ -191,17 +194,46 @@ export async function importMappedPassiveBiometrics(
       continue;
     }
 
+    const payloadSha256 = createHash("sha256").update(record.payload).digest("hex");
     const result = await importBiometricCredential(pool, config, {
       employeeId: mapping.rows[0]!.employeeId,
       modality: record.modality,
       slotIndex: record.slotIndex,
       vendorFormat: record.vendorFormat,
       originDeviceId: input.deviceId,
+      sourceRequestId: input.sourceRequestId,
       sourcePin: record.pin,
       capturedAt: null,
       payload: record.payload,
       safeMetadata: record.safeMetadata,
     });
+
+    await pool.query(
+      `INSERT INTO attendance_biometric_device_states (
+         credential_id, device_id, state, device_payload_sha256,
+         device_vendor_format, observed_at, last_error_code, safe_metadata, updated_at
+       ) VALUES ($1, $2, 'present', $3, $4, $5, NULL, $6::jsonb, $5)
+       ON CONFLICT (credential_id, device_id) DO UPDATE
+       SET state = 'present',
+           device_payload_sha256 = EXCLUDED.device_payload_sha256,
+           device_vendor_format = EXCLUDED.device_vendor_format,
+           observed_at = GREATEST(
+             COALESCE(attendance_biometric_device_states.observed_at, EXCLUDED.observed_at),
+             EXCLUDED.observed_at
+           ),
+           last_error_code = NULL,
+           safe_metadata = EXCLUDED.safe_metadata,
+           updated_at = EXCLUDED.updated_at`,
+      [
+        result.credentialId,
+        input.deviceId,
+        payloadSha256,
+        record.vendorFormat,
+        input.observedAt,
+        JSON.stringify({ source: "device_passive_upload", sourceRequestId: input.sourceRequestId }),
+      ],
+    );
+
     if (result.created) imported += 1;
     else deduplicated += 1;
   }
