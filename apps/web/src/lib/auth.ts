@@ -72,25 +72,36 @@ export async function getCurrentSession(): Promise<AuthSession | null> {
   }
 }
 
-/**
- * Clears the HCIS session. Returns true when navigation to the SQ Identity
- * end-session endpoint has already been initiated and callers must not replace it
- * with a local redirect.
- */
-export async function logout(): Promise<boolean> {
+async function requestLogout(): Promise<string | null> {
   const response = await fetch("/api/auth/logout", {
     method: "POST",
     headers: { Accept: "application/json" },
   });
 
-  if (response.status === 204) return false;
+  if (response.status === 204) return null;
   if (!response.ok) throw await readError(response);
 
   const payload = (await response.json()) as { logoutUrl?: string | null };
-  if (!payload.logoutUrl) return false;
+  return payload.logoutUrl ?? null;
+}
 
-  window.location.assign(payload.logoutUrl);
-  return true;
+/**
+ * Compatibility helper for existing shells. OIDC navigation is initiated when
+ * the backend returns an Identity end-session URL; local callers may keep their
+ * existing local navigation behavior.
+ */
+export async function logout(): Promise<void> {
+  const logoutUrl = await requestLogout();
+  if (logoutUrl) window.location.assign(logoutUrl);
+}
+
+/**
+ * Preferred account-menu flow. One navigation decision owns the transition so
+ * a local redirect cannot overwrite SQ Identity end-session navigation.
+ */
+export async function logoutFromAccountMenu(): Promise<void> {
+  const logoutUrl = await requestLogout();
+  window.location.assign(logoutUrl ?? "/");
 }
 
 export function oidcLoginFailureMessage(category: string | null): string | null {
