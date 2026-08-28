@@ -1,6 +1,8 @@
+import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import pg from "pg";
@@ -157,7 +159,7 @@ try {
   }
   assert(invalidEnvelopeRejected, "Wave 2 encrypted-envelope constraint did not reject plaintext-less active credential");
 
-  console.log(`Wave 1 -> Wave 2 migration rehearsal passed in schema ${schemaName}`);
+  process.stdout.write(`Wave 1 -> Wave 2 migration rehearsal passed in schema ${schemaName}\n`);
 } finally {
   try {
     await client.query("SET search_path TO public");
