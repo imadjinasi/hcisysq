@@ -51,6 +51,8 @@ services:
       retries: 12
     networks:
       backend:
+        aliases:
+          - hcis-api-internal
       edge_proxy:
         aliases:
           - hcis-api
