@@ -47,6 +47,7 @@ Mapping, projection attendance native HCIS, dan UI berada pada Go 2/Go 3.
 9. Payload lebih dari 512 KiB tidak diproses sebagai ATTLOG dan dicatat sebagai quarantine bila request berhasil mencapai parser aplikasi.
 10. ACK ATTLOG diberikan hanya setelah request journal, event/quarantine, dan cursor durable di database.
 11. Failure pada projection masa depan tidak boleh mengubah fakta raw yang sudah durable menjadi retry protocol.
+12. Polling `GET /iclock/getrequest` tanpa command dibalas literal `OK`; HTTP 200 dengan body kosong bukan response idle yang sesuai kontrak PUSH SDK.
 
 ## Host dan routing
 
@@ -58,11 +59,13 @@ Tidak ada deployment ADMS staging terpisah. Validasi awal dilakukan sebagai cont
 
 ## Protocol subset
 
-Go 1 hanya mendukung transport attendance-log yang sudah terbukti pada implementasi sumber:
+Go 1 hanya mendukung transport attendance-log yang sudah terbukti pada implementasi sumber dan dikoreksi mengikuti kontrak PUSH SDK vendor:
 
 - `GET /iclock/cdata?...&options=all` untuk options handshake;
 - `POST /iclock/cdata?...&table=ATTLOG&Stamp=...` untuk ATTLOG;
-- polling `/iclock/getrequest` tetap menghasilkan response aman tanpa command queue.
+- `GET /iclock/getrequest` untuk polling command; selama command queue belum ada, response idle wajib berupa plain-text `OK`.
+
+Response idle `OK` tidak berarti HCIS sudah mendukung remote command. Go 1 tetap tidak mempunyai command queue dan tidak mengirim perintah perubahan data/configuration ke mesin.
 
 Handshake mengaktifkan ATTLOG saja dan tidak meminta OPERLOG, photo, user, atau biometric material.
 
@@ -118,7 +121,7 @@ Satu opaque ATTLOG `Stamp` per device. Cursor berubah dalam transaction yang sam
 
 ## Acceptance criteria Go 1
 
-1. Protocol parser memiliki unit test untuk valid ATTLOG, invalid field count, invalid/future timestamp, serial extraction, handshake, ACK, Stamp, dan stable identity.
+1. Protocol parser memiliki unit test untuk valid ATTLOG, invalid field count, invalid/future timestamp, serial extraction, handshake, idle `getrequest` ACK, ATTLOG ACK, Stamp, dan stable identity.
 2. Migration membuat registry, journal, event, quarantine, dan cursor tanpa mengubah `attendance_daily_records`.
 3. Request/event/quarantine raw tidak dapat UPDATE/DELETE melalui database role aplikasi.
 4. Unknown device tidak menghasilkan attendance event.
