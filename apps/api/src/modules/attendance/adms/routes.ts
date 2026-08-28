@@ -18,6 +18,13 @@ import {
 import { projectAdmsRequest } from "./projection.js";
 import { getAdmsAttlogTransferStamp, persistAdmsIngress } from "./repository.js";
 import { observeDetectedAdmsDevice } from "./wave1.js";
+import {
+  deviceDataAcknowledgementBody,
+  extractProtocolTable,
+  isSensitiveProtocolTable,
+  looksLikeAttlogPayload,
+  shouldRedactDeviceDataBody,
+} from "./wave2-protocol.js";
 
 function directHostname(hostHeader: string | undefined): string | null {
   if (!hostHeader || hostHeader.includes(",")) return null;
@@ -120,12 +127,14 @@ export async function registerAdmsIngressRoutes(
       const contentType = safeHeader(request.headers["content-type"]);
       const contentEncoding = safeHeader(request.headers["content-encoding"]);
       const capture = asCapturedBody(request.body);
+      const protocolTable = extractProtocolTable(url);
       const safeMetadata: Record<string, string> = {};
       const userAgent = safeHeader(request.headers["user-agent"]);
       const accept = safeHeader(request.headers.accept);
       if (userAgent) safeMetadata.userAgent = userAgent;
       if (accept) safeMetadata.accept = accept;
       if (contentEncoding) safeMetadata.contentEncoding = contentEncoding;
+      if (protocolTable) safeMetadata.protocolTable = protocolTable;
       for (const key of ["pushver", "PushVersion", "language"]) {
         const value = url.searchParams.get(key);
         if (value && value.length <= 128) safeMetadata[key] = value;
@@ -134,6 +143,8 @@ export async function registerAdmsIngressRoutes(
       const quarantines: AttlogQuarantine[] = [];
       const commandResults: ParsedDeviceCommandResult[] = [];
       let attlogText: string | null = null;
+      let decodedDeviceText: string | null = null;
+      let redactJournalBody = false;
       let classification = "protocol_discovery";
       if (capture.body && capture.body.length > 0) {
         if (!acceptsUtf8(contentType, contentEncoding)) {
@@ -142,14 +153,32 @@ export async function registerAdmsIngressRoutes(
         } else {
           try {
             const text = new TextDecoder("utf-8", { fatal: true }).decode(capture.body);
+            decodedDeviceText = text;
             if (request.method === "POST" && url.pathname === "/iclock/devicecmd") {
               classification = "device_command_result";
               const parsed = parseDeviceCommandResultText(text);
               commandResults.push(...parsed.results);
               quarantines.push(...parsed.quarantines);
-            } else if (text.includes("\t")) {
+            } else if (
+              request.method === "POST" &&
+              url.pathname === "/iclock/cdata" &&
+              (protocolTable === "ATTLOG" || looksLikeAttlogPayload(text))
+            ) {
               classification = "attlog";
               attlogText = text;
+            } else if (
+              shouldRedactDeviceDataBody({
+                method: request.method,
+                path: url.pathname,
+                table: protocolTable,
+                text,
+              })
+            ) {
+              redactJournalBody = true;
+              classification = isSensitiveProtocolTable(protocolTable)
+                ? "sensitive_device_data_redacted"
+                : "device_data_redacted";
+              safeMetadata.bodyRedaction = classification;
             }
           } catch {
             classification = "unsupported_encoding";
@@ -179,7 +208,9 @@ export async function registerAdmsIngressRoutes(
             ? "OK"
             : attlogText
               ? attlogAcknowledgementBody(attlogText)
-              : null;
+              : redactJournalBody && decodedDeviceText !== null
+                ? deviceDataAcknowledgementBody(decodedDeviceText)
+                : null;
 
       const result = await persistAdmsIngress(pool, {
         receivedAt,
@@ -190,7 +221,7 @@ export async function registerAdmsIngressRoutes(
         sourceIp: requestSourceIp,
         safeMetadata,
         serialCandidate,
-        body: capture.body,
+        body: redactJournalBody ? null : capture.body,
         bodySha256: capture.bodySha256,
         bodyByteLength: capture.bodyByteLength,
         bodyCaptured: capture.bodyCaptured,
