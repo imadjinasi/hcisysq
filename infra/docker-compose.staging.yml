@@ -58,7 +58,7 @@ services:
     networks:
       backend:
         aliases:
-          - hcis-staging-api
+          - hcis-api-internal
       sq_platform_staging:
         aliases:
           - hcis-api-staging
