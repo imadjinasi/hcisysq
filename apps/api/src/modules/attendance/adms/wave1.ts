@@ -39,7 +39,11 @@ export async function observeDetectedAdmsDevice(
   await pool.query(
     `INSERT INTO attendance_adms_detected_devices (
        id, serial_number, first_seen_at, last_seen_at, last_ip, safe_metadata
-     ) VALUES ($1, $2, $3, $3, $4, $5::jsonb)
+     )
+     SELECT $1, $2, $3, $3, $4, $5::jsonb
+     WHERE NOT EXISTS (
+       SELECT 1 FROM attendance_adms_devices WHERE serial_number = $2
+     )
      ON CONFLICT (serial_number) DO UPDATE
      SET last_seen_at = GREATEST(attendance_adms_detected_devices.last_seen_at, EXCLUDED.last_seen_at),
          last_ip = EXCLUDED.last_ip,
