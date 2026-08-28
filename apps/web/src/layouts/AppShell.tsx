@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import ysqMark from "@/assets/brand/ysq-mark.png";
+import { AccountMenu } from "@/components/hcis/AccountMenu";
 import { cn } from "@/lib/utils";
 
 interface AppShellUser {
@@ -170,15 +171,7 @@ export function AppShell({
           ) : null}
         </nav>
 
-        <div className="rounded-3xl border border-border/70 bg-white p-3.5 shadow-[var(--shadow-soft)]">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand-primary text-sm font-bold text-white shadow-[var(--shadow-button)]">{user.initials}</div>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-bold text-foreground">{user.name}</p>
-              <p className="truncate text-[11px] text-muted-foreground">{user.position} · {user.unit}</p>
-            </div>
-          </div>
-        </div>
+        <AccountMenu user={user} variant="sidebar" />
       </aside>
 
       <div className="lg:pl-72">
@@ -202,13 +195,7 @@ export function AppShell({
               <button type="button" aria-label="Notifikasi" className="relative flex h-10 w-10 items-center justify-center rounded-2xl border border-border/70 bg-white text-muted-foreground shadow-[var(--shadow-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <Bell className="h-[18px] w-[18px]" aria-hidden="true" />
               </button>
-              <div className="hidden items-center gap-2 rounded-2xl border border-border/70 bg-white py-1.5 pl-1.5 pr-3 shadow-[var(--shadow-soft)] sm:flex">
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-primary text-xs font-bold text-white">{user.initials}</div>
-                <div className="max-w-40">
-                  <p className="truncate text-xs font-bold">{user.name}</p>
-                  <p className="truncate text-[10px] text-muted-foreground">{user.unit}</p>
-                </div>
-              </div>
+              <AccountMenu user={user} variant="header" />
             </div>
           </div>
         </header>

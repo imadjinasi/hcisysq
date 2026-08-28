@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 
 import { LoginForm } from "@/components/hcis/LoginForm";
 import { AuthLayout } from "@/layouts/AuthLayout";
-import { getAuthMode, type AuthMode } from "@/lib/auth";
+import { getAuthMode, oidcLoginFailureMessage, type AuthMode } from "@/lib/auth";
 
 export function LoginPage() {
   const [mode, setMode] = useState<AuthMode | null>(null);
@@ -23,7 +23,9 @@ export function LoginPage() {
     };
   }, []);
 
-  const oidcFailed = new URLSearchParams(window.location.search).get("authError") === "oidc_failed";
+  const authError = oidcLoginFailureMessage(
+    new URLSearchParams(window.location.search).get("authError"),
+  );
 
   return (
     <AuthLayout>
@@ -41,14 +43,14 @@ export function LoginPage() {
 
       {mode === "oidc" && (
         <div className="space-y-4">
-          {oidcFailed && (
+          {authError ? (
             <p
-              className="rounded-xl border border-destructive/15 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+              className="rounded-xl border border-destructive/15 bg-destructive/5 px-4 py-3 text-sm leading-6 text-destructive"
               role="alert"
             >
-              Masuk melalui SQ Identity gagal atau akses HCIS tidak tersedia. Silakan coba lagi.
+              {authError}
             </p>
-          )}
+          ) : null}
           <a
             href="/api/auth/oidc/start"
             className="flex h-12 w-full items-center justify-center rounded-xl bg-brand-primary text-sm font-bold text-white shadow-[var(--shadow-button)] transition-[transform,box-shadow,background-color] hover:-translate-y-0.5 hover:bg-brand-primary-deep hover:shadow-[var(--shadow-raised)] active:translate-y-0 active:shadow-[var(--shadow-pressed)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/35"
@@ -56,7 +58,7 @@ export function LoginPage() {
             Masuk dengan SQ Identity
           </a>
           <p className="text-center text-xs leading-5 text-muted-foreground">
-            Gunakan identitas Staff Sabilul Qur'an yang telah diaktifkan.
+            Gunakan identitas Staff Sabilul Qur&apos;an yang telah diaktifkan.
           </p>
         </div>
       )}

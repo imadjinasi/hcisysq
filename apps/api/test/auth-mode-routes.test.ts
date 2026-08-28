@@ -13,7 +13,7 @@ const config: ApiConfig = {
   AUTH_MODE: "oidc",
   AUTH_ENCRYPTION_KEY: "11".repeat(32),
   AUTH_SESSION_TTL_HOURS: 8,
-  OIDC_ISSUER: "https://login-staging.sabilulquran.or.id/realms/sq-staff-staging",
+  OIDC_ISSUER: "https://login.sabilulquran.or.id/realms/sq-staff-staging",
   OIDC_CLIENT_ID: "hcis-staging",
   OIDC_CLIENT_SECRET: "synthetic-secret",
   OIDC_REDIRECT_URI: "https://hcis-staging.sabilulquran.or.id/auth/callback",
