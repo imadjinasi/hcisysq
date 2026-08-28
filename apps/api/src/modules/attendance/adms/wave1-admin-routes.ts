@@ -352,16 +352,20 @@ export async function registerAdmsWave1AdminRoutes(
     if (duration < 0 || duration > 31 * 86_400_000) {
       return reply.status(400).send({ code: "ADMS_RANGE_TOO_LARGE", message: "Rentang maksimal 31 hari dan waktu akhir tidak boleh sebelum waktu awal." });
     }
-    const device = await pool.query<{ timezone: string }>(
-      `SELECT timezone FROM attendance_adms_devices WHERE id = $1 AND lifecycle = 'active'`,
+    const device = await pool.query<{ timezone: string; lifecycle: string }>(
+      `SELECT timezone, lifecycle FROM attendance_adms_devices WHERE id = $1`,
       [params.data.deviceId],
     );
-    if (!device.rows[0]) {
+    const target = device.rows[0];
+    if (!target) {
+      return reply.status(404).send({ code: "ADMS_DEVICE_NOT_FOUND", message: "Mesin tidak ditemukan." });
+    }
+    if (target.lifecycle !== "active") {
       return reply.status(409).send({ code: "ADMS_DEVICE_NOT_ACTIVE", message: "Historical upload hanya dapat diminta ke mesin aktif." });
     }
     const wireCommand = attlogRangeWireCommand(
-      formatDeviceLocalTimestamp(startAt, device.rows[0].timezone),
-      formatDeviceLocalTimestamp(endAt, device.rows[0].timezone),
+      formatDeviceLocalTimestamp(startAt, target.timezone),
+      formatDeviceLocalTimestamp(endAt, target.timezone),
     );
     return queueDeviceCommand(pool, reply, principal.id, params.data.deviceId, {
       commandType: "data_query",
