@@ -105,7 +105,7 @@ describe("ATT-005 Wave 1 operations", () => {
   });
 
   it("labels range reconciliation as persisted coverage instead of inventing expected or duplicate counts", async () => {
-    const { pool } = createPool("SUPER_ADMIN");
+    const { pool, query } = createPool("SUPER_ADMIN");
     const app = Fastify({ logger: false });
     await registerAdmsWave1OpsRoutes(app, pool, config);
 
@@ -122,6 +122,12 @@ describe("ATT-005 Wave 1 operations", () => {
       duplicatesObserved: null,
       items: [{ currentPersistedCount: 24, persistedSinceDeliveryCount: 6 }],
     });
+    const reconciliationSql = query.mock.calls
+      .map(([sql]) => String(sql))
+      .find((sql) => sql.includes("coverage.\"currentPersistedCount\""));
+    expect(reconciliationSql).toContain("JOIN attendance_adms_events e ON e.source_request_id = r.id");
+    expect(reconciliationSql).toContain("e.occurred_at >= c.requested_range_start");
+    expect(reconciliationSql).toContain("e.occurred_at <= c.requested_range_end");
     await app.close();
   });
 
