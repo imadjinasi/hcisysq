@@ -59,6 +59,7 @@ export type ImportBiometricCredentialInput = {
   vendorFormat: string;
   vendorVersion?: string | null;
   originDeviceId?: string | null;
+  sourceRequestId?: string | null;
   sourcePin?: string | null;
   capturedAt?: Date | null;
   payload: Buffer;
@@ -74,6 +75,7 @@ export type BiometricCredentialMetadata = {
   vendorFormat: string;
   vendorVersion: string | null;
   originDeviceId: string | null;
+  sourceRequestId: string | null;
   sourcePin: string | null;
   capturedAt: Date | null;
   importedAt: Date;
@@ -160,14 +162,14 @@ export async function importBiometricCredential(
     const inserted = await client.query<{ id: string }>(
       `INSERT INTO attendance_biometric_credentials (
          id, employee_id, modality, slot_index, vendor_format, vendor_version,
-         origin_device_id, source_pin, captured_at, payload_sha256,
+         origin_device_id, source_request_id, source_pin, captured_at, payload_sha256,
          payload_byte_length, encryption_key_id, payload_ciphertext, payload_iv,
          payload_auth_tag, safe_metadata, created_by_account_id
        ) VALUES (
          $1, $2, $3, $4, $5, $6,
-         $7, $8, $9, $10,
-         $11, $12, $13, $14,
-         $15, $16::jsonb, $17
+         $7, $8, $9, $10, $11,
+         $12, $13, $14, $15,
+         $16, $17::jsonb, $18
        )
        ON CONFLICT DO NOTHING
        RETURNING id`,
@@ -179,6 +181,7 @@ export async function importBiometricCredential(
         vendorFormat,
         vendorVersion,
         input.originDeviceId ?? null,
+        input.sourceRequestId ?? null,
         sourcePin,
         input.capturedAt ?? null,
         encrypted.sha256,
@@ -241,6 +244,7 @@ export async function listBiometricCredentialMetadata(
        vendor_format AS "vendorFormat",
        vendor_version AS "vendorVersion",
        origin_device_id AS "originDeviceId",
+       source_request_id AS "sourceRequestId",
        source_pin AS "sourcePin",
        captured_at AS "capturedAt",
        imported_at AS "importedAt",
