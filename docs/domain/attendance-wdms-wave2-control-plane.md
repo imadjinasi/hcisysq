@@ -36,6 +36,8 @@ For POST `/iclock/cdata`:
 
 This means password fields and biometric templates must not enter `attendance_adms_request_journal.body`.
 
+The ADMS capture boundary is 512 KiB. Oversized payloads are not retained in plaintext and return HTTP 413. Explicit sensitive tables are journaled as hash-only evidence with `bodyCapture=hash_only_oversize` plus the redaction classification. Oversized explicit ATTLOG is classified as rejected and is never parsed/projected.
+
 ## Safe observed roster
 
 `attendance_adms_device_roster_entries` stores only an allowlisted observation:
@@ -128,6 +130,8 @@ Old keys may remain in the keyring to decrypt older envelopes while new imports 
 
 If collection is explicitly enabled but the keyring is missing, malformed or does not contain the active key, configuration validation fails closed.
 
+`BIOMETRIC_COLLECTION_ENABLED` is currently a global gate, not a per-device pilot selector. Production remains OFF until the global collection scope is explicitly accepted or a narrower pilot control exists.
+
 ## Credential lifecycle and deletion preparation
 
 The schema supports an eventual cryptographic-destruction boundary:
@@ -179,9 +183,10 @@ Protocol documentation gives candidate read/write command families, but HCIS wil
 
 ## Verification status
 
-The latest implemented software head must pass the normal PR quality gate before this draft advances. The covered checks include:
+Final hardened software head `21f3d9fb529241132220e5d1c59c1d56e1ec2601` passed GitHub Actions Pull Request Validation run #121, including:
 
 - clean migration;
+- explicit Wave 1 (`0025`) -> Wave 2 (`0026`) migration rehearsal with seeded device, request-journal, mapping and command state preserved;
 - TypeScript typecheck;
 - lint;
 - synthetic AES-GCM/key-rotation tests;
@@ -192,22 +197,27 @@ The latest implemented software head must pass the normal PR quality gate before
 - database integration proving collection ON imports only through explicit active PIN mapping;
 - database integration proving an unmapped PIN is not guessed into an employee vault;
 - database integration proving redacted source-request provenance and source-device `present` evidence;
-- database regression proving biometric audit rows cannot be updated/deleted;
-- database regression proving `destroyed` credentials cannot retain ciphertext/hash/key material;
-- regression proving ATTLOG remains lossless;
+- append-only biometric audit and destroyed-envelope constraint regressions;
+- synthetic device simulator covering idle polling, INFO delivery/result, safe USERINFO observation and passive OPERLOG fingerprint redaction with collection OFF;
+- oversized sensitive-body hash-only/413 regression and oversized ATTLOG no-projection regression;
+- regression proving ATTLOG remains lossless within the accepted capture boundary;
 - authorization tests proving non-SUPER_ADMIN actors cannot query the Wave 2 tables;
-- API/UI build and compose validation.
-
-At head `3bbcf45c37975195cd043d1d4b2d420c81b7a0e6`, GitHub Actions Pull Request Validation run #108 passed the full software quality gate. Later documentation/contract/lifecycle-test heads must pass the same gate before any readiness decision.
+- API/UI build and Compose validation.
 
 Physical-device validation is a later gate and must not be replaced by synthetic CI.
 
+The operator runbook for production deployment, physical canary, rollback, emergency disable and biometric key rotation is `docs/development/attendance-adms-wave2-canary-runbook.md`.
+
 ## Contract status
 
-The runtime Wave 2 Admin surface consists of:
+The runtime Wave 2 Admin surface currently consists of:
 
 - `GET /admin/attendance/adms/devices/{deviceId}/roster`;
 - `GET /admin/attendance/adms/biometrics`;
 - `GET /admin/attendance/adms/devices/{deviceId}/biometric-inventory`.
 
-`docs/api/attendance-adms-wave2.openapi.yaml` contains the self-contained metadata-only contract fragment. The authoritative `docs/api/openapi.yaml` now aggregates all three paths through external Path Item `$ref` entries. The aggregate synchronization commit changed only those three references (`+9 / -0` versus the previous branch head), leaving the existing Leave, Organization and Wave 1 contract untouched.
+`docs/api/attendance-adms-wave2.openapi.yaml` contains the exact metadata-only contract. The authoritative `docs/api/openapi.yaml` aggregates the three paths via external Path Item `$ref` entries.
+
+## Hardware boundary
+
+The software foundation is hardened but remains hardware-gated. The next command-capable behavior must wait for controlled physical-firmware validation. The outstanding physical sequence starts with Wave 1 deployment/polling and one fresh attendance punch, then INFO and bounded ATTLOG recovery/dedup, before any Wave 2 roster/template command is enabled.
