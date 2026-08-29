@@ -189,6 +189,7 @@ const deviceTimestampPattern = "\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}";
 const attlogRangeCommandPattern = new RegExp(
   `^DATA QUERY ATTLOG StartTime=${deviceTimestampPattern}\\tEndTime=${deviceTimestampPattern}$`,
 );
+const userInfoQueryCommandPattern = /^DATA QUERY USERINFO PIN=\d{1,128}$/;
 
 export function attlogRangeWireCommand(startTime: string, endTime: string) {
   const command = `DATA QUERY ATTLOG StartTime=${startTime}\tEndTime=${endTime}`;
@@ -196,10 +197,22 @@ export function attlogRangeWireCommand(startTime: string, endTime: string) {
   return command;
 }
 
+export function userInfoQueryWireCommand(pin: string) {
+  if (!/^\d{1,128}$/.test(pin)) throw new Error("Invalid ADMS USERINFO PIN");
+  const command = `DATA QUERY USERINFO PIN=${pin}`;
+  if (!userInfoQueryCommandPattern.test(command)) throw new Error("Invalid ADMS USERINFO query command");
+  return command;
+}
+
 export function deviceCommandWireBody(commandNumber: string | number, wireCommand: string) {
   const number = String(commandNumber);
   if (!/^[1-9]\d{0,18}$/.test(number)) throw new Error("Invalid ADMS command number");
-  if (wireCommand !== "LOG" && wireCommand !== "INFO" && !attlogRangeCommandPattern.test(wireCommand)) {
+  if (
+    wireCommand !== "LOG" &&
+    wireCommand !== "INFO" &&
+    !attlogRangeCommandPattern.test(wireCommand) &&
+    !userInfoQueryCommandPattern.test(wireCommand)
+  ) {
     throw new Error("Unsupported ADMS wire command");
   }
   return `C:${number}:${wireCommand}\n`;
