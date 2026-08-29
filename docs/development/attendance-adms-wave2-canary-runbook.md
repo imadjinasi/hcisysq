@@ -54,9 +54,9 @@ Wave 1 only persists `infoObserved` from a parsed command result whose command i
 
 The remaining gates may be completed without forcing an immediate fingerprint punch:
 
-1. wait for one **natural post-deploy fresh punch** and verify near-realtime ATTLOG persistence/provenance;
-2. run one small bounded `DATA QUERY ATTLOG StartTime=... EndTime=...` request;
-3. repeat the identical bounded range and confirm persisted raw-event identities remain deduplicated;
+1. run one small bounded `DATA QUERY ATTLOG StartTime=... EndTime=...` request;
+2. repeat the identical bounded range and confirm persisted raw-event identities remain deduplicated;
+3. wait for one **natural post-deploy fresh punch** and verify near-realtime ATTLOG persistence/provenance when it occurs;
 4. observe an honest online/offline transition when operationally practical.
 
 Recommended bounded range for `SPK7245000707`:
