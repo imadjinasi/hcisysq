@@ -73,38 +73,46 @@ Conclusion: fresh physical fingerprint -> HCIS ATTLOG transport and immutable ra
 
 The observed PINs remain unmapped. Employee attendance projection is therefore still a separate boundary; do not infer employee identity from PIN, name, NIP, card, organizational unit, or other device fields. Mapping remains explicit device PIN -> `employees.id` only.
 
-## Bounded historical ATTLOG canary — READY
+## Bounded historical ATTLOG + identical-range dedupe — VERIFIED 2026-08-29
 
-Use a narrow historical range that contains a known event so retransmission/dedup can be observed without creating synthetic attendance.
-
-Recommended canary window on `SPK7245000707`:
+The physical canary used this explicit narrow window on `SPK7245000707`:
 
 ```text
 Start: 2026-08-29 06:15:00 Asia/Jakarta
 End:   2026-08-29 06:25:00 Asia/Jakarta
 ```
 
-This window contains the known `205291319` punch at 06:19:26.
+The window contains the known `205291319` punch at 06:19:26.
 
-Run:
+### First pass
 
-1. one bounded `DATA QUERY ATTLOG StartTime=... EndTime=...` request for that exact window;
-2. wait for the command to reach terminal success and confirm an ATTLOG request is observed;
-3. confirm the persisted raw-event count for the window does not grow beyond the already-known event identity merely because the device retransmitted it;
-4. repeat the **identical** window once;
-5. confirm persisted raw events remain deduplicated after the second retransmission.
+Command `C:5` (`admin_range_recovery`) was queued at 09:46:49, delivered at 09:46:50, and reached terminal `succeeded` with return code 0. Persisted range coverage remained exactly 1 event. At 09:46:50 HCIS recorded `DUPLICATE_EXACT` for the retransmitted event.
 
-Do not enable periodic reconciliation and do not use an invented “upload all” command for this canary.
+### Identical repeat
+
+The exact same 06:15 -> 06:25 window was submitted again. Command `C:6` was queued at 09:57:31, delivered at 09:57:38, and reached terminal `succeeded`. Persisted range coverage again remained exactly 1 event, and a new `DUPLICATE_EXACT` evidence record was observed at 09:57:38.
+
+In the Wave 1 repository, `DUPLICATE_EXACT` is emitted only after a valid ATTLOG event is parsed and `INSERT ... ON CONFLICT (event_identity_hash) DO NOTHING` rejects the already-persisted exact event identity. Therefore both physical range requests caused the device to retransmit the known historical punch and HCIS kept raw persistence idempotent across the repeat.
+
+Conclusion: documented bounded `DATA QUERY ATTLOG StartTime=... EndTime=...` transport, physical historical retransmission, immutable event identity, and identical-range dedupe are **VERIFIED**.
+
+### Observability defect discovered during canary
+
+The current production reconciliation UI displayed `ATTLOG req = 0` for both commands even though `DUPLICATE_EXACT` proved ATTLOG was received. This is a summary-query defect, not a transport failure: the current metric only counts request-journal rows that became `attendance_adms_events.source_request_id`. Duplicate-only requests create no new event row, so they are incorrectly omitted from that count.
+
+A separate Wave 1 observability fix is being prepared from `main`; it does not change device commands, event identity, or persistence behavior.
 
 ## Remaining Wave 1 hardware status
 
 - production deployment/version gate: **VERIFIED**;
 - INFO physical result: **VERIFIED**;
 - fresh realtime ATTLOG on deployed Wave 1: **VERIFIED**;
-- bounded historical ATTLOG: **READY / PENDING EXECUTION**;
-- identical-range dedupe/retransmission: **PENDING**;
+- bounded historical ATTLOG: **VERIFIED**;
+- identical-range dedupe/retransmission: **VERIFIED**;
 - online/offline transition: observational follow-up when operationally practical.
+
+The primary Wave 1 hardware gates required before opening the next read-only Wave 2 capability work are complete.
 
 ## Wave 2 boundary
 
-Command-capable Wave 2 roster/template/enrollment/distribution/delete/restore behavior remains hardware-gated until bounded historical recovery/dedup is physically verified. Fresh realtime transport and INFO are now verified on the deployed Wave 1 build.
+Wave 1 proof does not by itself validate undocumented or untested Wave 2 wire behavior. Roster/template/enrollment/distribution/delete/restore commands must still be introduced capability-by-capability, using documented protocol framing and physical firmware evidence. Destructive or write-capable operations remain blocked until their exact device behavior is separately validated. Production biometric collection remains OFF by default.
