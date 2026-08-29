@@ -83,6 +83,26 @@ export async function registerAdmsWave2UserInfoRoutes(
         });
       }
 
+      const observedPin = await client.query<{ observed: boolean }>(
+        `SELECT EXISTS (
+           SELECT 1
+           FROM attendance_adms_events e
+           WHERE e.device_id = $1 AND e.pin = $2
+           UNION ALL
+           SELECT 1
+           FROM attendance_adms_device_roster_entries r
+           WHERE r.device_id = $1 AND r.pin = $2
+         ) AS observed`,
+        [target.id, body.data.pin],
+      );
+      if (observedPin.rows[0]?.observed !== true) {
+        await client.query("ROLLBACK");
+        return reply.status(409).send({
+          code: "ADMS_PIN_NOT_OBSERVED",
+          message: "Canary USERINFO hanya boleh memakai PIN yang sudah pernah terobservasi pada mesin ini.",
+        });
+      }
+
       const active = await client.query<{
         id: string;
         commandNumber: string;
@@ -147,6 +167,7 @@ export async function registerAdmsWave2UserInfoRoutes(
             pin: body.data.pin,
             capability: "single_pin_userinfo",
             fullRoster: false,
+            pinPreviouslyObserved: true,
           }),
         ],
       );
@@ -166,6 +187,7 @@ export async function registerAdmsWave2UserInfoRoutes(
             reason: "admin_query_user_info",
             pin: body.data.pin,
             fullRoster: false,
+            pinPreviouslyObserved: true,
           }),
         ],
       );
