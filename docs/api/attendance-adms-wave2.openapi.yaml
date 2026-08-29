@@ -3,9 +3,9 @@ info:
   title: HCIS YSQ ATT-005 Wave 2 OpenAPI Fragment
   version: 0.0.1
   description: |
-    Reviewable contract fragment for ATT-005 Wave 2 metadata-only Admin routes.
-    This file does not replace docs/api/openapi.yaml. The authoritative aggregate
-    remains incomplete until these paths are merged there.
+    Reviewable contract fragment for ATT-005 Wave 2 Admin routes. Routine biometric
+    responses remain metadata-only; the biometric collection policy controls only the
+    local HCIS pilot gate and never sends a command to a fingerprint device.
 tags:
   - name: Attendance
 paths:
@@ -75,10 +75,14 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [collectionEnabled, rawPayloadExposed, items]
+                required: [collectionEnabled, globalCollectionEnabled, rawPayloadExposed, items]
                 properties:
                   collectionEnabled:
                     type: boolean
+                    description: Compatibility alias for globalCollectionEnabled.
+                  globalCollectionEnabled:
+                    type: boolean
+                    description: Process-wide biometric collection gate; effective collection also requires the selected device pilot gate and active lifecycle.
                   rawPayloadExposed:
                     type: boolean
                     const: false
@@ -89,6 +93,66 @@ paths:
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/attendance/adms/devices/{deviceId}/biometric-collection-policy:
+    get:
+      tags: [Attendance]
+      operationId: getAdmsDeviceBiometricCollectionPolicy
+      summary: Read global, per-device, and effective biometric collection gates
+      description: |
+        Reads local HCIS policy only. No PUSH/ADMS command is sent to the device.
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: Current biometric collection gate state for the device
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [item]
+                properties:
+                  item: { $ref: '#/components/schemas/AdmsBiometricCollectionPolicy' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Attendance]
+      operationId: updateAdmsDeviceBiometricCollectionPolicy
+      summary: Enable or disable biometric collection for one pilot device
+      description: |
+        Audited local HCIS policy update only. Enabling is rejected unless the global
+        biometric gate is ON and the device lifecycle is active. Disabling remains allowed.
+        This operation never sends a roster/template/enrollment command to the device.
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              additionalProperties: false
+              properties:
+                enabled: { type: boolean }
+      responses:
+        '200':
+          description: Audited local pilot policy updated
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [item]
+                properties:
+                  item: { $ref: '#/components/schemas/AdmsBiometricCollectionPolicy' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Global collection is OFF or the target device lifecycle is not active
 
   /admin/attendance/adms/devices/{deviceId}/biometric-inventory:
     get:
@@ -144,6 +208,27 @@ components:
       description: Request validation failed
 
   schemas:
+    AdmsBiometricCollectionPolicy:
+      type: object
+      required:
+        [deviceId, lifecycle, globalCollectionEnabled, deviceCollectionEnabled, effectiveCollectionEnabled]
+      properties:
+        deviceId: { type: string, format: uuid }
+        lifecycle:
+          type: string
+          enum: [active, disabled, quarantined]
+        globalCollectionEnabled:
+          type: boolean
+          description: Process-wide environment gate.
+        deviceCollectionEnabled:
+          type: boolean
+          description: Audited pilot selector for this trusted device.
+        effectiveCollectionEnabled:
+          type: boolean
+          description: True only when global and device gates are ON and lifecycle is active.
+        enabledAt: { type: [string, 'null'], format: date-time }
+        enabledByAccountId: { type: [string, 'null'], format: uuid }
+
     ObservedAdmsRosterItem:
       type: object
       required:
