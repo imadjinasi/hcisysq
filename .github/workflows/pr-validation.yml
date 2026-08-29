@@ -68,6 +68,12 @@ jobs:
       - name: Run clean migration
         run: npm run migrate:api
 
+      - name: Rehearse Wave 1 to Wave 2 migration
+        run: node apps/api/scripts/rehearse-wave2-upgrade.mjs
+
+      - name: Rehearse Wave 2 USERINFO migration
+        run: node apps/api/scripts/rehearse-wave2-userinfo-upgrade.mjs
+
       - name: Typecheck
         run: npm run typecheck
 

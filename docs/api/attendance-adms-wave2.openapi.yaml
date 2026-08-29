@@ -1,0 +1,393 @@
+openapi: 3.1.0
+info:
+  title: HCIS YSQ ATT-005 Wave 2 OpenAPI Fragment
+  version: 0.0.1
+  description: |
+    Reviewable contract fragment for ATT-005 Wave 2 Admin routes. Routine biometric
+    responses remain metadata-only; the biometric collection policy controls only the
+    local HCIS pilot gate. The only command-capable route in this fragment is the
+    explicitly allowlisted read-only single-PIN USERINFO canary; full roster/template
+    queries and all user/biometric writes remain unavailable.
+tags:
+  - name: Attendance
+paths:
+  /admin/attendance/adms/devices/{deviceId}/roster:
+    get:
+      tags: [Attendance]
+      operationId: listObservedAdmsDeviceRoster
+      summary: List safe roster observations for one trusted device
+      description: |
+        Returns only allowlisted roster observations. This is not a complete device snapshot:
+        absence from this list must not be interpreted as proof that a user is missing on-device.
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: Safe observed roster with current explicit HCIS PIN mapping when available
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [inventorySemantics, completeSnapshot, note, items]
+                properties:
+                  inventorySemantics:
+                    type: string
+                    const: observed_only
+                  completeSnapshot:
+                    type: boolean
+                    const: false
+                  note:
+                    type: string
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ObservedAdmsRosterItem'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/attendance/adms/devices/{deviceId}/commands/query-user-info:
+    post:
+      tags: [Attendance]
+      operationId: queryAdmsDeviceUserInfoByPin
+      summary: Queue a read-only USERINFO query for one numeric device PIN
+      description: |
+        SUPER_ADMIN-only manual canary. Queues exactly `DATA QUERY USERINFO PIN=<digits>`.
+        PIN is a string so leading zeroes remain significant. A successful command result
+        proves only device execution; physical canary completion also requires a new redacted
+        safe roster observation for the same PIN after command delivery. This endpoint cannot
+        request a full roster and cannot query biometric templates.
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pin]
+              additionalProperties: false
+              properties:
+                pin:
+                  type: string
+                  pattern: '^[0-9]{1,128}$'
+                  description: Numeric device-local PIN. Leading zeroes are significant.
+      responses:
+        '202':
+          description: USERINFO command queued for the active trusted device
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [item]
+                properties:
+                  item:
+                    $ref: '#/components/schemas/AdmsSinglePinUserInfoCommand'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Device is not active or another command is already active for the device
+
+  /admin/attendance/adms/biometrics:
+    get:
+      tags: [Attendance]
+      operationId: listAdmsBiometricCredentialMetadata
+      summary: List biometric vault metadata without payload/envelope/key material
+      description: |
+        SUPER_ADMIN metadata-only surface. It never returns plaintext template bytes,
+        ciphertext, payload hash, IV, authentication tag, encryption key ID, or key material.
+      parameters:
+        - name: employeeId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: originDeviceId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: modality
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [fingerprint, face, palm, bio_photo]
+      responses:
+        '200':
+          description: Vault credential metadata only
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [collectionEnabled, globalCollectionEnabled, rawPayloadExposed, items]
+                properties:
+                  collectionEnabled:
+                    type: boolean
+                    description: Compatibility alias for globalCollectionEnabled.
+                  globalCollectionEnabled:
+                    type: boolean
+                    description: Process-wide biometric collection gate; effective collection also requires the selected device pilot gate and active lifecycle.
+                  rawPayloadExposed:
+                    type: boolean
+                    const: false
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AdmsBiometricCredentialMetadata'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/attendance/adms/devices/{deviceId}/biometric-collection-policy:
+    get:
+      tags: [Attendance]
+      operationId: getAdmsDeviceBiometricCollectionPolicy
+      summary: Read global, per-device, and effective biometric collection gates
+      description: |
+        Reads local HCIS policy only. No PUSH/ADMS command is sent to the device.
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: Current biometric collection gate state for the device
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [item]
+                properties:
+                  item: { $ref: '#/components/schemas/AdmsBiometricCollectionPolicy' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Attendance]
+      operationId: updateAdmsDeviceBiometricCollectionPolicy
+      summary: Enable or disable biometric collection for one pilot device
+      description: |
+        Audited local HCIS policy update only. Enabling is rejected unless the global
+        biometric gate is ON and the device lifecycle is active. Disabling remains allowed.
+        This operation never sends a roster/template/enrollment command to the device.
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              additionalProperties: false
+              properties:
+                enabled: { type: boolean }
+      responses:
+        '200':
+          description: Audited local pilot policy updated
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [item]
+                properties:
+                  item: { $ref: '#/components/schemas/AdmsBiometricCollectionPolicy' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Global collection is OFF or the target device lifecycle is not active
+
+  /admin/attendance/adms/devices/{deviceId}/biometric-inventory:
+    get:
+      tags: [Attendance]
+      operationId: listAdmsDeviceKnownBiometricReplicaState
+      summary: List known biometric replica evidence for one trusted device
+      description: |
+        Evidence-driven state only. A missing state is not inferred because another device
+        has never been queried. The routine response excludes device payload hashes and vault
+        payload/envelope/key material.
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: Known replica state metadata only
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [inventorySemantics, rawPayloadExposed, items]
+                properties:
+                  inventorySemantics:
+                    type: string
+                    const: known_replica_state
+                  rawPayloadExposed:
+                    type: boolean
+                    const: false
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AdmsBiometricReplicaMetadata'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  parameters:
+    DeviceId:
+      name: deviceId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    Unauthenticated:
+      description: Authentication required
+    Forbidden:
+      description: SUPER_ADMIN authorization required
+    NotFound:
+      description: Trusted ADMS device not found
+    ValidationError:
+      description: Request validation failed
+
+  schemas:
+    AdmsSinglePinUserInfoCommand:
+      type: object
+      required:
+        [id, commandNumber, commandType, reason, status, createdAt, expiresAt, pin, fullRoster, verificationRequired]
+      properties:
+        id: { type: string, format: uuid }
+        commandNumber: { type: string, pattern: '^[1-9][0-9]*$' }
+        commandType: { type: string, const: query_user_info }
+        reason: { type: string, const: admin_query_user_info }
+        status: { type: string, const: pending }
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        pin:
+          type: string
+          pattern: '^[0-9]{1,128}$'
+        fullRoster: { type: boolean, const: false }
+        verificationRequired:
+          type: string
+          const: command_success_and_new_safe_roster_observation
+
+    AdmsBiometricCollectionPolicy:
+      type: object
+      required:
+        [deviceId, lifecycle, globalCollectionEnabled, deviceCollectionEnabled, effectiveCollectionEnabled]
+      properties:
+        deviceId: { type: string, format: uuid }
+        lifecycle:
+          type: string
+          enum: [active, disabled, quarantined]
+        globalCollectionEnabled:
+          type: boolean
+          description: Process-wide environment gate.
+        deviceCollectionEnabled:
+          type: boolean
+          description: Audited pilot selector for this trusted device.
+        effectiveCollectionEnabled:
+          type: boolean
+          description: True only when global and device gates are ON and lifecycle is active.
+        enabledAt: { type: [string, 'null'], format: date-time }
+        enabledByAccountId: { type: [string, 'null'], format: uuid }
+
+    ObservedAdmsRosterItem:
+      type: object
+      required:
+        [id, pin, firstSeenAt, lastSeenAt, sourceRequestId, mappingStatus]
+      properties:
+        id: { type: string, format: uuid }
+        pin:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Leading zeroes are significant.
+        displayName: { type: [string, 'null'], maxLength: 160 }
+        cardNumber: { type: [string, 'null'], maxLength: 160 }
+        privilege: { type: [string, 'null'], maxLength: 80 }
+        verifyMode: { type: [string, 'null'], maxLength: 80 }
+        safeMetadata:
+          type: object
+          additionalProperties: true
+          description: Allowlisted non-secret device roster metadata only.
+        firstSeenAt: { type: string, format: date-time }
+        lastSeenAt: { type: string, format: date-time }
+        sourceRequestId: { type: [string, 'null'], format: uuid }
+        mappingId: { type: [string, 'null'], format: uuid }
+        employeeId: { type: [string, 'null'], format: uuid }
+        employeeNumber: { type: [string, 'null'] }
+        employeeName: { type: [string, 'null'] }
+        employeeStatus: { type: [string, 'null'] }
+        mappingStatus:
+          type: string
+          enum: [mapped, unmapped]
+
+    AdmsBiometricCredentialMetadata:
+      type: object
+      required:
+        [id, employeeId, employeeNumber, employeeName, employeeStatus, modality, vendorFormat, importedAt, lifecycle, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        employeeId: { type: string, format: uuid }
+        employeeNumber: { type: string }
+        employeeName: { type: string }
+        employeeStatus: { type: string }
+        modality:
+          type: string
+          enum: [fingerprint, face, palm, bio_photo]
+        slotIndex: { type: [integer, 'null'], minimum: 0, maximum: 255 }
+        vendorFormat: { type: string, maxLength: 120 }
+        vendorVersion: { type: [string, 'null'], maxLength: 120 }
+        originDeviceId: { type: [string, 'null'], format: uuid }
+        originDeviceSerial: { type: [string, 'null'] }
+        sourcePin:
+          type: [string, 'null']
+          description: Device-local PIN; leading zeroes are significant.
+        capturedAt: { type: [string, 'null'], format: date-time }
+        importedAt: { type: string, format: date-time }
+        lifecycle:
+          type: string
+          enum: [active, retired, destroyed]
+        payloadByteLength:
+          type: [integer, 'null']
+          minimum: 0
+          description: Size metadata only; payload and cryptographic envelope are not exposed.
+        safeMetadata:
+          type: object
+          additionalProperties: true
+          description: Allowlisted non-secret credential metadata only.
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    AdmsBiometricReplicaMetadata:
+      type: object
+      required:
+        [credentialId, state, employeeId, employeeNumber, employeeName, modality, vaultVendorFormat, credentialLifecycle]
+      properties:
+        credentialId: { type: string, format: uuid }
+        state:
+          type: string
+          enum: [unknown, missing, present, stale, conflict, pending, succeeded, failed]
+        deviceVendorFormat: { type: [string, 'null'], maxLength: 120 }
+        observedAt: { type: [string, 'null'], format: date-time }
+        lastSyncedAt: { type: [string, 'null'], format: date-time }
+        lastErrorCode: { type: [string, 'null'], maxLength: 120 }
+        safeMetadata:
+          type: object
+          additionalProperties: true
+        employeeId: { type: string, format: uuid }
+        employeeNumber: { type: string }
+        employeeName: { type: string }
+        modality:
+          type: string
+          enum: [fingerprint, face, palm, bio_photo]
+        slotIndex: { type: [integer, 'null'], minimum: 0, maximum: 255 }
+        vaultVendorFormat: { type: string, maxLength: 120 }
+        vaultVendorVersion: { type: [string, 'null'], maxLength: 120 }
+        credentialLifecycle:
+          type: string
+          enum: [active, retired, destroyed]

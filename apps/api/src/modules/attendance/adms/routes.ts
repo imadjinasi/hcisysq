@@ -5,6 +5,11 @@ import type { Pool } from "pg";
 
 import type { ApiConfig } from "../../../config/env.js";
 import {
+  importMappedPassiveBiometrics,
+  parsePassiveBiometricCandidates,
+  type PassiveBiometricCandidate,
+} from "./biometric-ingress.js";
+import {
   ADMS_MAX_BODY_BYTES,
   attlogAcknowledgementBody,
   extractAttlogStamp,
@@ -17,7 +22,17 @@ import {
 } from "./protocol.js";
 import { projectAdmsRequest } from "./projection.js";
 import { getAdmsAttlogTransferStamp, persistAdmsIngress } from "./repository.js";
+import { observeDeviceRosterEntries } from "./roster.js";
 import { observeDetectedAdmsDevice } from "./wave1.js";
+import {
+  deviceDataAcknowledgementBody,
+  extractProtocolTable,
+  isAttlogDeviceData,
+  isSensitiveProtocolTable,
+  parseSafeDeviceRosterRecords,
+  shouldRedactDeviceDataBody,
+  type SafeDeviceRosterRecord,
+} from "./wave2-protocol.js";
 
 function directHostname(hostHeader: string | undefined): string | null {
   if (!hostHeader || hostHeader.includes(",")) return null;
@@ -120,12 +135,14 @@ export async function registerAdmsIngressRoutes(
       const contentType = safeHeader(request.headers["content-type"]);
       const contentEncoding = safeHeader(request.headers["content-encoding"]);
       const capture = asCapturedBody(request.body);
+      const protocolTable = extractProtocolTable(url);
       const safeMetadata: Record<string, string> = {};
       const userAgent = safeHeader(request.headers["user-agent"]);
       const accept = safeHeader(request.headers.accept);
       if (userAgent) safeMetadata.userAgent = userAgent;
       if (accept) safeMetadata.accept = accept;
       if (contentEncoding) safeMetadata.contentEncoding = contentEncoding;
+      if (protocolTable) safeMetadata.protocolTable = protocolTable;
       for (const key of ["pushver", "PushVersion", "language"]) {
         const value = url.searchParams.get(key);
         if (value && value.length <= 128) safeMetadata[key] = value;
@@ -134,27 +151,103 @@ export async function registerAdmsIngressRoutes(
       const quarantines: AttlogQuarantine[] = [];
       const commandResults: ParsedDeviceCommandResult[] = [];
       let attlogText: string | null = null;
+      let decodedDeviceText: string | null = null;
+      let observedRosterRecords: SafeDeviceRosterRecord[] = [];
+      let passiveBiometricCandidates: PassiveBiometricCandidate[] = [];
+      let redactJournalBody = false;
       let classification = "protocol_discovery";
       if (capture.body && capture.body.length > 0) {
         if (!acceptsUtf8(contentType, contentEncoding)) {
           classification = "unsupported_encoding";
+          const nonAttendanceCdata =
+            request.method === "POST" &&
+            url.pathname === "/iclock/cdata" &&
+            protocolTable !== "ATTLOG";
+          if (nonAttendanceCdata) {
+            redactJournalBody = true;
+            safeMetadata.bodyRedaction = isSensitiveProtocolTable(protocolTable)
+              ? "sensitive_device_data_redacted"
+              : "device_data_redacted";
+          }
           quarantines.push({ reason: "UNSUPPORTED_ENCODING", rawLine: "", details: {} });
         } else {
           try {
             const text = new TextDecoder("utf-8", { fatal: true }).decode(capture.body);
+            decodedDeviceText = text;
             if (request.method === "POST" && url.pathname === "/iclock/devicecmd") {
               classification = "device_command_result";
               const parsed = parseDeviceCommandResultText(text);
               commandResults.push(...parsed.results);
               quarantines.push(...parsed.quarantines);
-            } else if (text.includes("\t")) {
+            } else if (
+              request.method === "POST" &&
+              url.pathname === "/iclock/cdata" &&
+              isAttlogDeviceData({ table: protocolTable, text })
+            ) {
               classification = "attlog";
               attlogText = text;
+            } else if (
+              shouldRedactDeviceDataBody({
+                method: request.method,
+                path: url.pathname,
+                table: protocolTable,
+                text,
+              })
+            ) {
+              redactJournalBody = true;
+              classification = isSensitiveProtocolTable(protocolTable)
+                ? "sensitive_device_data_redacted"
+                : "device_data_redacted";
+              safeMetadata.bodyRedaction = classification;
+              if (protocolTable === "OPERLOG" || protocolTable === "USERINFO") {
+                observedRosterRecords = parseSafeDeviceRosterRecords(text);
+                if (observedRosterRecords.length > 0) {
+                  safeMetadata.safeRosterRecordCount = String(observedRosterRecords.length);
+                }
+              }
+              if (protocolTable === "OPERLOG") {
+                const parsedBiometrics = parsePassiveBiometricCandidates(text, protocolTable);
+                passiveBiometricCandidates = parsedBiometrics.records;
+                if (parsedBiometrics.records.length > 0) {
+                  safeMetadata.biometricRecordCount = String(parsedBiometrics.records.length);
+                }
+                if (parsedBiometrics.rejectedRecords > 0) {
+                  safeMetadata.biometricRejectedRecordCount = String(parsedBiometrics.rejectedRecords);
+                }
+              }
             }
           } catch {
             classification = "unsupported_encoding";
+            const nonAttendanceCdata =
+              request.method === "POST" &&
+              url.pathname === "/iclock/cdata" &&
+              protocolTable !== "ATTLOG";
+            if (nonAttendanceCdata) {
+              redactJournalBody = true;
+              safeMetadata.bodyRedaction = isSensitiveProtocolTable(protocolTable)
+                ? "sensitive_device_data_redacted"
+                : "device_data_redacted";
+            }
             quarantines.push({ reason: "UNSUPPORTED_ENCODING", rawLine: "", details: {} });
           }
+        }
+      }
+
+      if (
+        !capture.bodyCaptured &&
+        capture.bodyByteLength > 0 &&
+        request.method === "POST" &&
+        url.pathname === "/iclock/cdata"
+      ) {
+        safeMetadata.bodyCapture = "hash_only_oversize";
+        if (protocolTable === "ATTLOG") {
+          classification = "attlog_oversize_rejected";
+        } else {
+          redactJournalBody = true;
+          classification = isSensitiveProtocolTable(protocolTable)
+            ? "sensitive_device_data_redacted"
+            : "device_data_redacted";
+          safeMetadata.bodyRedaction = classification;
         }
       }
 
@@ -179,7 +272,11 @@ export async function registerAdmsIngressRoutes(
             ? "OK"
             : attlogText
               ? attlogAcknowledgementBody(attlogText)
-              : null;
+              : redactJournalBody
+                ? decodedDeviceText !== null
+                  ? deviceDataAcknowledgementBody(decodedDeviceText)
+                  : "OK"
+                : null;
 
       const result = await persistAdmsIngress(pool, {
         receivedAt,
@@ -190,7 +287,7 @@ export async function registerAdmsIngressRoutes(
         sourceIp: requestSourceIp,
         safeMetadata,
         serialCandidate,
-        body: capture.body,
+        body: redactJournalBody ? null : capture.body,
         bodySha256: capture.bodySha256,
         bodyByteLength: capture.bodyByteLength,
         bodyCaptured: capture.bodyCaptured,
@@ -201,6 +298,37 @@ export async function registerAdmsIngressRoutes(
         quarantines,
         successResponseBody,
       });
+
+      if (result.accepted && result.deviceId && observedRosterRecords.length > 0) {
+        try {
+          await observeDeviceRosterEntries(pool, {
+            deviceId: result.deviceId,
+            sourceRequestId: result.requestId,
+            observedAt: receivedAt,
+            records: observedRosterRecords,
+          });
+        } catch (error) {
+          request.log.error(
+            {
+              error: error instanceof Error ? error.message : "unknown roster observation error",
+              requestId: result.requestId,
+              deviceId: result.deviceId,
+            },
+            "ADMS safe roster observation failed after redacted durable capture",
+          );
+        }
+      }
+
+      if (result.accepted && result.deviceId && passiveBiometricCandidates.length > 0) {
+        // Do not swallow vault failures when collection is enabled and a mapped candidate is eligible.
+        // Returning a server error lets the device retry while the already-durable journal remains redacted.
+        await importMappedPassiveBiometrics(pool, config, {
+          deviceId: result.deviceId,
+          sourceRequestId: result.requestId,
+          observedAt: receivedAt,
+          records: passiveBiometricCandidates,
+        });
+      }
 
       const projectionRequestIds = new Set(result.recoveredRequestIds);
       if (result.accepted && result.insertedEvents > 0) projectionRequestIds.add(result.requestId);

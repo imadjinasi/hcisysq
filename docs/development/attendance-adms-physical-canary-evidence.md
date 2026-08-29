@@ -1,0 +1,118 @@
+# ATT-005 Physical Canary Evidence
+
+**Status:** ACTIVE EVIDENCE LOG  
+**Updated:** 2026-08-29  
+**Device:** `SPK7245000707` — SDIT Tahfizh Sabilul Qur'an  
+**Timezone:** `Asia/Jakarta`
+
+This file records observed physical-device evidence separately from synthetic CI. It does not treat CI, protocol documentation, or a pre-upgrade production deployment as proof of the current Wave 1 implementation.
+
+## Pre-upgrade realtime ATTLOG — OBSERVED 2026-08-29
+
+Before the Wave 1 production deployment, a production Super Admin screenshot showed `SPK7245000707` continuing to communicate with HCIS and two same-day raw events with near-realtime receipt:
+
+| Device punch time (Asia/Jakarta) | HCIS received time (Asia/Jakarta) | Observed latency | PIN |
+| --- | --- | ---: | --- |
+| 2026-08-29 07:55:07 | 2026-08-29 07:55:16 | 9 s | `109041327` |
+| 2026-08-29 06:19:26 | 2026-08-29 06:19:35 | 9 s | `205291319` |
+
+The older production UI did not yet expose the merged Wave 1 operations/details surfaces, so these punches remain evidence for the older deployed path only.
+
+## Wave 1 production deployment gate — VERIFIED 2026-08-29
+
+The approved current `main` Wave 1 build was deployed to production and the operator recorded exact Git head:
+
+```text
+1e061cd88daa0686bd487f4813cd17d483ff8cd2
+```
+
+Post-deploy evidence:
+
+- PostgreSQL healthy;
+- API healthy;
+- web healthy;
+- `GET /api/health` returned HTTP 200 `{"status":"ok"}`;
+- `GET /api/ready` returned HTTP 200 `{"status":"ready"}`;
+- Wave 1 `Transactions, Reconciliation & Logs` UI is visible in production;
+- device lifecycle is `active`;
+- connectivity is `online`;
+- observed median request interval is approximately 1 second;
+- last public IP remains `182.253.124.5`;
+- periodic bounded reconciliation remains OFF.
+
+Conclusion: the deployment-version gate for Wave 1 is complete.
+
+## INFO read-only physical result — VERIFIED 2026-08-29
+
+After the Wave 1 deployment, production safe telemetry showed a new INFO observation at approximately 2026-08-29 09:03:20 Asia/Jakarta (`2026-08-29T02:03:20.875Z`) with device-returned values including:
+
+- `FWVersion = ZMM510-NF28VA-Ver2.0.16`;
+- `MAC = 00:17:61:10:0d:4d`;
+- `IPAddress = 192.168.18.221`;
+- `FPCount = 186`;
+- `FaceCount = 11`;
+- `UserCount = 106`;
+- `TransactionCount = 3422`.
+
+The Wave 1 repository only updates `metadata.infoObserved` from a parsed device command result whose command is exactly `INFO`, whose return code is non-negative, and whose safe option set is non-empty. Device command results are first associated with a known command number for the same trusted device. Therefore this production observation is sufficient evidence that the physical device returned a successful INFO result to the deployed Wave 1 application.
+
+No raw template or other biometric payload is exposed by this INFO surface.
+
+## Fresh post-deploy realtime ATTLOG — VERIFIED 2026-08-29
+
+Natural production use after the Wave 1 deployment produced fresh raw events on the deployed `1e061cd...` build:
+
+| Device punch time (Asia/Jakarta) | HCIS received time (Asia/Jakarta) | Observed latency | PIN | Source request |
+| --- | --- | ---: | --- | --- |
+| 2026-08-29 09:14:08 | 2026-08-29 09:14:18 | 10 s | `912302153` | `9add426b-42d7-4691-a31b-225ba1358997` |
+| 2026-08-29 09:25:12 | 2026-08-29 09:25:22 | 10 s | `711112272` | `1d4f3118-3806-474d-bc19-630a3de4dd6e` |
+
+These events occurred after the production deployment around 09:00 Asia/Jakarta and were received through distinct normal request provenance with near-realtime latency. No synthetic or forced test punch was needed.
+
+Conclusion: fresh physical fingerprint -> HCIS ATTLOG transport and immutable raw persistence are **VERIFIED on the deployed Wave 1 build**.
+
+The observed PINs remain unmapped. Employee attendance projection is therefore still a separate boundary; do not infer employee identity from PIN, name, NIP, card, organizational unit, or other device fields. Mapping remains explicit device PIN -> `employees.id` only.
+
+## Bounded historical ATTLOG + identical-range dedupe — VERIFIED 2026-08-29
+
+The physical canary used this explicit narrow window on `SPK7245000707`:
+
+```text
+Start: 2026-08-29 06:15:00 Asia/Jakarta
+End:   2026-08-29 06:25:00 Asia/Jakarta
+```
+
+The window contains the known `205291319` punch at 06:19:26.
+
+### First pass
+
+Command `C:5` (`admin_range_recovery`) was queued at 09:46:49, delivered at 09:46:50, and reached terminal `succeeded` with return code 0. Persisted range coverage remained exactly 1 event. At 09:46:50 HCIS recorded `DUPLICATE_EXACT` for the retransmitted event.
+
+### Identical repeat
+
+The exact same 06:15 -> 06:25 window was submitted again. Command `C:6` was queued at 09:57:31, delivered at 09:57:38, and reached terminal `succeeded`. Persisted range coverage again remained exactly 1 event, and a new `DUPLICATE_EXACT` evidence record was observed at 09:57:38.
+
+In the Wave 1 repository, `DUPLICATE_EXACT` is emitted only after a valid ATTLOG event is parsed and `INSERT ... ON CONFLICT (event_identity_hash) DO NOTHING` rejects the already-persisted exact event identity. Therefore both physical range requests caused the device to retransmit the known historical punch and HCIS kept raw persistence idempotent across the repeat.
+
+Conclusion: documented bounded `DATA QUERY ATTLOG StartTime=... EndTime=...` transport, physical historical retransmission, immutable event identity, and identical-range dedupe are **VERIFIED**.
+
+### Observability defect discovered during canary
+
+The current production reconciliation UI displayed `ATTLOG req = 0` for both commands even though `DUPLICATE_EXACT` proved ATTLOG was received. This is a summary-query defect, not a transport failure: the current metric only counts request-journal rows that became `attendance_adms_events.source_request_id`. Duplicate-only requests create no new event row, so they are incorrectly omitted from that count.
+
+A separate Wave 1 observability fix is being prepared from `main`; it does not change device commands, event identity, or persistence behavior.
+
+## Remaining Wave 1 hardware status
+
+- production deployment/version gate: **VERIFIED**;
+- INFO physical result: **VERIFIED**;
+- fresh realtime ATTLOG on deployed Wave 1: **VERIFIED**;
+- bounded historical ATTLOG: **VERIFIED**;
+- identical-range dedupe/retransmission: **VERIFIED**;
+- online/offline transition: observational follow-up when operationally practical.
+
+The primary Wave 1 hardware gates required before opening the next read-only Wave 2 capability work are complete.
+
+## Wave 2 boundary
+
+Wave 1 proof does not by itself validate undocumented or untested Wave 2 wire behavior. Roster/template/enrollment/distribution/delete/restore commands must still be introduced capability-by-capability, using documented protocol framing and physical firmware evidence. Destructive or write-capable operations remain blocked until their exact device behavior is separately validated. Production biometric collection remains OFF by default.
