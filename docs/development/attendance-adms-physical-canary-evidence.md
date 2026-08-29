@@ -30,7 +30,7 @@ Conclusion: the **currently deployed production application** is receiving and p
 
 This observation must **not** be recorded as completion of the merged ATT-005 Wave 1 canary yet.
 
-The production screenshot does not expose the Wave 1 operations/details surfaces that current `main` renders before the legacy registry/mapping panel (`AdminAdmsWave1Operations` and `AdminAdmsWave1Details`). Therefore the currently deployed production UI is behind the current `main` implementation, although the exact deployed commit has not yet been established from the VPS.
+Current `main` renders `AdminAdmsWave1Operations` and `AdminAdmsWave1Details` before the registry/mapping panel. Those Wave 1 surfaces were not present in the production UI shown on 2026-08-29. Therefore the deployed production UI is behind current `main`, although the exact deployed commit has not yet been established from the VPS.
 
 The two 2026-08-29 punches prove physical device -> deployed HCIS realtime transport for the older deployment only. They do not prove that the merged Wave 1 command/recovery/observability code has been deployed or exercised.
 
