@@ -74,9 +74,9 @@ When the next natural punch occurs, verify:
 
 Employee projection remains a separate boundary and requires a correct explicit device PIN mapping.
 
-## Next physical gates that do not require a new punch
+## Bounded historical ATTLOG canary — READY
 
-A small historical range can be tested without waiting for the next natural punch. Use a narrow range that contains a known pre-deploy event so retransmission/dedup can be observed without creating synthetic attendance.
+A small historical range can be tested now without waiting for the next natural punch. Use a narrow range that contains a known pre-deploy event so retransmission/dedup can be observed without creating synthetic attendance.
 
 Recommended canary window on `SPK7245000707`:
 
@@ -101,9 +101,9 @@ Do not enable periodic reconciliation and do not use an invented “upload all�
 
 - production deployment/version gate: **VERIFIED**;
 - INFO physical result: **VERIFIED**;
-- fresh realtime ATTLOG on the deployed Wave 1 build: **PENDING NATURAL PUNCH**;
-- bounded historical ATTLOG: **PENDING**;
+- bounded historical ATTLOG: **READY / PENDING EXECUTION**;
 - identical-range dedupe/retransmission: **PENDING**;
+- fresh realtime ATTLOG on the deployed Wave 1 build: **PENDING NATURAL PUNCH**;
 - online/offline transition: observational follow-up when operationally practical.
 
 ## Wave 2 boundary
