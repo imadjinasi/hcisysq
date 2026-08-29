@@ -37,13 +37,17 @@ function templateRecord(pin: string, fid = 2) {
   };
 }
 
-async function insertDevice(pool: Pool, serial: string) {
+async function insertDevice(pool: Pool, serial: string, pilotEnabled = false) {
   const deviceId = randomUUID();
   await pool.query(
     `INSERT INTO attendance_adms_devices (
-       id, serial_number, lifecycle, timezone, display_name
-     ) VALUES ($1, $2, 'active', 'Asia/Jakarta', 'Synthetic Passive Biometric Device')`,
-    [deviceId, serial],
+       id, serial_number, lifecycle, timezone, display_name,
+       biometric_collection_enabled, biometric_collection_enabled_at
+     ) VALUES (
+       $1, $2, 'active', 'Asia/Jakarta', 'Synthetic Passive Biometric Device',
+       $3, CASE WHEN $3::boolean THEN now() ELSE NULL END
+     )`,
+    [deviceId, serial, pilotEnabled],
   );
   return deviceId;
 }
@@ -69,9 +73,9 @@ describe.skipIf(!databaseUrl)("ATT-005 Wave 2 passive biometric ingress", () => 
     await pool.end();
   });
 
-  it("redacts and acknowledges fingerprint upload while collection is disabled without creating vault data", async () => {
+  it("redacts and acknowledges fingerprint upload when global collection is disabled even if the device pilot gate is on", async () => {
     const serial = `SYNTH-PASSIVE-OFF-${randomUUID()}`;
-    const deviceId = await insertDevice(pool, serial);
+    const deviceId = await insertDevice(pool, serial, true);
     const { body, tmp } = templateRecord("0042");
     const app = Fastify({ logger: false });
     await registerAdmsIngressRoutes(app, pool, disabledConfig());
@@ -111,9 +115,35 @@ describe.skipIf(!databaseUrl)("ATT-005 Wave 2 passive biometric ingress", () => 
     await app.close();
   });
 
-  it("imports to the mapped active employee only and records redacted provenance plus device presence", async () => {
+  it("keeps collection off when the global gate is on but the selected device pilot gate is off", async () => {
+    const serial = `SYNTH-PASSIVE-DEVICE-OFF-${randomUUID()}`;
+    const deviceId = await insertDevice(pool, serial, false);
+    const { body } = templateRecord("0042", 7);
+    const app = Fastify({ logger: false });
+    await registerAdmsIngressRoutes(app, pool, enabledConfig());
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/iclock/cdata?SN=${encodeURIComponent(serial)}&table=OPERLOG&Stamp=100A`,
+      headers: { host: "adms.test.local", "content-type": "text/plain; charset=UTF-8" },
+      payload: body,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toBe("OK: 1");
+    const count = await pool.query<{ count: number }>(
+      `SELECT count(*)::int AS count
+       FROM attendance_biometric_credentials
+       WHERE origin_device_id = $1`,
+      [deviceId],
+    );
+    expect(count.rows[0]?.count).toBe(0);
+    await app.close();
+  });
+
+  it("imports to the mapped active employee only when global and per-device gates are both enabled", async () => {
     const serial = `SYNTH-PASSIVE-ON-${randomUUID()}`;
-    const deviceId = await insertDevice(pool, serial);
+    const deviceId = await insertDevice(pool, serial, true);
     const employeeId = await insertEmployee(pool);
     const mappingId = randomUUID();
     await pool.query(
@@ -277,7 +307,7 @@ describe.skipIf(!databaseUrl)("ATT-005 Wave 2 passive biometric ingress", () => 
 
   it("does not guess an employee when the device PIN has no explicit mapping", async () => {
     const serial = `SYNTH-PASSIVE-UNMAPPED-${randomUUID()}`;
-    const deviceId = await insertDevice(pool, serial);
+    const deviceId = await insertDevice(pool, serial, true);
     const { body } = templateRecord("0099");
     const app = Fastify({ logger: false });
     await registerAdmsIngressRoutes(app, pool, enabledConfig());
