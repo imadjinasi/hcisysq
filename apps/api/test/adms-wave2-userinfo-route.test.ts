@@ -20,9 +20,11 @@ function createPool(input: {
   principalType?: "EMPLOYEE" | "SUPER_ADMIN";
   lifecycle?: "active" | "disabled" | "quarantined";
   activeCommand?: boolean;
+  observedPin?: boolean;
 } = {}) {
   const principalType = input.principalType ?? "SUPER_ADMIN";
   const lifecycle = input.lifecycle ?? "active";
+  const observedPin = input.observedPin ?? true;
   const rootQuery = vi.fn(async (sql: string) => {
     if (sql.includes("FROM auth_sessions s")) {
       return {
@@ -46,6 +48,10 @@ function createPool(input: {
     if (["BEGIN", "COMMIT", "ROLLBACK"].includes(sql)) return { rows: [], rowCount: 0 };
     if (sql.includes("FROM attendance_adms_devices") && sql.includes("FOR UPDATE")) {
       return { rows: [{ id: deviceId, lifecycle }], rowCount: 1 };
+    }
+    if (sql.includes("SELECT EXISTS") && sql.includes("attendance_adms_events")) {
+      expect(params).toEqual([deviceId, "0042"]);
+      return { rows: [{ observed: observedPin }], rowCount: 1 };
     }
     if (sql.includes("FROM attendance_adms_commands") && sql.includes("status IN")) {
       return input.activeCommand
@@ -76,6 +82,7 @@ function createPool(input: {
         pin: "0042",
         capability: "single_pin_userinfo",
         fullRoster: false,
+        pinPreviouslyObserved: true,
       });
       return { rows: [], rowCount: 1 };
     }
@@ -86,6 +93,7 @@ function createPool(input: {
         reason: "admin_query_user_info",
         pin: "0042",
         fullRoster: false,
+        pinPreviouslyObserved: true,
       });
       return { rows: [], rowCount: 1 };
     }
@@ -104,7 +112,7 @@ function createPool(input: {
 }
 
 describe("ATT-005 Wave 2 single-PIN USERINFO Admin route", () => {
-  it("queues one audited leading-zero PIN query for an active device", async () => {
+  it("queues one audited leading-zero PIN query for an active device after the PIN was observed", async () => {
     const { pool, clientQuery } = createPool();
     const app = Fastify({ logger: false });
     await registerAdmsWave2UserInfoRoutes(app, pool, config);
@@ -163,6 +171,24 @@ describe("ATT-005 Wave 2 single-PIN USERINFO Admin route", () => {
 
     expect(response.statusCode).toBe(403);
     expect(connect).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("rejects a PIN that HCIS has never observed on the target device", async () => {
+    const { pool, clientQuery } = createPool({ observedPin: false });
+    const app = Fastify({ logger: false });
+    await registerAdmsWave2UserInfoRoutes(app, pool, config);
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/admin/attendance/adms/devices/${deviceId}/commands/query-user-info`,
+      headers: { cookie: "hcis_session=test-token", "content-type": "application/json" },
+      payload: { pin: "0042" },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ code: "ADMS_PIN_NOT_OBSERVED" });
+    expect(clientQuery.mock.calls.some(([sql]) => String(sql).includes("INSERT INTO attendance_adms_commands"))).toBe(false);
     await app.close();
   });
 
