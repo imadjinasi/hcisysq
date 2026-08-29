@@ -135,6 +135,21 @@ export function parsePassiveBiometricCandidates(
   return { records, rejectedRecords };
 }
 
+function skippedResult(
+  inputCount: number,
+  reason: "global" | "device",
+) {
+  return {
+    imported: 0,
+    deduplicated: 0,
+    skippedCollectionDisabled: reason === "global" ? inputCount : 0,
+    skippedDeviceCollectionDisabled: reason === "device" ? inputCount : 0,
+    skippedUnmapped: 0,
+    skippedInactiveEmployee: 0,
+    skippedMappingConflict: 0,
+  };
+}
+
 export async function importMappedPassiveBiometrics(
   pool: Pool,
   config: ApiConfig,
@@ -146,14 +161,23 @@ export async function importMappedPassiveBiometrics(
   },
 ) {
   if (!biometricCollectionEnabled(config)) {
-    return {
-      imported: 0,
-      deduplicated: 0,
-      skippedCollectionDisabled: input.records.length,
-      skippedUnmapped: 0,
-      skippedInactiveEmployee: 0,
-      skippedMappingConflict: 0,
-    };
+    return skippedResult(input.records.length, "global");
+  }
+
+  const devicePolicy = await pool.query<{
+    lifecycle: string;
+    biometricCollectionEnabled: boolean;
+  }>(
+    `SELECT
+       lifecycle,
+       biometric_collection_enabled AS "biometricCollectionEnabled"
+     FROM attendance_adms_devices
+     WHERE id = $1`,
+    [input.deviceId],
+  );
+  const device = devicePolicy.rows[0];
+  if (!device || device.lifecycle !== "active" || !device.biometricCollectionEnabled) {
+    return skippedResult(input.records.length, "device");
   }
 
   let imported = 0;
@@ -242,6 +266,7 @@ export async function importMappedPassiveBiometrics(
     imported,
     deduplicated,
     skippedCollectionDisabled: 0,
+    skippedDeviceCollectionDisabled: 0,
     skippedUnmapped,
     skippedInactiveEmployee,
     skippedMappingConflict,
