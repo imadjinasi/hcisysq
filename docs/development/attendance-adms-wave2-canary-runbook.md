@@ -25,6 +25,8 @@ Biometric collection now has two independent HCIS gates:
 
 Effective collection is true only when **both** gates are ON and the device lifecycle is `active`. Migration `0027` defaults every existing device to device-gate OFF, so enabling the process-wide flag cannot silently opt existing devices into collection.
 
+Migration `0028` additionally guarantees that changing a device lifecycle to `disabled` or `quarantined` clears its pilot gate. Returning the device to `active` does not restore the previous opt-in; a SUPER_ADMIN must deliberately enable that pilot again.
+
 The per-device gate is local HCIS policy. Changing it does **not** send a command to the fingerprint machine.
 
 ## Software pre-deploy gate
@@ -35,10 +37,11 @@ Before any production update:
 2. Clean migration passes.
 3. Wave 1 -> Wave 2 upgrade rehearsal passes against an isolated schema seeded with existing Wave 1 device, journal, mapping and command state.
 4. The rehearsal proves migration `0027` leaves every seeded existing device with biometric device-gate OFF.
-5. Typecheck, lint, DB integration tests, build and Compose validation pass.
-6. `infra/.env.vps` still has `BIOMETRIC_COLLECTION_ENABLED=0` for the initial deploy.
-7. No valid biometric key material is committed to the repository or copied into tickets/chat/logs.
-8. A verified PostgreSQL backup/restore path exists before migration is allowed to touch production.
+5. The rehearsal proves migration `0028` resets pilot ON -> OFF when lifecycle becomes non-active and keeps it OFF after reactivation.
+6. Typecheck, lint, DB integration tests, build and Compose validation pass.
+7. `infra/.env.vps` still has `BIOMETRIC_COLLECTION_ENABLED=0` for the initial deploy.
+8. No valid biometric key material is committed to the repository or copied into tickets/chat/logs.
+9. A verified PostgreSQL backup/restore path exists before migration is allowed to touch production.
 
 The CI upgrade rehearsal is implemented by:
 
@@ -46,7 +49,7 @@ The CI upgrade rehearsal is implemented by:
 node apps/api/scripts/rehearse-wave2-upgrade.mjs
 ```
 
-It applies migrations through `0025`, seeds representative Wave 1 state, applies `0026` and `0027`, verifies preservation, encrypted-vault constraints and default-OFF device pilot policy, then removes the isolated rehearsal schema.
+It applies migrations through `0025`, seeds representative Wave 1 state, applies `0026`, `0027` and `0028`, verifies preservation, encrypted-vault constraints, default-OFF device pilot policy and lifecycle reset semantics, then removes the isolated rehearsal schema.
 
 ## Production deploy sequence
 
@@ -133,6 +136,17 @@ Then use this order:
 
 The API rejects device-gate enablement when global collection is OFF or the target device lifecycle is not `active`.
 
+### Disable semantics and concurrency
+
+Pilot disable is a transactional stop boundary. Passive imports and policy updates lock the same trusted-device row with `FOR UPDATE`, and the eligible credential import/audit/replica-state write occurs in the same transaction as the gate check.
+
+Operationally this means:
+
+- after a pilot-disable transaction commits, a passive import that was racing for the same device must re-read the now-disabled gate and skip credential creation;
+- disabling or quarantining a device also resets the gate at the database lifecycle boundary;
+- reactivating the device leaves the gate OFF and requires explicit opt-in again;
+- disabling collection does not delete or mutate previously encrypted credentials.
+
 If any prerequisite is unresolved, keep both gates OFF.
 
 ## Key creation and storage
@@ -187,7 +201,7 @@ Disabling either gate stops new vault imports. It does not require dropping Wave
 
 ## Application rollback
 
-Migrations `0026` and `0027` are additive. A rollback to the previous Wave 1 application commit should therefore leave the extra Wave 2 tables/columns untouched rather than attempting a destructive down-migration.
+Migrations `0026`, `0027` and `0028` are additive. A rollback to the previous Wave 1 application commit should therefore leave the extra Wave 2 tables/columns/triggers untouched rather than attempting a destructive down-migration.
 
 If a post-deploy application regression occurs:
 
@@ -198,7 +212,7 @@ If a post-deploy application regression occurs:
 5. verify raw attendance ingestion still works before declaring recovery;
 6. retain request/audit evidence for root-cause review.
 
-Do not drop `attendance_biometric_*`, `attendance_adms_device_roster_entries`, or the device pilot-policy columns during emergency rollback. Destructive database rollback can destroy forensic/provenance data and is not part of the normal rollback plan.
+Do not drop `attendance_biometric_*`, `attendance_adms_device_roster_entries`, the device pilot-policy columns, or the lifecycle guard during emergency rollback. Destructive database rollback can destroy forensic/provenance data and is not part of the normal rollback plan.
 
 ## Stop conditions
 
@@ -210,6 +224,7 @@ Stop the canary and return the affected device gate/global gate to OFF or the kn
 - a PIN is associated with an employee without one explicit effective mapping;
 - a passive biometric row is created while either required collection gate is OFF;
 - a non-pilot device receives a biometric credential while its device gate is OFF;
+- a device resumes biometric collection after lifecycle reactivation without a new explicit pilot enable;
 - encrypted-vault configuration starts without the required active key when global collection is ON;
 - command delivery differs materially from the allowlisted documented wire shape;
 - duplicate historical attendance produces duplicate immutable event identities;
