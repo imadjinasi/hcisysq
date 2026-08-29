@@ -9,7 +9,7 @@
 
 Wave 2 builds the personnel/biometric control plane on top of the merged Wave 1 device plane without changing attendance meaning and without enabling biometric collection or remote roster/template commands by default.
 
-Wave 1 physical validation is still independent and remains required. In particular, a fresh realtime fingerprint punch has not yet been claimed as verified.
+Wave 1 physical validation remains required against the build actually deployed to production. On 2026-08-29, production screenshots showed fresh near-realtime ATTLOG on an older deployed build, but the current Wave 1 operations/details UI was absent. Therefore those punches prove the older deployed production path only; they do not complete the merged Wave 1 canary.
 
 ## Fixed boundaries
 
@@ -223,22 +223,18 @@ Protocol documentation gives candidate read/write command families, but HCIS wil
 
 ## Verification status
 
-The previous hardened head `74aed88d5a988f47a79b3257d08e7fbdc0556702` passed GitHub Actions Pull Request Validation run #122. The dual-gate/lifecycle/race increment must pass the same quality gate on its exact final head before this document is treated as the current verified software checkpoint.
+The Wave 2 software foundation passed the full PR quality gate on the exact software/documentation checkpoint `37e6b65f55870fde28967cfc309c68cd2f4ad9b1` in run #139, including clean migration, seeded Wave 1→Wave 2 upgrade rehearsal through migrations `0026`/`0027`/`0028`, typecheck, lint, DB/security/concurrency tests, build and Compose validation. Later physical-evidence/documentation corrections do not change runtime behavior but must still pass the same PR gate before merge.
 
-Coverage now includes or is being extended to include:
+Coverage includes:
 
-- clean migration;
-- explicit Wave 1 (`0025`) -> Wave 2 (`0026` + `0027` + `0028`) migration rehearsal with seeded device, request-journal, mapping and command state preserved;
 - upgrade assertion that existing devices default biometric pilot OFF;
 - lifecycle rehearsal proving pilot ON -> disabled resets OFF -> active remains OFF;
-- TypeScript typecheck and lint;
 - synthetic AES-GCM/key-rotation tests;
-- database integration proving sensitive USER/OPERLOG plaintext is not retained in the request journal;
+- sensitive USER/OPERLOG plaintext redaction tests;
 - passive FP/FACE framing tests for size/base64/slot/validity boundaries;
 - dual-gate regressions proving global OFF/device ON and global ON/device OFF both create no credential;
-- database integration proving effective collection imports only through explicit active PIN mapping;
-- database integration proving an unmapped PIN is not guessed into an employee vault;
-- concurrent policy-disable/passive-import regression proving no credential appears after the disable commit;
+- explicit mapping-only import and unmapped-PIN rejection;
+- concurrent policy-disable/passive-import serialization;
 - redacted source-request provenance and source-device `present` evidence;
 - append-only biometric audit and destroyed-envelope constraint regressions;
 - SUPER_ADMIN-only audited per-device policy behavior;
@@ -246,9 +242,14 @@ Coverage now includes or is being extended to include:
 - oversized sensitive-body hash-only/413 regression and oversized ATTLOG no-projection regression;
 - API/UI build and Compose validation.
 
-Physical-device validation is a later gate and must not be replaced by synthetic CI.
+Physical-device status is deliberately separated by deployed build:
 
-The operator runbook for production deployment, physical canary, rollback, emergency disable and biometric key rotation is `docs/development/attendance-adms-wave2-canary-runbook.md`.
+- the older/current production deployment received physical ATTLOG on 2026-08-29 with approximately 9-second receive latency;
+- the merged Wave 1 current `main` remains physically unverified because production does not yet expose its Operations/Transactions/Reconciliation/Logs surfaces;
+- employee projection is not verified for those observed punches because their PINs were unmapped;
+- Wave 2 physical passive biometric/query/sync/enrollment/delete/restore behavior remains unverified.
+
+The operator runbook is `docs/development/attendance-adms-wave2-canary-runbook.md`. Physical evidence is recorded separately in `docs/development/attendance-adms-physical-canary-evidence.md`.
 
 ## Contract status
 
@@ -263,4 +264,13 @@ The runtime Wave 2 Admin surface currently consists of:
 
 ## Hardware boundary
 
-The software foundation is hardened but remains hardware-gated. The next command-capable behavior must wait for controlled physical-firmware validation. The outstanding physical sequence starts with Wave 1 deployment/polling and one fresh attendance punch, then INFO and bounded ATTLOG recovery/dedup, before any Wave 2 roster/template command is enabled.
+The next hardware sequence is deployment-gated:
+
+1. human-approved production deployment of the approved current `main` Wave 1 build;
+2. record the deployed commit and verify health/readiness plus normal polling;
+3. verify the current Wave 1 Operations and Transactions/Reconciliation/Logs UI surfaces are present;
+4. one **new post-deploy** fresh attendance punch;
+5. INFO read-only canary;
+6. bounded ATTLOG recovery;
+7. repeat the identical bounded range for dedupe/retransmission proof;
+8. only then open command-capable Wave 2 roster/template behavior.
