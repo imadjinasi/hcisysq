@@ -22,7 +22,7 @@ C:<command-number>:DATA QUERY USERINFO PIN=<digits>
 
 PIN is treated as a string so leading zeros remain significant. For this canary slice, accepted PIN syntax is 1–128 ASCII digits only. Arbitrary command text is forbidden.
 
-The expected device command result is a normal DATA command result associated with the queued numeric command ID. A terminal command success proves only that the device accepted/executed the request; it does **not** prove that user information was uploaded.
+The expected device command result is `CMD=DATA` associated with the queued numeric command ID and a non-negative return code. A terminal command success proves only that the device accepted/executed the request; it does **not** prove that user information was uploaded.
 
 ## Returned data boundary
 
@@ -42,9 +42,12 @@ Preconditions:
 
 1. the target device exists;
 2. device lifecycle is `active`;
-3. no other command for that device is currently `pending`, `delivered`, or `acknowledged`;
-4. PIN passes the digits-only boundary;
-5. the command is explicitly audited as `command_requested`.
+3. the exact PIN has already been observed for that device in immutable ATTLOG facts or the safe observed roster;
+4. no other command for that device is currently `pending`, `delivered`, or `acknowledged`;
+5. PIN passes the digits-only boundary;
+6. the command is explicitly audited as `command_requested`.
+
+The observed-PIN requirement prevents this canary endpoint from becoming an arbitrary PIN-enumeration surface. It still does not infer or require an employee identity.
 
 The command is manually queued only. There is no periodic or automatic USERINFO query.
 
@@ -52,7 +55,7 @@ The command is manually queued only. There is no periodic or automatic USERINFO 
 
 For one known observed PIN, physical canary is complete only when **both** are true:
 
-1. the queued USERINFO command reaches terminal `succeeded` with a non-negative return code for the same numeric command ID; and
+1. the queued USERINFO command reaches terminal `succeeded` with `CMD=DATA` and a non-negative return code for the same numeric command ID; and
 2. a safe roster entry for the requested PIN is observed from a new redacted request after command delivery, with a new `sourceRequestId` / `lastSeenAt` proving data upload.
 
 Command success without a new safe roster observation is **not** sufficient.
