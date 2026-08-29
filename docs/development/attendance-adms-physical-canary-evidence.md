@@ -7,61 +7,105 @@
 
 This file records observed physical-device evidence separately from synthetic CI. It does not treat CI, protocol documentation, or a pre-upgrade production deployment as proof of the current Wave 1 implementation.
 
-## Fresh realtime ATTLOG on currently deployed production — OBSERVED 2026-08-29
+## Pre-upgrade realtime ATTLOG — OBSERVED 2026-08-29
 
-A production Super Admin screenshot from the fingerprint device page showed `SPK7245000707` continuing to communicate with HCIS and two fresh same-day raw events with near-realtime receipt:
+Before the Wave 1 production deployment, a production Super Admin screenshot showed `SPK7245000707` continuing to communicate with HCIS and two same-day raw events with near-realtime receipt:
 
 | Device punch time (Asia/Jakarta) | HCIS received time (Asia/Jakarta) | Observed latency | PIN |
 | --- | --- | ---: | --- |
 | 2026-08-29 07:55:07 | 2026-08-29 07:55:16 | 9 s | `109041327` |
 | 2026-08-29 06:19:26 | 2026-08-29 06:19:35 | 9 s | `205291319` |
 
-The same UI showed:
+The older production UI did not yet expose the merged Wave 1 operations/details surfaces, so these punches remain evidence for the older deployed path only. They must not be used to close the post-deploy Wave 1 realtime canary.
 
-- device lifecycle `active`;
-- `Last seen` and `Last successful request` at 2026-08-29 08:30:24 Asia/Jakarta;
-- last IP `182.253.124.5`;
-- no current quarantine for this device;
-- older 2026-08-28 raw events received together at 21:51:45, providing a visible contrast with the two fresh 9-second-latency events.
+The observed PINs were also unmapped in HCIS. Employee attendance projection remains unverified and employee identity must not be inferred from name, NIP, card, organizational unit, or any other field. Mapping remains explicit device PIN -> `employees.id` only.
 
-Conclusion: the **currently deployed production application** is receiving and persisting fresh physical ATTLOG in near real time for this device.
+## Wave 1 production deployment gate — VERIFIED 2026-08-29
 
-### Deployment-version boundary
+The approved current `main` Wave 1 build was deployed to production and the operator recorded exact Git head:
 
-This observation must **not** be recorded as completion of the merged ATT-005 Wave 1 canary yet.
+```text
+1e061cd88daa0686bd487f4813cd17d483ff8cd2
+```
 
-Current `main` renders `AdminAdmsWave1Operations` and `AdminAdmsWave1Details` before the registry/mapping panel. Those Wave 1 surfaces were not present in the production UI shown on 2026-08-29. Therefore the deployed production UI is behind current `main`, although the exact deployed commit has not yet been established from the VPS.
+Post-deploy evidence:
 
-The two 2026-08-29 punches prove physical device -> deployed HCIS realtime transport for the older deployment only. They do not prove that the merged Wave 1 command/recovery/observability code has been deployed or exercised.
+- PostgreSQL healthy;
+- API healthy;
+- web healthy;
+- `GET /api/health` returned HTTP 200 `{"status":"ok"}`;
+- `GET /api/ready` returned HTTP 200 `{"status":"ready"}`;
+- Wave 1 `Transactions, Reconciliation & Logs` UI is visible in production;
+- device lifecycle is `active`;
+- connectivity is `online`;
+- observed median request interval is approximately 1 second;
+- last public IP remains `182.253.124.5`;
+- periodic bounded reconciliation remains OFF.
 
-### Employee-projection boundary
+Conclusion: the deployment-version gate for Wave 1 is complete.
 
-This observation also does **not** verify employee attendance projection. The observed PINs were still unmapped in HCIS and the UI showed no mapping history. Do not infer or create employee identity from name, NIP, card, organizational unit, or any other field. Mapping remains explicit device PIN -> `employees.id` only.
+## INFO read-only physical result — VERIFIED 2026-08-29
 
-## Required deployment gate before Wave 1 hardware canary
+After the Wave 1 deployment, production safe telemetry showed a new INFO observation at approximately 2026-08-29 09:03:20 Asia/Jakarta (`2026-08-29T02:03:20.875Z`) with device-returned values including:
 
-Before running INFO or bounded historical recovery against the current implementation:
+- `FWVersion = ZMM510-NF28VA-Ver2.0.16`;
+- `MAC = 00:17:61:10:0d:4d`;
+- `IPAddress = 192.168.18.221`;
+- `FPCount = 186`;
+- `FaceCount = 11`;
+- `UserCount = 106`;
+- `TransactionCount = 3422`.
 
-1. human-approved production deployment must update HCIS to the approved current `main` Wave 1 build;
-2. record the deployed Git commit from the VPS;
-3. verify `/api/health` and `/api/ready`;
-4. verify normal ADMS polling continues;
-5. verify the Wave 1 Operations and Transactions/Reconciliation/Logs UI surfaces are present.
+The Wave 1 repository only updates `metadata.infoObserved` from a parsed device command result whose command is exactly `INFO`, whose return code is non-negative, and whose safe option set is non-empty. Device command results are first associated with a known command number for the same trusted device. Therefore this production observation is sufficient evidence that the physical device returned a successful INFO result to the deployed Wave 1 application.
 
-Do not queue INFO/range commands from an older production build merely to satisfy the current canary.
+No raw template or other biometric payload is exposed by this INFO surface.
 
-## Next physical gates after Wave 1 deployment
+## Fresh post-deploy realtime ATTLOG — PENDING NATURAL PUNCH
 
-Run in this order on `SPK7245000707` after the deployment gate above:
+A new post-deploy fingerprint punch has not yet been observed. The machine is in normal operational use and a test punch will not be forced solely for canary completion.
 
-1. **Fresh realtime ATTLOG canary on the deployed Wave 1 build.** Use one controlled new punch and verify near-realtime raw persistence/provenance. A pre-deploy punch cannot validate a post-deploy code path.
-2. **INFO read-only canary** using the existing allowlisted `INFO` command. Confirm delivery, device ACK/result success, and safe model/firmware/count telemetry only.
-3. **Bounded historical ATTLOG canary** with a small explicit time window using documented `DATA QUERY ATTLOG StartTime=... EndTime=...`.
-4. **Repeat the exact same bounded window** and confirm immutable event identity/dedup means no duplicate persisted raw event rows are created.
-5. Observe normal polling long enough to validate an honest online/offline transition if operationally practical.
+When the next natural punch occurs, verify:
 
-Do not enable periodic reconciliation merely to complete these canaries.
+1. device punch time and HCIS `receivedAt` are near real time;
+2. source is normal ATTLOG ingress, not historical recovery;
+3. raw event persists once with immutable provenance;
+4. no quarantine is introduced;
+5. no late/absence/overtime/work-hours/payroll/leave/resolution inference is created.
+
+Employee projection remains a separate boundary and requires a correct explicit device PIN mapping.
+
+## Next physical gates that do not require a new punch
+
+A small historical range can be tested without waiting for the next natural punch. Use a narrow range that contains a known pre-deploy event so retransmission/dedup can be observed without creating synthetic attendance.
+
+Recommended canary window on `SPK7245000707`:
+
+```text
+Start: 2026-08-29 06:15:00 Asia/Jakarta
+End:   2026-08-29 06:25:00 Asia/Jakarta
+```
+
+This window contains the previously observed `205291319` punch at 06:19:26.
+
+Run:
+
+1. one bounded `DATA QUERY ATTLOG StartTime=... EndTime=...` request for that exact window;
+2. wait for the command to reach terminal success and confirm an ATTLOG request is observed;
+3. confirm the persisted raw-event count for the window does not grow beyond the already-known event identity merely because the device retransmitted it;
+4. repeat the **identical** window once;
+5. confirm persisted raw events remain deduplicated after the second retransmission.
+
+Do not enable periodic reconciliation and do not use an invented “upload all” command for this canary.
+
+## Remaining Wave 1 hardware status
+
+- production deployment/version gate: **VERIFIED**;
+- INFO physical result: **VERIFIED**;
+- fresh realtime ATTLOG on the deployed Wave 1 build: **PENDING NATURAL PUNCH**;
+- bounded historical ATTLOG: **PENDING**;
+- identical-range dedupe/retransmission: **PENDING**;
+- online/offline transition: observational follow-up when operationally practical.
 
 ## Wave 2 boundary
 
-Command-capable Wave 2 roster/template/enrollment/distribution/delete/restore behavior remains hardware-gated until the current Wave 1 build is actually deployed and its fresh realtime, INFO, and bounded historical canaries are completed against that deployed build.
+Command-capable Wave 2 roster/template/enrollment/distribution/delete/restore behavior remains hardware-gated until bounded historical recovery/dedup is physically verified and a new post-deploy realtime punch is observed. The lack of an immediate natural punch does not require forcing a fingerprint event or blocking safe read/recovery canaries.
