@@ -44,6 +44,7 @@ try {
   assert(wave1Files.at(-1) === "0025_attendance_adms_wave1_core.sql", "Wave 1 migration boundary not found");
   assert(files.includes("0026_attendance_adms_wave2_control_plane.sql"), "Wave 2 migration not found");
   assert(files.includes("0027_attendance_adms_biometric_pilot_gate.sql"), "Wave 2 biometric pilot migration not found");
+  assert(files.includes("0028_attendance_adms_biometric_lifecycle_guard.sql"), "Wave 2 biometric lifecycle guard migration not found");
 
   for (const file of wave1Files) await applyMigration(client, file);
 
@@ -103,6 +104,7 @@ try {
 
   await applyMigration(client, "0026_attendance_adms_wave2_control_plane.sql");
   await applyMigration(client, "0027_attendance_adms_biometric_pilot_gate.sql");
+  await applyMigration(client, "0028_attendance_adms_biometric_lifecycle_guard.sql");
 
   const preserved = await client.query(
     `SELECT
@@ -131,6 +133,49 @@ try {
   assert(pilotPolicy.rows[0]?.enabled === false, "Existing Wave 1 device did not default biometric collection to OFF");
   assert(pilotPolicy.rows[0]?.enabled_at === null, "Existing Wave 1 device unexpectedly received biometric enable timestamp");
   assert(pilotPolicy.rows[0]?.enabled_by === null, "Existing Wave 1 device unexpectedly received biometric enable actor");
+
+  await client.query(
+    `UPDATE attendance_adms_devices
+     SET biometric_collection_enabled = true,
+         biometric_collection_enabled_at = now()
+     WHERE id = $1`,
+    [deviceId],
+  );
+  await client.query(
+    `UPDATE attendance_adms_devices
+     SET lifecycle = 'disabled'
+     WHERE id = $1`,
+    [deviceId],
+  );
+  const disabledPolicy = await client.query(
+    `SELECT
+       lifecycle,
+       biometric_collection_enabled AS enabled,
+       biometric_collection_enabled_at AS enabled_at,
+       biometric_collection_enabled_by_account_id AS enabled_by
+     FROM attendance_adms_devices
+     WHERE id = $1`,
+    [deviceId],
+  );
+  assert(disabledPolicy.rows[0]?.lifecycle === "disabled", "Lifecycle guard rehearsal did not disable device");
+  assert(disabledPolicy.rows[0]?.enabled === false, "Device deactivation did not reset biometric pilot gate");
+  assert(disabledPolicy.rows[0]?.enabled_at === null, "Device deactivation did not clear biometric enable timestamp");
+  assert(disabledPolicy.rows[0]?.enabled_by === null, "Device deactivation did not clear biometric enable actor");
+
+  await client.query(
+    `UPDATE attendance_adms_devices
+     SET lifecycle = 'active'
+     WHERE id = $1`,
+    [deviceId],
+  );
+  const reactivatedPolicy = await client.query(
+    `SELECT lifecycle, biometric_collection_enabled AS enabled
+     FROM attendance_adms_devices
+     WHERE id = $1`,
+    [deviceId],
+  );
+  assert(reactivatedPolicy.rows[0]?.lifecycle === "active", "Lifecycle guard rehearsal did not reactivate device");
+  assert(reactivatedPolicy.rows[0]?.enabled === false, "Reactivated device unexpectedly resumed biometric collection");
 
   const wave2Tables = await client.query(
     `SELECT
