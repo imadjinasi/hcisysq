@@ -308,16 +308,45 @@ export async function registerAdmsWave1OpsRoutes(
            AND e.occurred_at <= c.requested_range_end
        ) coverage ON true
        LEFT JOIN LATERAL (
+         SELECT min(c2.delivered_at) AS "nextDeliveredAt"
+         FROM attendance_adms_commands c2
+         WHERE c.delivered_at IS NOT NULL
+           AND c2.device_id = c.device_id
+           AND c2.delivered_at > c.delivered_at
+       ) next_delivery ON true
+       LEFT JOIN LATERAL (
          SELECT count(DISTINCT r.id)::int AS "attlogRequestCount"
          FROM attendance_adms_request_journal r
-         JOIN attendance_adms_events e ON e.source_request_id = r.id
          WHERE r.device_id = c.device_id
-           AND e.device_id = c.device_id
            AND c.delivered_at IS NOT NULL
            AND r.received_at >= c.delivered_at
+           AND (
+             next_delivery."nextDeliveredAt" IS NULL
+             OR r.received_at < next_delivery."nextDeliveredAt"
+           )
            AND r.classification = 'attlog'
-           AND e.occurred_at >= c.requested_range_start
-           AND e.occurred_at <= c.requested_range_end
+           AND (
+             EXISTS (
+               SELECT 1
+               FROM attendance_adms_events e
+               WHERE e.source_request_id = r.id
+                 AND e.device_id = c.device_id
+                 AND e.occurred_at >= c.requested_range_start
+                 AND e.occurred_at <= c.requested_range_end
+             )
+             OR EXISTS (
+               SELECT 1
+               FROM attendance_adms_quarantines q
+               JOIN attendance_adms_events duplicate_event
+                 ON duplicate_event.device_id = c.device_id
+                AND duplicate_event.event_identity_hash = q.details ->> 'eventIdentityHash'
+               WHERE q.request_id = r.id
+                 AND q.device_id = c.device_id
+                 AND q.reason = 'DUPLICATE_EXACT'
+                 AND duplicate_event.occurred_at >= c.requested_range_start
+                 AND duplicate_event.occurred_at <= c.requested_range_end
+             )
+           )
        ) journal ON true
        WHERE c.device_id = $1
          AND c.reason IN ('admin_range_recovery', 'scheduled_reconciliation')
@@ -333,7 +362,7 @@ export async function registerAdmsWave1OpsRoutes(
       coverageBasis: "persisted_range",
       expectedCount: null,
       duplicatesObserved: null,
-      note: "Perangkat belum memberi expected count per rentang. Ringkasan ini hanya menunjukkan raw event yang benar-benar tersimpan; exact duplicate yang ditolak saat insert tidak direkonstruksi sebagai angka buatan.",
+      note: "Perangkat belum memberi expected count per rentang. ATTLOG req menghitung request dengan event tersimpan atau exact-duplicate evidence di delivery window command; jumlah duplicate tidak direkonstruksi sebagai angka buatan.",
       items: result.rows,
     });
   });
