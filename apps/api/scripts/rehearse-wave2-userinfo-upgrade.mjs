@@ -102,27 +102,49 @@ try {
     [validCommandId],
   );
 
-  const invalidSql = `INSERT INTO attendance_adms_commands (
+  const invalidUserInfoSql = `INSERT INTO attendance_adms_commands (
     id, device_id, command_type, wire_command, reason, status, expires_at
   ) VALUES ($1, $2, 'query_user_info', $3, 'admin_query_user_info', 'pending', now() + interval '15 minutes')`;
 
   await expectCheckViolation(
     client,
-    invalidSql,
+    invalidUserInfoSql,
     [randomUUID(), deviceId, "DATA QUERY USERINFO"],
     "0029 unexpectedly allowed full USERINFO roster dump",
   );
   await expectCheckViolation(
     client,
-    invalidSql,
+    invalidUserInfoSql,
     [randomUUID(), deviceId, "DATA QUERY FINGERTMP PIN=0042"],
     "0029 unexpectedly allowed fingerprint-template query",
   );
   await expectCheckViolation(
     client,
-    invalidSql,
+    invalidUserInfoSql,
     [randomUUID(), deviceId, "DATA QUERY USERINFO PIN=AB42"],
     "0029 unexpectedly allowed non-numeric USERINFO PIN",
+  );
+
+  const mismatchedShapeSql = `INSERT INTO attendance_adms_commands (
+    id, device_id, command_type, wire_command, reason, status, expires_at
+  ) VALUES ($1, $2, $3, $4, $5, 'pending', now() + interval '15 minutes')`;
+  await expectCheckViolation(
+    client,
+    mismatchedShapeSql,
+    [randomUUID(), deviceId, "read_info", "DATA QUERY USERINFO PIN=0042", "admin_read_information"],
+    "0029 unexpectedly allowed read_info type to carry USERINFO wire command",
+  );
+  await expectCheckViolation(
+    client,
+    mismatchedShapeSql,
+    [randomUUID(), deviceId, "query_user_info", "INFO", "admin_query_user_info"],
+    "0029 unexpectedly allowed query_user_info type to carry INFO wire command",
+  );
+  await expectCheckViolation(
+    client,
+    mismatchedShapeSql,
+    [randomUUID(), deviceId, "query_user_info", "DATA QUERY USERINFO PIN=0042", "admin_read_information"],
+    "0029 unexpectedly allowed USERINFO wire command with read-info reason",
   );
 
   process.stdout.write(`Wave 2 USERINFO migration rehearsal passed in schema ${schemaName}\n`);
