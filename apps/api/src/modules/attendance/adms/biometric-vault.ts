@@ -117,8 +117,12 @@ async function findCredentialByIdentity(
   return result.rows[0]?.id ?? null;
 }
 
-export async function importBiometricCredential(
-  pool: Pool,
+/**
+ * Imports one credential using a transaction already owned by the caller.
+ * The caller is responsible for BEGIN/COMMIT/ROLLBACK and any device-policy row lock.
+ */
+export async function importBiometricCredentialInTransaction(
+  client: PoolClient,
   config: ApiConfig,
   input: ImportBiometricCredentialInput,
 ): Promise<{ credentialId: string; created: boolean }> {
@@ -140,89 +144,94 @@ export async function importBiometricCredential(
     slotIndex: input.slotIndex,
     payloadSha256,
   };
+  const existing = await findCredentialByIdentity(client, identity);
+  if (existing) return { credentialId: existing, created: false };
+
+  const credentialId = randomUUID();
+  const context: BiometricPayloadContext = {
+    credentialId,
+    employeeId: input.employeeId,
+    modality: input.modality,
+    slotIndex: input.slotIndex,
+    vendorFormat,
+  };
+  const encrypted = encryptBiometricPayload(input.payload, context, config);
+  const safeMetadata = sanitizeSafeMetadata(input.safeMetadata);
+  const inserted = await client.query<{ id: string }>(
+    `INSERT INTO attendance_biometric_credentials (
+       id, employee_id, modality, slot_index, vendor_format, vendor_version,
+       origin_device_id, source_request_id, source_pin, captured_at, payload_sha256,
+       payload_byte_length, encryption_key_id, payload_ciphertext, payload_iv,
+       payload_auth_tag, safe_metadata, created_by_account_id
+     ) VALUES (
+       $1, $2, $3, $4, $5, $6,
+       $7, $8, $9, $10, $11,
+       $12, $13, $14, $15,
+       $16, $17::jsonb, $18
+     )
+     ON CONFLICT DO NOTHING
+     RETURNING id`,
+    [
+      credentialId,
+      input.employeeId,
+      input.modality,
+      input.slotIndex,
+      vendorFormat,
+      vendorVersion,
+      input.originDeviceId ?? null,
+      input.sourceRequestId ?? null,
+      sourcePin,
+      input.capturedAt ?? null,
+      encrypted.sha256,
+      encrypted.byteLength,
+      encrypted.keyId,
+      encrypted.ciphertext,
+      encrypted.iv,
+      encrypted.authTag,
+      JSON.stringify(safeMetadata),
+      input.actorAccountId ?? null,
+    ],
+  );
+
+  if (!inserted.rowCount) {
+    const raced = await findCredentialByIdentity(client, identity);
+    if (!raced) throw new Error("Biometric credential dedupe conflict could not be resolved");
+    return { credentialId: raced, created: false };
+  }
+
+  await client.query(
+    `INSERT INTO attendance_biometric_audit_events (
+       id, actor_account_id, action, credential_id, employee_id, device_id, safe_metadata
+     ) VALUES ($1, $2, 'credential_imported', $3, $4, $5, $6::jsonb)`,
+    [
+      randomUUID(),
+      input.actorAccountId ?? null,
+      credentialId,
+      input.employeeId,
+      input.originDeviceId ?? null,
+      JSON.stringify({
+        modality: input.modality,
+        slotIndex: input.slotIndex,
+        vendorFormat,
+        source: safeMetadata.source ?? "device",
+      }),
+    ],
+  );
+
+  return { credentialId, created: true };
+}
+
+export async function importBiometricCredential(
+  pool: Pool,
+  config: ApiConfig,
+  input: ImportBiometricCredentialInput,
+): Promise<{ credentialId: string; created: boolean }> {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const existing = await findCredentialByIdentity(client, identity);
-    if (existing) {
-      await client.query("COMMIT");
-      return { credentialId: existing, created: false };
-    }
-
-    const credentialId = randomUUID();
-    const context: BiometricPayloadContext = {
-      credentialId,
-      employeeId: input.employeeId,
-      modality: input.modality,
-      slotIndex: input.slotIndex,
-      vendorFormat,
-    };
-    const encrypted = encryptBiometricPayload(input.payload, context, config);
-    const safeMetadata = sanitizeSafeMetadata(input.safeMetadata);
-    const inserted = await client.query<{ id: string }>(
-      `INSERT INTO attendance_biometric_credentials (
-         id, employee_id, modality, slot_index, vendor_format, vendor_version,
-         origin_device_id, source_request_id, source_pin, captured_at, payload_sha256,
-         payload_byte_length, encryption_key_id, payload_ciphertext, payload_iv,
-         payload_auth_tag, safe_metadata, created_by_account_id
-       ) VALUES (
-         $1, $2, $3, $4, $5, $6,
-         $7, $8, $9, $10, $11,
-         $12, $13, $14, $15,
-         $16, $17::jsonb, $18
-       )
-       ON CONFLICT DO NOTHING
-       RETURNING id`,
-      [
-        credentialId,
-        input.employeeId,
-        input.modality,
-        input.slotIndex,
-        vendorFormat,
-        vendorVersion,
-        input.originDeviceId ?? null,
-        input.sourceRequestId ?? null,
-        sourcePin,
-        input.capturedAt ?? null,
-        encrypted.sha256,
-        encrypted.byteLength,
-        encrypted.keyId,
-        encrypted.ciphertext,
-        encrypted.iv,
-        encrypted.authTag,
-        JSON.stringify(safeMetadata),
-        input.actorAccountId ?? null,
-      ],
-    );
-
-    if (!inserted.rowCount) {
-      const raced = await findCredentialByIdentity(client, identity);
-      if (!raced) throw new Error("Biometric credential dedupe conflict could not be resolved");
-      await client.query("COMMIT");
-      return { credentialId: raced, created: false };
-    }
-
-    await client.query(
-      `INSERT INTO attendance_biometric_audit_events (
-         id, actor_account_id, action, credential_id, employee_id, device_id, safe_metadata
-       ) VALUES ($1, $2, 'credential_imported', $3, $4, $5, $6::jsonb)`,
-      [
-        randomUUID(),
-        input.actorAccountId ?? null,
-        credentialId,
-        input.employeeId,
-        input.originDeviceId ?? null,
-        JSON.stringify({
-          modality: input.modality,
-          slotIndex: input.slotIndex,
-          vendorFormat,
-          source: safeMetadata.source ?? "device",
-        }),
-      ],
-    );
-
+    const result = await importBiometricCredentialInTransaction(client, config, input);
     await client.query("COMMIT");
-    return { credentialId, created: true };
+    return result;
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
