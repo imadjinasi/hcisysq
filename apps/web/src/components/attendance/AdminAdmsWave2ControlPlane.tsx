@@ -45,9 +45,22 @@ type CredentialItem = {
 
 type CredentialResponse = {
   collectionEnabled: boolean;
+  globalCollectionEnabled: boolean;
   rawPayloadExposed: false;
   items: CredentialItem[];
 };
+
+type CollectionPolicy = {
+  deviceId: string;
+  lifecycle: "active" | "disabled" | "quarantined";
+  globalCollectionEnabled: boolean;
+  deviceCollectionEnabled: boolean;
+  effectiveCollectionEnabled: boolean;
+  enabledAt: string | null;
+  enabledByAccountId: string | null;
+};
+
+type CollectionPolicyResponse = { item: CollectionPolicy };
 
 type ReplicaItem = {
   credentialId: string;
@@ -93,14 +106,20 @@ function modalityLabel(value: string) {
   return value;
 }
 
+function gateLabel(enabled: boolean) {
+  return enabled ? "ON" : "OFF";
+}
+
 export function AdminAdmsWave2ControlPlane() {
   const [devices, setDevices] = useState<AdmsDevice[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [roster, setRoster] = useState<RosterResponse | null>(null);
   const [credentials, setCredentials] = useState<CredentialResponse | null>(null);
+  const [policy, setPolicy] = useState<CollectionPolicy | null>(null);
   const [replicas, setReplicas] = useState<ReplicaResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [policySaving, setPolicySaving] = useState(false);
 
   const loadDevices = useCallback(async () => {
     const response = await listAdmsDevices();
@@ -116,17 +135,21 @@ export function AdminAdmsWave2ControlPlane() {
     if (!deviceId) {
       setRoster(null);
       setCredentials(null);
+      setPolicy(null);
       setReplicas(null);
       return;
     }
     setLoading(true);
     try {
-      const [rosterResult, credentialResult, replicaResult] = await Promise.all([
+      const [rosterResult, credentialResult, policyResult, replicaResult] = await Promise.all([
         readJson<RosterResponse>(
           await fetch(`/api/admin/attendance/adms/devices/${deviceId}/roster`, { credentials: "include" }),
         ),
         readJson<CredentialResponse>(
           await fetch(`/api/admin/attendance/adms/biometrics?originDeviceId=${encodeURIComponent(deviceId)}`, { credentials: "include" }),
+        ),
+        readJson<CollectionPolicyResponse>(
+          await fetch(`/api/admin/attendance/adms/devices/${deviceId}/biometric-collection-policy`, { credentials: "include" }),
         ),
         readJson<ReplicaResponse>(
           await fetch(`/api/admin/attendance/adms/devices/${deviceId}/biometric-inventory`, { credentials: "include" }),
@@ -134,6 +157,7 @@ export function AdminAdmsWave2ControlPlane() {
       ]);
       setRoster(rosterResult);
       setCredentials(credentialResult);
+      setPolicy(policyResult.item);
       setReplicas(replicaResult);
       setError(null);
     } catch (cause) {
@@ -142,6 +166,35 @@ export function AdminAdmsWave2ControlPlane() {
       setLoading(false);
     }
   }, []);
+
+  const updatePilotGate = useCallback(async (enabled: boolean) => {
+    if (!selectedId) return;
+    if (
+      enabled &&
+      !window.confirm(
+        "Aktifkan biometric collection untuk mesin pilot ini? Data biometric hanya akan di-vault jika global gate juga ON, mesin active, dan PIN memiliki mapping eksplisit ke pegawai aktif.",
+      )
+    ) {
+      return;
+    }
+    setPolicySaving(true);
+    try {
+      const result = await readJson<CollectionPolicyResponse>(
+        await fetch(`/api/admin/attendance/adms/devices/${selectedId}/biometric-collection-policy`, {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ enabled }),
+        }),
+      );
+      setPolicy(result.item);
+      setError(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Policy biometric collection tidak dapat disimpan.");
+    } finally {
+      setPolicySaving(false);
+    }
+  }, [selectedId]);
 
   useEffect(() => {
     void loadDevices().catch((cause: unknown) => {
@@ -158,6 +211,10 @@ export function AdminAdmsWave2ControlPlane() {
     [devices, selectedId],
   );
 
+  const canEnablePilot = Boolean(
+    policy && policy.globalCollectionEnabled && policy.lifecycle === "active" && !policy.deviceCollectionEnabled,
+  );
+
   return (
     <section className="mt-5 rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -166,7 +223,7 @@ export function AdminAdmsWave2ControlPlane() {
             <ShieldCheck className="h-4 w-4" /> Device Roster & Biometrics · Wave 2
           </div>
           <p className="mt-1 max-w-4xl text-xs leading-5 text-muted-foreground">
-            Surface ini masih read-only. HCIS menampilkan inventory yang benar-benar teramati dan metadata vault saja; password, template biometric, hash payload, ciphertext, IV, auth tag, dan key material tidak ditampilkan. Query/sync/enrollment/delete ke mesin tetap capability-gated sampai wire behavior tervalidasi.
+            Query/sync/enrollment/delete ke mesin tetap capability-gated. Satu-satunya kontrol write di surface ini adalah local per-device biometric pilot gate; kontrol tersebut tidak mengirim command ke mesin dan effective hanya bila global gate juga ON. Password, template biometric, hash payload, ciphertext, IV, auth tag, dan key material tidak ditampilkan.
           </p>
         </div>
         <button
@@ -199,8 +256,43 @@ export function AdminAdmsWave2ControlPlane() {
             lifecycle <span className="font-semibold text-brand-heading">{selected.lifecycle}</span>
           </div>
         ) : null}
-        <div className="pb-2 text-xs text-muted-foreground">
-          biometric collection <span className="font-semibold text-brand-heading">{credentials?.collectionEnabled ? "ENABLED" : "OFF"}</span>
+      </div>
+
+      <div className="mt-4 rounded-xl border border-border/70 bg-surface p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-bold text-brand-heading">Biometric collection pilot gate</div>
+            <div className="mt-1 flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground">
+              <span>global <strong className="text-brand-heading">{gateLabel(policy?.globalCollectionEnabled ?? credentials?.globalCollectionEnabled ?? false)}</strong></span>
+              <span>device <strong className="text-brand-heading">{gateLabel(policy?.deviceCollectionEnabled ?? false)}</strong></span>
+              <span>effective <strong className="text-brand-heading">{gateLabel(policy?.effectiveCollectionEnabled ?? false)}</strong></span>
+              <span>enabled at <strong className="text-brand-heading">{fmt(policy?.enabledAt ?? null)}</strong></span>
+            </div>
+            {!policy?.globalCollectionEnabled ? (
+              <p className="mt-2 text-[11px] leading-4 text-muted-foreground">
+                Global gate masih OFF. Device pilot tidak dapat diaktifkan sampai deployment memiliki biometric keyring yang valid dan global collection diaktifkan secara terkontrol.
+              </p>
+            ) : null}
+          </div>
+          {policy?.deviceCollectionEnabled ? (
+            <button
+              type="button"
+              disabled={policySaving}
+              onClick={() => void updatePilotGate(false)}
+              className="h-9 rounded-xl border border-red-200 bg-white px-3 text-xs font-semibold text-red-700 disabled:opacity-50"
+            >
+              {policySaving ? "Menyimpan…" : "Disable pilot"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={!canEnablePilot || policySaving}
+              onClick={() => void updatePilotGate(true)}
+              className="h-9 rounded-xl border border-border bg-white px-3 text-xs font-semibold text-brand-heading disabled:opacity-50"
+            >
+              {policySaving ? "Menyimpan…" : "Enable pilot"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -292,7 +384,7 @@ export function AdminAdmsWave2ControlPlane() {
                 {(credentials?.items.length ?? 0) === 0 ? (
                   <tr>
                     <td colSpan={5} className="px-2 py-5 text-center text-muted-foreground">
-                      Belum ada credential vault dari mesin ini. Collection tetap OFF sampai policy dan canary disetujui.
+                      Belum ada credential vault dari mesin ini. Effective collection tetap OFF sampai global dan device pilot gate sama-sama ON.
                     </td>
                   </tr>
                 ) : null}
