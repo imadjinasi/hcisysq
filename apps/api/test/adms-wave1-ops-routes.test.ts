@@ -104,7 +104,7 @@ describe("ATT-005 Wave 1 operations", () => {
     await app.close();
   });
 
-  it("labels range reconciliation as persisted coverage instead of inventing expected or duplicate counts", async () => {
+  it("counts persisted and duplicate-only ATTLOG request evidence within each command delivery window", async () => {
     const { pool, query } = createPool("SUPER_ADMIN");
     const app = Fastify({ logger: false });
     await registerAdmsWave1OpsRoutes(app, pool, config);
@@ -120,14 +120,25 @@ describe("ATT-005 Wave 1 operations", () => {
       coverageBasis: "persisted_range",
       expectedCount: null,
       duplicatesObserved: null,
-      items: [{ currentPersistedCount: 24, persistedSinceDeliveryCount: 6 }],
+      items: [{
+        currentPersistedCount: 24,
+        persistedSinceDeliveryCount: 6,
+        attlogRequestCount: 2,
+      }],
     });
+
     const reconciliationSql = query.mock.calls
       .map(([sql]) => String(sql))
       .find((sql) => sql.includes("coverage.\"currentPersistedCount\""));
-    expect(reconciliationSql).toContain("JOIN attendance_adms_events e ON e.source_request_id = r.id");
-    expect(reconciliationSql).toContain("e.occurred_at >= c.requested_range_start");
-    expect(reconciliationSql).toContain("e.occurred_at <= c.requested_range_end");
+
+    expect(reconciliationSql).toContain("SELECT min(c2.delivered_at) AS \"nextDeliveredAt\"");
+    expect(reconciliationSql).toContain("r.received_at < next_delivery.\"nextDeliveredAt\"");
+    expect(reconciliationSql).toContain("e.source_request_id = r.id");
+    expect(reconciliationSql).toContain("q.reason = 'DUPLICATE_EXACT'");
+    expect(reconciliationSql).toContain("q.details ->> 'eventIdentityHash'");
+    expect(reconciliationSql).toContain("duplicate_event.event_identity_hash");
+    expect(reconciliationSql).toContain("duplicate_event.occurred_at >= c.requested_range_start");
+    expect(reconciliationSql).toContain("duplicate_event.occurred_at <= c.requested_range_end");
     await app.close();
   });
 
