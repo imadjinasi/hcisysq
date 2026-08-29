@@ -1,4 +1,3 @@
-/* global Buffer */
 import { randomUUID } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
