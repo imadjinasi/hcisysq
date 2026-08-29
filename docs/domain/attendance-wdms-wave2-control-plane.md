@@ -93,6 +93,17 @@ A successful passive upload is also positive evidence that the origin device cur
 
 When an eligible mapped vault write fails, the failure must not be treated as successful biometric collection. The redacted request evidence remains durable and exact credential dedupe makes a later device retry safe.
 
+### Policy/import serialization
+
+A policy check followed by a separate vault transaction would leave a race where an Admin could disable the pilot while an already-started import still commits. Wave 2 therefore serializes both operations on the trusted device row:
+
+- passive import begins a transaction and locks `attendance_adms_devices` with `FOR UPDATE`;
+- it evaluates lifecycle and per-device gate under that lock;
+- explicit PIN mapping, encrypted credential insert/audit, and source-device replica-state update commit in the same transaction;
+- the Admin policy PATCH locks the same device row before changing the gate.
+
+The result is a transactional stop boundary: once a pilot-disable transaction commits, a racing passive import that was waiting for that device row observes the disabled gate and cannot create a new credential.
+
 ## Biometric collection policy
 
 Migration `0027_attendance_adms_biometric_pilot_gate.sql` adds an audited pilot selector to each trusted ADMS device:
@@ -102,6 +113,12 @@ Migration `0027_attendance_adms_biometric_pilot_gate.sql` adds an audited pilot 
 - `biometric_collection_enabled_by_account_id` records the SUPER_ADMIN actor while the gate is enabled.
 
 Existing devices default OFF during upgrade. This is intentional: setting the environment-level global gate ON must not silently enroll all trusted active devices into collection.
+
+Migration `0028_attendance_adms_biometric_lifecycle_guard.sql` closes the reactivation hazard at the database boundary:
+
+- a pilot gate may be ON only while device lifecycle is `active`;
+- changing lifecycle to `disabled` or `quarantined` automatically resets the pilot gate OFF and clears its current enable timestamp/actor;
+- changing that device back to `active` does **not** restore the old opt-in; a SUPER_ADMIN must explicitly enable the pilot again.
 
 Admin policy behavior:
 
@@ -206,13 +223,14 @@ Protocol documentation gives candidate read/write command families, but HCIS wil
 
 ## Verification status
 
-The previous hardened head `74aed88d5a988f47a79b3257d08e7fbdc0556702` passed GitHub Actions Pull Request Validation run #122. The new dual-gate changes must pass the same quality gate before this document is treated as the current verified software checkpoint.
+The previous hardened head `74aed88d5a988f47a79b3257d08e7fbdc0556702` passed GitHub Actions Pull Request Validation run #122. The dual-gate/lifecycle/race increment must pass the same quality gate on its exact final head before this document is treated as the current verified software checkpoint.
 
 Coverage now includes or is being extended to include:
 
 - clean migration;
-- explicit Wave 1 (`0025`) -> Wave 2 (`0026` + `0027`) migration rehearsal with seeded device, request-journal, mapping and command state preserved;
+- explicit Wave 1 (`0025`) -> Wave 2 (`0026` + `0027` + `0028`) migration rehearsal with seeded device, request-journal, mapping and command state preserved;
 - upgrade assertion that existing devices default biometric pilot OFF;
+- lifecycle rehearsal proving pilot ON -> disabled resets OFF -> active remains OFF;
 - TypeScript typecheck and lint;
 - synthetic AES-GCM/key-rotation tests;
 - database integration proving sensitive USER/OPERLOG plaintext is not retained in the request journal;
@@ -220,6 +238,7 @@ Coverage now includes or is being extended to include:
 - dual-gate regressions proving global OFF/device ON and global ON/device OFF both create no credential;
 - database integration proving effective collection imports only through explicit active PIN mapping;
 - database integration proving an unmapped PIN is not guessed into an employee vault;
+- concurrent policy-disable/passive-import regression proving no credential appears after the disable commit;
 - redacted source-request provenance and source-device `present` evidence;
 - append-only biometric audit and destroyed-envelope constraint regressions;
 - SUPER_ADMIN-only audited per-device policy behavior;
