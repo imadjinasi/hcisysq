@@ -16,9 +16,7 @@ Before the Wave 1 production deployment, a production Super Admin screenshot sho
 | 2026-08-29 07:55:07 | 2026-08-29 07:55:16 | 9 s | `109041327` |
 | 2026-08-29 06:19:26 | 2026-08-29 06:19:35 | 9 s | `205291319` |
 
-The older production UI did not yet expose the merged Wave 1 operations/details surfaces, so these punches remain evidence for the older deployed path only. They must not be used to close the post-deploy Wave 1 realtime canary.
-
-The observed PINs were also unmapped in HCIS. Employee attendance projection remains unverified and employee identity must not be inferred from name, NIP, card, organizational unit, or any other field. Mapping remains explicit device PIN -> `employees.id` only.
+The older production UI did not yet expose the merged Wave 1 operations/details surfaces, so these punches remain evidence for the older deployed path only.
 
 ## Wave 1 production deployment gate — VERIFIED 2026-08-29
 
@@ -60,23 +58,24 @@ The Wave 1 repository only updates `metadata.infoObserved` from a parsed device 
 
 No raw template or other biometric payload is exposed by this INFO surface.
 
-## Fresh post-deploy realtime ATTLOG — PENDING NATURAL PUNCH
+## Fresh post-deploy realtime ATTLOG — VERIFIED 2026-08-29
 
-A new post-deploy fingerprint punch has not yet been observed. The machine is in normal operational use and a test punch will not be forced solely for canary completion.
+Natural production use after the Wave 1 deployment produced fresh raw events on the deployed `1e061cd...` build:
 
-When the next natural punch occurs, verify:
+| Device punch time (Asia/Jakarta) | HCIS received time (Asia/Jakarta) | Observed latency | PIN | Source request |
+| --- | --- | ---: | --- | --- |
+| 2026-08-29 09:14:08 | 2026-08-29 09:14:18 | 10 s | `912302153` | `9add426b-42d7-4691-a31b-225ba1358997` |
+| 2026-08-29 09:25:12 | 2026-08-29 09:25:22 | 10 s | `711112272` | `1d4f3118-3806-474d-bc19-630a3de4dd6e` |
 
-1. device punch time and HCIS `receivedAt` are near real time;
-2. source is normal ATTLOG ingress, not historical recovery;
-3. raw event persists once with immutable provenance;
-4. no quarantine is introduced;
-5. no late/absence/overtime/work-hours/payroll/leave/resolution inference is created.
+These events occurred after the production deployment around 09:00 Asia/Jakarta and were received through distinct normal request provenance with near-realtime latency. No synthetic or forced test punch was needed.
 
-Employee projection remains a separate boundary and requires a correct explicit device PIN mapping.
+Conclusion: fresh physical fingerprint -> HCIS ATTLOG transport and immutable raw persistence are **VERIFIED on the deployed Wave 1 build**.
+
+The observed PINs remain unmapped. Employee attendance projection is therefore still a separate boundary; do not infer employee identity from PIN, name, NIP, card, organizational unit, or other device fields. Mapping remains explicit device PIN -> `employees.id` only.
 
 ## Bounded historical ATTLOG canary — READY
 
-A small historical range can be tested now without waiting for the next natural punch. Use a narrow range that contains a known pre-deploy event so retransmission/dedup can be observed without creating synthetic attendance.
+Use a narrow historical range that contains a known event so retransmission/dedup can be observed without creating synthetic attendance.
 
 Recommended canary window on `SPK7245000707`:
 
@@ -85,7 +84,7 @@ Start: 2026-08-29 06:15:00 Asia/Jakarta
 End:   2026-08-29 06:25:00 Asia/Jakarta
 ```
 
-This window contains the previously observed `205291319` punch at 06:19:26.
+This window contains the known `205291319` punch at 06:19:26.
 
 Run:
 
@@ -101,11 +100,11 @@ Do not enable periodic reconciliation and do not use an invented “upload all�
 
 - production deployment/version gate: **VERIFIED**;
 - INFO physical result: **VERIFIED**;
+- fresh realtime ATTLOG on deployed Wave 1: **VERIFIED**;
 - bounded historical ATTLOG: **READY / PENDING EXECUTION**;
 - identical-range dedupe/retransmission: **PENDING**;
-- fresh realtime ATTLOG on the deployed Wave 1 build: **PENDING NATURAL PUNCH**;
 - online/offline transition: observational follow-up when operationally practical.
 
 ## Wave 2 boundary
 
-Command-capable Wave 2 roster/template/enrollment/distribution/delete/restore behavior remains hardware-gated until bounded historical recovery/dedup is physically verified and a new post-deploy realtime punch is observed. The lack of an immediate natural punch does not require forcing a fingerprint event or blocking safe read/recovery canaries.
+Command-capable Wave 2 roster/template/enrollment/distribution/delete/restore behavior remains hardware-gated until bounded historical recovery/dedup is physically verified. Fresh realtime transport and INFO are now verified on the deployed Wave 1 build.
