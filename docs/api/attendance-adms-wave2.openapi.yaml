@@ -5,7 +5,9 @@ info:
   description: |
     Reviewable contract fragment for ATT-005 Wave 2 Admin routes. Routine biometric
     responses remain metadata-only; the biometric collection policy controls only the
-    local HCIS pilot gate and never sends a command to a fingerprint device.
+    local HCIS pilot gate. The only command-capable route in this fragment is the
+    explicitly allowlisted read-only single-PIN USERINFO canary; full roster/template
+    queries and all user/biometric writes remain unavailable.
 tags:
   - name: Attendance
 paths:
@@ -44,6 +46,50 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/attendance/adms/devices/{deviceId}/commands/query-user-info:
+    post:
+      tags: [Attendance]
+      operationId: queryAdmsDeviceUserInfoByPin
+      summary: Queue a read-only USERINFO query for one numeric device PIN
+      description: |
+        SUPER_ADMIN-only manual canary. Queues exactly `DATA QUERY USERINFO PIN=<digits>`.
+        PIN is a string so leading zeroes remain significant. A successful command result
+        proves only device execution; physical canary completion also requires a new redacted
+        safe roster observation for the same PIN after command delivery. This endpoint cannot
+        request a full roster and cannot query biometric templates.
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pin]
+              additionalProperties: false
+              properties:
+                pin:
+                  type: string
+                  pattern: '^[0-9]{1,128}$'
+                  description: Numeric device-local PIN. Leading zeroes are significant.
+      responses:
+        '202':
+          description: USERINFO command queued for the active trusted device
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [item]
+                properties:
+                  item:
+                    $ref: '#/components/schemas/AdmsSinglePinUserInfoCommand'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Device is not active or another command is already active for the device
 
   /admin/attendance/adms/biometrics:
     get:
@@ -208,6 +254,26 @@ components:
       description: Request validation failed
 
   schemas:
+    AdmsSinglePinUserInfoCommand:
+      type: object
+      required:
+        [id, commandNumber, commandType, reason, status, createdAt, expiresAt, pin, fullRoster, verificationRequired]
+      properties:
+        id: { type: string, format: uuid }
+        commandNumber: { type: string, pattern: '^[1-9][0-9]*$' }
+        commandType: { type: string, const: query_user_info }
+        reason: { type: string, const: admin_query_user_info }
+        status: { type: string, const: pending }
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        pin:
+          type: string
+          pattern: '^[0-9]{1,128}$'
+        fullRoster: { type: boolean, const: false }
+        verificationRequired:
+          type: string
+          const: command_success_and_new_safe_roster_observation
+
     AdmsBiometricCollectionPolicy:
       type: object
       required:
