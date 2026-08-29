@@ -5,6 +5,7 @@ import { AdminAdmsPanel } from "@/components/attendance/AdminAdmsPanel";
 import { AdminAdmsWave1Details } from "@/components/attendance/AdminAdmsWave1Details";
 import { AdminAdmsWave1Operations } from "@/components/attendance/AdminAdmsWave1Operations";
 import { AdminAdmsWave2ControlPlane } from "@/components/attendance/AdminAdmsWave2ControlPlane";
+import { AdminAdmsWave2UserInfoCanary } from "@/components/attendance/AdminAdmsWave2UserInfoCanary";
 import { AdminShell } from "@/layouts/AdminShell";
 import {
   AdminApiError,
@@ -62,6 +63,7 @@ export function AdminAdmsPage() {
       ) : null}
       <AdminAdmsWave1Operations />
       <AdminAdmsWave1Details />
+      <AdminAdmsWave2UserInfoCanary />
       <AdminAdmsWave2ControlPlane />
       <AdminAdmsPanel employees={employees} />
     </AdminShell>
