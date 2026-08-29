@@ -1,5 +1,7 @@
+import { randomUUID } from "node:crypto";
+
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
 import { z } from "zod";
 
 import type { ApiConfig } from "../../../config/env.js";
@@ -13,6 +15,15 @@ const biometricQuerySchema = z.object({
   originDeviceId: z.string().uuid().optional(),
   modality: z.enum(["fingerprint", "face", "palm", "bio_photo"]).optional(),
 });
+const biometricCollectionPolicySchema = z.object({ enabled: z.boolean() });
+
+type BiometricCollectionPolicyRow = {
+  deviceId: string;
+  lifecycle: "active" | "disabled" | "quarantined";
+  deviceCollectionEnabled: boolean;
+  enabledAt: Date | null;
+  enabledByAccountId: string | null;
+};
 
 async function authenticate(
   auth: AuthService,
@@ -31,6 +42,39 @@ async function authenticate(
   }
 }
 
+async function writeDeviceAudit(
+  client: PoolClient,
+  input: {
+    actorAccountId: string;
+    deviceId: string;
+    beforeState: unknown;
+    afterState: unknown;
+  },
+) {
+  await client.query(
+    `INSERT INTO attendance_adms_admin_audit_events (
+       id, actor_account_id, action, device_id, mapping_id, before_state, after_state
+     ) VALUES ($1, $2, 'device_updated', $3, NULL, $4::jsonb, $5::jsonb)`,
+    [
+      randomUUID(),
+      input.actorAccountId,
+      input.deviceId,
+      JSON.stringify(input.beforeState),
+      JSON.stringify(input.afterState),
+    ],
+  );
+}
+
+function policyResponse(config: ApiConfig, item: BiometricCollectionPolicyRow) {
+  const globalCollectionEnabled = biometricCollectionEnabled(config);
+  return {
+    ...item,
+    globalCollectionEnabled,
+    effectiveCollectionEnabled:
+      globalCollectionEnabled && item.deviceCollectionEnabled && item.lifecycle === "active",
+  };
+}
+
 export async function registerAdmsWave2AdminRoutes(
   app: FastifyInstance,
   pool: Pool,
@@ -43,6 +87,114 @@ export async function registerAdmsWave2AdminRoutes(
     config.AUTH_SESSION_TTL_HOURS,
     config.NODE_ENV === "production",
   );
+
+  app.get("/admin/attendance/adms/devices/:deviceId/biometric-collection-policy", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply);
+    if (!principal) return;
+    const params = deviceIdSchema.safeParse(request.params);
+    if (!params.success) {
+      return reply.status(400).send({ code: "INVALID_ADMS_DEVICE", message: "ID mesin tidak valid." });
+    }
+
+    const result = await pool.query<BiometricCollectionPolicyRow>(
+      `SELECT
+         id AS "deviceId",
+         lifecycle,
+         biometric_collection_enabled AS "deviceCollectionEnabled",
+         biometric_collection_enabled_at AS "enabledAt",
+         biometric_collection_enabled_by_account_id AS "enabledByAccountId"
+       FROM attendance_adms_devices
+       WHERE id = $1`,
+      [params.data.deviceId],
+    );
+    const item = result.rows[0];
+    if (!item) {
+      return reply.status(404).send({ code: "ADMS_DEVICE_NOT_FOUND", message: "Mesin tidak ditemukan." });
+    }
+
+    reply.header("Cache-Control", "no-store");
+    return reply.send({ item: policyResponse(config, item) });
+  });
+
+  app.patch("/admin/attendance/adms/devices/:deviceId/biometric-collection-policy", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply);
+    if (!principal) return;
+    const params = deviceIdSchema.safeParse(request.params);
+    const body = biometricCollectionPolicySchema.safeParse(request.body);
+    if (!params.success || !body.success) {
+      return reply.status(400).send({
+        code: "INVALID_BIOMETRIC_COLLECTION_POLICY",
+        message: "Policy biometric collection tidak valid.",
+      });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const found = await client.query<BiometricCollectionPolicyRow>(
+        `SELECT
+           id AS "deviceId",
+           lifecycle,
+           biometric_collection_enabled AS "deviceCollectionEnabled",
+           biometric_collection_enabled_at AS "enabledAt",
+           biometric_collection_enabled_by_account_id AS "enabledByAccountId"
+         FROM attendance_adms_devices
+         WHERE id = $1
+         FOR UPDATE`,
+        [params.data.deviceId],
+      );
+      const current = found.rows[0];
+      if (!current) {
+        await client.query("ROLLBACK");
+        return reply.status(404).send({ code: "ADMS_DEVICE_NOT_FOUND", message: "Mesin tidak ditemukan." });
+      }
+      if (body.data.enabled && !biometricCollectionEnabled(config)) {
+        await client.query("ROLLBACK");
+        return reply.status(409).send({
+          code: "BIOMETRIC_GLOBAL_COLLECTION_DISABLED",
+          message: "Global biometric collection masih OFF. Aktifkan global gate dan keyring secara terkontrol sebelum memilih mesin pilot.",
+        });
+      }
+      if (body.data.enabled && current.lifecycle !== "active") {
+        await client.query("ROLLBACK");
+        return reply.status(409).send({
+          code: "ADMS_DEVICE_INACTIVE",
+          message: "Biometric collection hanya dapat diaktifkan untuk mesin lifecycle active.",
+        });
+      }
+
+      const updated = await client.query<BiometricCollectionPolicyRow>(
+        `UPDATE attendance_adms_devices
+         SET biometric_collection_enabled = $2,
+             biometric_collection_enabled_at = CASE WHEN $2::boolean THEN now() ELSE NULL END,
+             biometric_collection_enabled_by_account_id = CASE WHEN $2::boolean THEN $3::uuid ELSE NULL END,
+             updated_at = now()
+         WHERE id = $1
+         RETURNING
+           id AS "deviceId",
+           lifecycle,
+           biometric_collection_enabled AS "deviceCollectionEnabled",
+           biometric_collection_enabled_at AS "enabledAt",
+           biometric_collection_enabled_by_account_id AS "enabledByAccountId"`,
+        [current.deviceId, body.data.enabled, principal.id],
+      );
+      const item = updated.rows[0]!;
+      await writeDeviceAudit(client, {
+        actorAccountId: principal.id,
+        deviceId: current.deviceId,
+        beforeState: current,
+        afterState: item,
+      });
+      await client.query("COMMIT");
+      reply.header("Cache-Control", "no-store");
+      return reply.send({ item: policyResponse(config, item) });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  });
 
   app.get("/admin/attendance/adms/devices/:deviceId/roster", async (request, reply) => {
     const principal = await authenticate(auth, request, reply);
@@ -151,8 +303,10 @@ export async function registerAdmsWave2AdminRoutes(
     );
 
     reply.header("Cache-Control", "no-store");
+    const globalCollectionEnabled = biometricCollectionEnabled(config);
     return reply.send({
-      collectionEnabled: biometricCollectionEnabled(config),
+      collectionEnabled: globalCollectionEnabled,
+      globalCollectionEnabled,
       rawPayloadExposed: false,
       items: result.rows,
     });
