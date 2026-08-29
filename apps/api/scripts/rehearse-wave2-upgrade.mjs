@@ -43,6 +43,7 @@ try {
   const wave1Files = files.filter((name) => name <= "0025_attendance_adms_wave1_core.sql");
   assert(wave1Files.at(-1) === "0025_attendance_adms_wave1_core.sql", "Wave 1 migration boundary not found");
   assert(files.includes("0026_attendance_adms_wave2_control_plane.sql"), "Wave 2 migration not found");
+  assert(files.includes("0027_attendance_adms_biometric_pilot_gate.sql"), "Wave 2 biometric pilot migration not found");
 
   for (const file of wave1Files) await applyMigration(client, file);
 
@@ -101,6 +102,7 @@ try {
   );
 
   await applyMigration(client, "0026_attendance_adms_wave2_control_plane.sql");
+  await applyMigration(client, "0027_attendance_adms_biometric_pilot_gate.sql");
 
   const preserved = await client.query(
     `SELECT
@@ -116,6 +118,19 @@ try {
   for (const [key, value] of Object.entries(row)) {
     assert(value === 1, `Wave 1 state was not preserved: ${key}=${String(value)}`);
   }
+
+  const pilotPolicy = await client.query(
+    `SELECT
+       biometric_collection_enabled AS enabled,
+       biometric_collection_enabled_at AS enabled_at,
+       biometric_collection_enabled_by_account_id AS enabled_by
+     FROM attendance_adms_devices
+     WHERE id = $1`,
+    [deviceId],
+  );
+  assert(pilotPolicy.rows[0]?.enabled === false, "Existing Wave 1 device did not default biometric collection to OFF");
+  assert(pilotPolicy.rows[0]?.enabled_at === null, "Existing Wave 1 device unexpectedly received biometric enable timestamp");
+  assert(pilotPolicy.rows[0]?.enabled_by === null, "Existing Wave 1 device unexpectedly received biometric enable actor");
 
   const wave2Tables = await client.query(
     `SELECT
