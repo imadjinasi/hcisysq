@@ -19,6 +19,7 @@ Wave 1 physical validation is still independent and remains required. In particu
 - No roster or biometric path infers late, absence, work hours, overtime, payroll, leave conversion, or attendance-resolution outcome.
 - No biometric payload is returned by routine Admin APIs or rendered in the Admin UI.
 - No generic remote-command input is introduced.
+- Changing biometric collection policy is local HCIS state only; it does not send a command to the device.
 
 ## Sensitive ingress redaction
 
@@ -76,10 +77,13 @@ Wave 2 may passively consume these records without issuing a query command to th
 
 A passive template is eligible for the vault only when all of these are true:
 
-1. `BIOMETRIC_COLLECTION_ENABLED=1` with a valid biometric keyring;
-2. the source device is already trusted and `active`;
-3. the exact device PIN resolves at receipt time through one explicit effective `attendance_adms_employee_mappings` row;
-4. the mapped employee is currently `active`.
+1. process-wide `BIOMETRIC_COLLECTION_ENABLED=1` with a valid biometric keyring;
+2. the source device has audited `biometric_collection_enabled=true`;
+3. the source device is trusted and lifecycle `active`;
+4. the exact device PIN resolves at receipt time through one explicit effective `attendance_adms_employee_mappings` row;
+5. the mapped employee is currently `active`.
+
+The effective biometric collection predicate is therefore global gate AND device gate AND active lifecycle. Either gate OFF means the sensitive upload remains redacted evidence only and no credential is created.
 
 HCIS never maps biometric payloads by employee number, name, card number, unit, or external ID. If the PIN is unmapped, ambiguous, or belongs to an inactive employee, the payload is acknowledged/redacted but is not added to the employee vault. A future explicit query can recover it only after that query path has been hardware-validated.
 
@@ -88,6 +92,24 @@ Every accepted passive credential keeps `source_request_id` pointing to the reda
 A successful passive upload is also positive evidence that the origin device currently has that template. Wave 2 records `attendance_biometric_device_states.state = 'present'` for the imported/deduplicated credential on the source device, together with the observation timestamp, vendor format and source-request provenance. This is positive evidence only; HCIS still does not infer `missing` merely because another device has never been queried.
 
 When an eligible mapped vault write fails, the failure must not be treated as successful biometric collection. The redacted request evidence remains durable and exact credential dedupe makes a later device retry safe.
+
+## Biometric collection policy
+
+Migration `0027_attendance_adms_biometric_pilot_gate.sql` adds an audited pilot selector to each trusted ADMS device:
+
+- `biometric_collection_enabled` defaults false;
+- `biometric_collection_enabled_at` records current enablement time;
+- `biometric_collection_enabled_by_account_id` records the SUPER_ADMIN actor while the gate is enabled.
+
+Existing devices default OFF during upgrade. This is intentional: setting the environment-level global gate ON must not silently enroll all trusted active devices into collection.
+
+Admin policy behavior:
+
+- GET exposes global, device and effective gate state;
+- PATCH enable requires SUPER_ADMIN, global collection ON and lifecycle `active`;
+- PATCH disable is always allowed for an authenticated SUPER_ADMIN;
+- changes are written to the existing append-only ADMS Admin audit using `device_updated` before/after evidence;
+- the policy operation never creates a PUSH command.
 
 ## Biometric vault
 
@@ -115,7 +137,7 @@ Biometric payload encryption is separate from authentication/MFA encryption.
 
 Environment controls:
 
-- `BIOMETRIC_COLLECTION_ENABLED` — defaults operationally to OFF;
+- `BIOMETRIC_COLLECTION_ENABLED` — process-wide gate, defaults operationally to OFF;
 - `BIOMETRIC_ACTIVE_KEY_ID` — active application-level vault key ID;
 - `BIOMETRIC_ENCRYPTION_KEYS` — JSON keyring containing independently generated 32-byte hexadecimal AES keys.
 
@@ -128,9 +150,9 @@ The envelope uses AES-256-GCM with:
 
 Old keys may remain in the keyring to decrypt older envelopes while new imports use the active key. Key rotation is therefore explicit rather than silently rewriting authentication keys.
 
-If collection is explicitly enabled but the keyring is missing, malformed or does not contain the active key, configuration validation fails closed.
+If global collection is explicitly enabled but the keyring is missing, malformed or does not contain the active key, configuration validation fails closed.
 
-`BIOMETRIC_COLLECTION_ENABLED` is currently a global gate, not a per-device pilot selector. Production remains OFF until the global collection scope is explicitly accepted or a narrower pilot control exists.
+A valid global keyring still does not collect biometric data until one trusted active device is separately selected through the per-device pilot gate.
 
 ## Credential lifecycle and deletion preparation
 
@@ -150,11 +172,12 @@ The state is evidence-driven. HCIS must not infer “missing” merely because a
 
 ## Admin API and UI
 
-Current Wave 2 Admin surfaces are read-only:
+Current Wave 2 Admin surfaces include:
 
 - observed device roster and explicit mapping status;
 - vault credential metadata;
-- known per-device replica state.
+- known per-device replica state;
+- global/device/effective biometric collection policy for one selected device.
 
 Routine responses explicitly exclude:
 
@@ -165,7 +188,7 @@ Routine responses explicitly exclude:
 - authentication tag;
 - encryption key ID/material.
 
-The UI does not expose query/sync/enroll/delete controls yet. Those operations remain capability-gated until the exact PUSH wire behavior is sufficiently proven and covered by allowlisted serializers/tests.
+The only Wave 2 write currently exposed is the audited local per-device pilot gate. The UI does not expose roster query/sync/enroll/delete controls. Those operations remain capability-gated until the exact PUSH wire behavior is sufficiently proven and covered by allowlisted serializers/tests.
 
 ## What is deliberately not enabled yet
 
@@ -177,31 +200,31 @@ The UI does not expose query/sync/enroll/delete controls yet. Those operations r
 - delete from device;
 - master biometric destruction;
 - restore from HCIS vault;
-- production biometric collection.
+- production biometric collection without an explicitly selected pilot device.
 
 Protocol documentation gives candidate read/write command families, but HCIS will not expose them merely because a manual mentions them. Physical firmware validation and explicit allowlisting remain required.
 
 ## Verification status
 
-Final hardened software head `21f3d9fb529241132220e5d1c59c1d56e1ec2601` passed GitHub Actions Pull Request Validation run #121, including:
+The previous hardened head `74aed88d5a988f47a79b3257d08e7fbdc0556702` passed GitHub Actions Pull Request Validation run #122. The new dual-gate changes must pass the same quality gate before this document is treated as the current verified software checkpoint.
+
+Coverage now includes or is being extended to include:
 
 - clean migration;
-- explicit Wave 1 (`0025`) -> Wave 2 (`0026`) migration rehearsal with seeded device, request-journal, mapping and command state preserved;
-- TypeScript typecheck;
-- lint;
+- explicit Wave 1 (`0025`) -> Wave 2 (`0026` + `0027`) migration rehearsal with seeded device, request-journal, mapping and command state preserved;
+- upgrade assertion that existing devices default biometric pilot OFF;
+- TypeScript typecheck and lint;
 - synthetic AES-GCM/key-rotation tests;
-- database integration proving synthetic payload ciphertext differs from plaintext;
 - database integration proving sensitive USER/OPERLOG plaintext is not retained in the request journal;
 - passive FP/FACE framing tests for size/base64/slot/validity boundaries;
-- database integration proving passive collection OFF creates no vault row;
-- database integration proving collection ON imports only through explicit active PIN mapping;
+- dual-gate regressions proving global OFF/device ON and global ON/device OFF both create no credential;
+- database integration proving effective collection imports only through explicit active PIN mapping;
 - database integration proving an unmapped PIN is not guessed into an employee vault;
-- database integration proving redacted source-request provenance and source-device `present` evidence;
+- redacted source-request provenance and source-device `present` evidence;
 - append-only biometric audit and destroyed-envelope constraint regressions;
-- synthetic device simulator covering idle polling, INFO delivery/result, safe USERINFO observation and passive OPERLOG fingerprint redaction with collection OFF;
+- SUPER_ADMIN-only audited per-device policy behavior;
+- synthetic device simulator covering idle polling, INFO delivery/result, safe USERINFO observation and passive OPERLOG fingerprint redaction;
 - oversized sensitive-body hash-only/413 regression and oversized ATTLOG no-projection regression;
-- regression proving ATTLOG remains lossless within the accepted capture boundary;
-- authorization tests proving non-SUPER_ADMIN actors cannot query the Wave 2 tables;
 - API/UI build and Compose validation.
 
 Physical-device validation is a later gate and must not be replaced by synthetic CI.
@@ -214,9 +237,10 @@ The runtime Wave 2 Admin surface currently consists of:
 
 - `GET /admin/attendance/adms/devices/{deviceId}/roster`;
 - `GET /admin/attendance/adms/biometrics`;
+- `GET/PATCH /admin/attendance/adms/devices/{deviceId}/biometric-collection-policy`;
 - `GET /admin/attendance/adms/devices/{deviceId}/biometric-inventory`.
 
-`docs/api/attendance-adms-wave2.openapi.yaml` contains the exact metadata-only contract. The authoritative `docs/api/openapi.yaml` aggregates the three paths via external Path Item `$ref` entries.
+`docs/api/attendance-adms-wave2.openapi.yaml` contains all four current Path Items. The authoritative aggregate `docs/api/openapi.yaml` already references the earlier Wave 2 Path Items; the new policy Path Item must also be aggregated before this dual-gate increment is contract-complete.
 
 ## Hardware boundary
 
