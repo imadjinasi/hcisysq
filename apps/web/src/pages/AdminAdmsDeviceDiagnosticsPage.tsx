@@ -17,7 +17,6 @@ import {
   getAdmsSafeLogs,
   getAdmsTelemetry,
   listAdmsBiometricCredentials,
-  requestAdmsFullRosterQuery,
   requestAdmsReadInformation,
   type AdmsBiometricCredentialResponse,
   type AdmsBiometricInventoryResponse,
@@ -118,23 +117,6 @@ export function AdminAdmsDeviceDiagnosticsPage() {
   );
   const canaryVerified = userInfoCommandSucceeded && rosterObservedAfterDelivery;
 
-  const latestRosterQueryCommand = useMemo(() => commands.find(
-    (item) => item.commandType === "query_user_info" && item.wireCommand === "DATA QUERY USERINFO",
-  ) ?? null, [commands]);
-  const rosterObservationsAfterDelivery = useMemo(() => {
-    if (!latestRosterQueryCommand?.deliveredAt) return 0;
-    const deliveredAt = new Date(latestRosterQueryCommand.deliveredAt).getTime();
-    return (roster?.items ?? []).filter((item) => (
-      Boolean(item.sourceRequestId) && new Date(item.lastSeenAt).getTime() >= deliveredAt
-    )).length;
-  }, [latestRosterQueryCommand?.deliveredAt, roster?.items]);
-  const rosterQueryCommandSucceeded = Boolean(
-    latestRosterQueryCommand?.status === "succeeded"
-      && (latestRosterQueryCommand.returnCode ?? -1) >= 0
-      && latestRosterQueryCommand.resultCommand === "DATA",
-  );
-  const rosterUploadEvidenceObserved = rosterQueryCommandSucceeded && rosterObservationsAfterDelivery > 0;
-
   const refresh = useCallback(async () => {
     setBusy("refresh");
     try {
@@ -177,22 +159,6 @@ export function AdminAdmsDeviceDiagnosticsPage() {
       setBusy(null);
     }
   }, [device?.lifecycle, deviceId, load, normalizedPin, pinValid]);
-
-  const queryFullRoster = useCallback(async () => {
-    if (device?.lifecycle !== "active" || (roster?.items.length ?? 0) === 0) return;
-    if (!window.confirm("Jalankan canary pembacaan roster USERINFO untuk mesin ini? HCIS hanya meminta metadata roster aman; tidak ada template biometrik yang diminta, dan hasil tetap observed_only / bukan snapshot lengkap.")) return;
-    setBusy("roster");
-    try {
-      const result = await requestAdmsFullRosterQuery(deviceId);
-      setNotice(`Perintah C:${result.item.commandNumber} untuk membaca roster aman sudah dibuat. Hasil tetap observational sampai bukti hardware lengkap diverifikasi.`);
-      setError(null);
-      await load();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Permintaan canary roster USERINFO tidak dapat dibuat.");
-    } finally {
-      setBusy(null);
-    }
-  }, [device?.lifecycle, deviceId, load, roster?.items.length]);
 
   if (loading) {
     return (
@@ -258,7 +224,7 @@ export function AdminAdmsDeviceDiagnosticsPage() {
         <div className="mt-4 flex flex-wrap items-end gap-3">
           <label className="min-w-64 flex-1 text-xs font-semibold text-muted-foreground">
             PIN mesin
-            <input value={canaryPin} onChange={(event) => setCanaryPin(event.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="contoh: 00042" className="mt-1 h-10 w-full rounded-xl border border-border px-3 font-mono text-sm text-brand-heading" />
+            <input value={canaryPin} onChange={(event) => setCanaryPin(event.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="contoh: 205291319" className="mt-1 h-10 w-full rounded-xl border border-border px-3 font-mono text-sm text-brand-heading" />
           </label>
           <button type="button" disabled={busy !== null || !pinValid || device?.lifecycle !== "active"} onClick={() => void queryUserInfo()} className="h-10 rounded-xl bg-brand-primary px-4 text-xs font-bold text-white disabled:opacity-50">
             {busy === "userinfo" ? "Mengirim…" : "Baca 1 PIN"}
@@ -272,47 +238,6 @@ export function AdminAdmsDeviceDiagnosticsPage() {
               {canaryVerified ? "VERIFIED: command sukses dan safe roster observation baru terbukti setelah delivery." : userInfoCommandSucceeded ? "Command sukses, tetapi safe roster observation baru setelah delivery belum terbukti." : "Canary belum mencapai terminal success."}
             </div>
             {rosterItem ? <div className="mt-2">Roster: PIN {rosterItem.pin} · {rosterItem.displayName ?? "—"} · kartu {rosterItem.cardNumber ?? "—"} · observed {fmt(rosterItem.lastSeenAt)}</div> : null}
-          </div>
-        ) : null}
-      </section>
-
-      <section className="rounded-2xl border border-blue-200 bg-white p-5 shadow-[var(--shadow-soft)]">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2 text-sm font-bold text-brand-heading"><Database className="h-4 w-4" /> Full roster metadata canary</div>
-            <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">
-              Canary manual untuk meminta USERINFO roster tanpa PIN selector. Hanya metadata aman yang diproyeksikan; password/field tak dikenal dibuang dan tidak ada template biometric yang diminta.
-            </p>
-          </div>
-          <button
-            type="button"
-            disabled={busy !== null || device?.lifecycle !== "active" || (roster?.items.length ?? 0) === 0}
-            onClick={() => void queryFullRoster()}
-            className="h-9 rounded-xl border border-blue-300 bg-blue-50 px-3 text-xs font-bold text-blue-900 hover:bg-blue-100 disabled:opacity-50"
-          >
-            {busy === "roster" ? "Mengirim…" : "Baca roster aman"}
-          </button>
-        </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
-          <Stat label="Safe roster teramati" value={String(roster?.items.length ?? 0)} />
-          <Stat label="Inventory semantics" value={roster?.inventorySemantics ?? "observed_only"} mono />
-          <Stat label="Complete snapshot" value={roster?.completeSnapshot ? "YA" : "TIDAK"} />
-        </div>
-        <div className="mt-3 rounded-xl bg-blue-50 p-3 text-[11px] leading-5 text-blue-950">
-          Wire allowlist: <code>DATA QUERY USERINFO</code>. Ketiadaan PIN setelah canary ini tetap tidak boleh dianggap sebagai bukti user hilang dari mesin.
-          {(roster?.items.length ?? 0) === 0 ? " Prasyarat belum terpenuhi: belum ada safe USERINFO roster observation pada mesin ini." : ""}
-        </div>
-        {latestRosterQueryCommand ? (
-          <div className={`mt-4 rounded-xl border p-4 text-xs ${rosterUploadEvidenceObserved ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
-            <div className="font-bold">C:{latestRosterQueryCommand.commandNumber} · {commandStatusLabel(latestRosterQueryCommand.status)}</div>
-            <div className="mt-1">Return {latestRosterQueryCommand.returnCode ?? "—"} · Result {latestRosterQueryCommand.resultCommand ?? "—"} · Delivered {fmt(latestRosterQueryCommand.deliveredAt)}</div>
-            <div className="mt-2 font-semibold">
-              {rosterUploadEvidenceObserved
-                ? `Bukti upload aman teramati: ${rosterObservationsAfterDelivery} roster observation baru/segar setelah delivery. Snapshot tetap belum authoritative.`
-                : rosterQueryCommandSucceeded
-                  ? "Command sukses, tetapi safe roster observations setelah delivery belum teramati. Jangan tandai canary verified."
-                  : "Canary roster belum mencapai terminal success dengan DATA result."}
-            </div>
           </div>
         ) : null}
       </section>
