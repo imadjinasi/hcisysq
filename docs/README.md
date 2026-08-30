@@ -27,6 +27,7 @@ Untuk frontend, baca juga:
 - `design/brand-guideline.md`
 - `design/ui-guidelines.md`
 - `design/ui-foundation.md`
+- `domain/attendance-device-admin-information-architecture.md` untuk information architecture Admin Mesin Fingerprint (ATT-006)
 
 ## Status dokumen
 
