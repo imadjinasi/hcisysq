@@ -314,6 +314,7 @@ export function commandActionLabel(command: Pick<AdmsCommandItem, "reason" | "wi
   if (command.reason === "registration_recovery") return "Pemulihan transaksi awal";
   if (command.reason === "admin_read_information") return "Baca informasi mesin";
   if (command.reason === "admin_query_user_info") {
+    if (command.wireCommand === "DATA QUERY USERINFO") return "Baca roster pengguna";
     const match = command.wireCommand.match(/^DATA QUERY USERINFO PIN=(\d+)/);
     return match ? `Baca data pengguna ${match[1]}` : "Baca data pengguna";
   }

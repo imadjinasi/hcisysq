@@ -232,6 +232,25 @@ export async function requestAdmsReadInformation(deviceId: string) {
   );
 }
 
+export async function requestAdmsFullRosterQuery(deviceId: string) {
+  return readJson<{
+    item: {
+      commandNumber: string;
+      status: string;
+      fullRoster: true;
+      inventorySemantics: "observed_only";
+      completeSnapshot: false;
+      verificationRequired: "command_success_and_new_safe_roster_observations";
+    };
+  }>(
+    await fetch(`/api/admin/attendance/adms/devices/${deviceId}/commands/query-user-info-roster`, {
+      method: "POST",
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    }),
+  );
+}
+
 export async function getAdmsBiometricPolicy(deviceId: string): Promise<AdmsBiometricPolicy> {
   const result = await readJson<{ item: AdmsBiometricPolicy }>(
     await fetch(`/api/admin/attendance/adms/devices/${deviceId}/biometric-collection-policy`, {

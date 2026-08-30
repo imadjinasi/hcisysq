@@ -30,21 +30,25 @@ describe("device admin command copy", () => {
     expect(commandActionLabel(command({ reason: "admin_sync_new" }))).toBe("Minta transaksi terbaru");
     expect(commandActionLabel(command({ reason: "admin_range_recovery" }))).toBe("Ambil ulang transaksi");
     expect(commandActionLabel(command({ reason: "admin_read_information" }))).toBe("Baca informasi mesin");
+    expect(commandActionLabel(command({
+      reason: "admin_query_user_info",
+      wireCommand: "DATA QUERY USERINFO",
+    }))).toBe("Baca roster pengguna");
   });
 
   it("includes the exact PIN for safe single-user operations", () => {
     expect(commandActionLabel(command({
       reason: "admin_query_user_info",
-      wireCommand: "DATA QUERY USERINFO PIN=205291319",
-    }))).toBe("Baca data pengguna 205291319");
+      wireCommand: "DATA QUERY USERINFO PIN=0042",
+    }))).toBe("Baca data pengguna 0042");
     expect(commandActionLabel(command({
       reason: "admin_update_user_info",
-      wireCommand: "DATA UPDATE USERINFO PIN=205291319\tName=Muhammad Kamal Faza",
-    }))).toBe("Sinkronkan nama pengguna 205291319");
+      wireCommand: "DATA UPDATE USERINFO PIN=0042\tName=Synthetic User",
+    }))).toBe("Sinkronkan nama pengguna 0042");
     expect(commandActionLabel(command({
       reason: "admin_update_user_info",
-      wireCommand: "DATA UPDATE USERINFO PIN=0205291319\tName=Leading Zero",
-    }))).toBe("Sinkronkan nama pengguna 0205291319");
+      wireCommand: "DATA UPDATE USERINFO PIN=000042\tName=Leading Zero Fixture",
+    }))).toBe("Sinkronkan nama pengguna 000042");
   });
 
   it("translates lifecycle states without protocol jargon", () => {
