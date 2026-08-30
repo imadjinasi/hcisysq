@@ -26,6 +26,7 @@ type UserRow = {
   cardNumber: string | null;
   lastSeenAt: string | null;
   eventCount: number;
+  rosterObserved: boolean;
   mappingId: string | null;
   employeeId: string | null;
   employeeNumber: string | null;
@@ -50,10 +51,11 @@ function candidateLabel(kind: string) {
 }
 
 function latestNameCommand(commands: AdmsCommandItem[], pin: string) {
-  return commands.find((command) =>
-    command.reason === "admin_update_user_info"
-    && command.wireCommand.startsWith(`DATA UPDATE USERINFO PIN=${pin}`),
-  ) ?? null;
+  return commands.find((command) => {
+    if (command.reason !== "admin_update_user_info") return false;
+    const match = command.wireCommand.match(/^DATA UPDATE USERINFO PIN=(\d+)/);
+    return match?.[1] === pin;
+  }) ?? null;
 }
 
 function commandSucceeded(command: AdmsCommandItem | null) {
@@ -126,6 +128,7 @@ export function AdminAdmsDeviceUsersPage() {
         cardNumber: null,
         lastSeenAt: observed.lastEventAt,
         eventCount: observed.eventCount,
+        rosterObserved: false,
         mappingId: observed.mappingId,
         employeeId: observed.employeeId,
         employeeNumber: observed.employeeNumber,
@@ -142,6 +145,7 @@ export function AdminAdmsDeviceUsersPage() {
         cardNumber: item.cardNumber,
         lastSeenAt: item.lastSeenAt,
         eventCount: current?.eventCount ?? 0,
+        rosterObserved: true,
         mappingId: item.mappingId ?? current?.mappingId ?? null,
         employeeId: item.employeeId ?? current?.employeeId ?? null,
         employeeNumber: item.employeeNumber ?? current?.employeeNumber ?? null,
@@ -158,6 +162,7 @@ export function AdminAdmsDeviceUsersPage() {
         cardNumber: current?.cardNumber ?? item.cardNumber,
         lastSeenAt: current?.lastSeenAt ?? item.rosterObservedAt ?? item.lastEventAt,
         eventCount: Math.max(current?.eventCount ?? 0, item.eventCount),
+        rosterObserved: current?.rosterObserved ?? Boolean(item.rosterObservedAt),
         mappingId: current?.mappingId ?? null,
         employeeId: current?.employeeId ?? null,
         employeeNumber: current?.employeeNumber ?? null,
@@ -247,7 +252,7 @@ export function AdminAdmsDeviceUsersPage() {
   }, [deviceId, load]);
 
   const syncName = useCallback(async (row: UserRow) => {
-    if (!row.employeeName) return;
+    if (!row.employeeName || !row.rosterObserved) return;
     const sameValue = row.displayName === row.employeeName;
     const confirmed = window.confirm(
       sameValue
@@ -285,7 +290,7 @@ export function AdminAdmsDeviceUsersPage() {
   }, [refreshAll]);
 
   const saveCorrection = useCallback(async () => {
-    if (!correctionTarget) return;
+    if (!correctionTarget || !correctionTarget.rosterObserved) return;
     const target = intendedPin.trim();
     if (!/^\d{1,128}$/.test(target) || target === correctionTarget.pin) {
       setError("PIN yang seharusnya harus berupa angka dan berbeda dari PIN mesin saat ini.");
@@ -398,7 +403,7 @@ export function AdminAdmsDeviceUsersPage() {
                   <th className="px-4 py-3 font-bold">Data di mesin</th>
                   <th className="px-4 py-3 font-bold">Pegawai HCIS</th>
                   <th className="px-4 py-3 font-bold">Status</th>
-                  <th className="px-4 py-3 font-bold">Terakhir dibaca</th>
+                  <th className="px-4 py-3 font-bold">Terakhir teramati</th>
                   <th className="px-4 py-3 text-right font-bold">Aksi</th>
                 </tr>
               </thead>
@@ -416,6 +421,7 @@ export function AdminAdmsDeviceUsersPage() {
                       <td className="px-4 py-4">
                         <div className="font-semibold text-brand-heading">{row.displayName ?? "Nama belum dibaca"}</div>
                         <div className="mt-1 text-xs text-muted-foreground">Kartu {row.cardNumber ?? "—"}</div>
+                        {!row.rosterObserved ? <div className="mt-1 text-[11px] font-medium text-amber-700">Metadata pengguna belum dibaca</div> : null}
                       </td>
                       <td className="px-4 py-4">
                         {mapped ? (
@@ -479,7 +485,7 @@ export function AdminAdmsDeviceUsersPage() {
                                 <>
                                   <button
                                     type="button"
-                                    disabled={busyKey !== null || !row.employeeName}
+                                    disabled={busyKey !== null || !row.employeeName || !row.rosterObserved}
                                     onClick={() => void syncName(row)}
                                     className="w-full rounded-lg px-3 py-2 text-left text-xs font-medium hover:bg-surface disabled:opacity-50"
                                   >
@@ -487,7 +493,7 @@ export function AdminAdmsDeviceUsersPage() {
                                   </button>
                                   <button
                                     type="button"
-                                    disabled={busyKey !== null}
+                                    disabled={busyKey !== null || !row.rosterObserved}
                                     onClick={() => {
                                       setCorrectionTarget(row);
                                       setIntendedPin(plan?.intendedPin ?? "");
