@@ -5,9 +5,10 @@ info:
   description: |
     Reviewable contract fragment for ATT-005 Wave 2 Admin routes. Routine biometric
     responses remain metadata-only; the biometric collection policy controls only the
-    local HCIS pilot gate. The only command-capable route in this fragment is the
-    explicitly allowlisted read-only single-PIN USERINFO canary; full roster/template
-    queries and all user/biometric writes remain unavailable.
+    local HCIS pilot gate. Command-capable USERINFO routes are narrowly allowlisted:
+    one strict single-PIN read plus one separate manual full-roster read canary. The
+    full-roster result remains observed-only and is not a complete snapshot. Template
+    queries and all user/biometric writes remain unavailable here.
 tags:
   - name: Attendance
 paths:
@@ -90,6 +91,38 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
           description: Device is not active or another command is already active for the device
+
+  /admin/attendance/adms/devices/{deviceId}/commands/query-user-info-roster:
+    post:
+      tags: [Attendance]
+      operationId: queryAdmsDeviceUserInfoRosterCanary
+      summary: Queue the exact read-only full USERINFO roster canary
+      description: |
+        SUPER_ADMIN-only manual hardware canary. Queues exactly `DATA QUERY USERINFO` with no
+        query parameters or arbitrary command input. The device must be active, at least one
+        prior safe USERINFO roster observation must already exist for the device, and no other
+        device command may be active. Returned roster evidence remains `observed_only` with
+        `completeSnapshot=false`; absence of a PIN must not be interpreted as device-side
+        deletion or missing state. No biometric template query is issued.
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '202':
+          description: Full-roster USERINFO canary queued for the active trusted device
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [item]
+                properties:
+                  item:
+                    $ref: '#/components/schemas/AdmsFullRosterUserInfoCommand'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Device is not active, safe roster prerequisite is missing, or another command is active
 
   /admin/attendance/adms/biometrics:
     get:
@@ -273,6 +306,25 @@ components:
         verificationRequired:
           type: string
           const: command_success_and_new_safe_roster_observation
+
+    AdmsFullRosterUserInfoCommand:
+      type: object
+      required:
+        [id, commandNumber, commandType, reason, status, createdAt, expiresAt, fullRoster, inventorySemantics, completeSnapshot, verificationRequired]
+      properties:
+        id: { type: string, format: uuid }
+        commandNumber: { type: string, pattern: '^[1-9][0-9]*$' }
+        commandType: { type: string, const: query_user_info }
+        reason: { type: string, const: admin_query_user_info }
+        status: { type: string, const: pending }
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        fullRoster: { type: boolean, const: true }
+        inventorySemantics: { type: string, const: observed_only }
+        completeSnapshot: { type: boolean, const: false }
+        verificationRequired:
+          type: string
+          const: command_success_and_new_safe_roster_observations
 
     AdmsBiometricCollectionPolicy:
       type: object
