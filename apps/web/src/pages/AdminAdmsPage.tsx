@@ -1,4 +1,4 @@
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, ChevronDown } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { AdminAdmsDeviceUserCorrection } from "@/components/attendance/AdminAdmsDeviceUserCorrection";
@@ -43,7 +43,7 @@ export function AdminAdmsPage() {
         setEmployeeError(
           cause instanceof AdminApiError
             ? cause.message
-            : "Daftar pegawai aktif tidak dapat dimuat untuk mapping PIN.",
+            : "Daftar pegawai aktif tidak dapat dimuat untuk pencocokan PIN.",
         );
       });
     return () => {
@@ -55,21 +55,34 @@ export function AdminAdmsPage() {
     <AdminShell
       active="attendance-devices"
       title="Mesin Fingerprint"
-      description="Kelola connectivity, recovery transaksi, command, device roster, biometric control plane, registry ADMS, mapping PIN pegawai, raw punch, dan quarantine. Lifecycle mesin tidak sama dengan status online; semua punch tetap fakta waktu tanpa inferensi telat, absen, lembur, atau payroll."
+      description="Pantau koneksi mesin, cocokkan PIN dengan pegawai HCIS, dan lakukan koreksi data pengguna dengan aman. Data absensi dari mesin tetap diperlakukan sebagai fakta waktu; halaman ini tidak menentukan telat, tidak hadir, lembur, atau potongan payroll."
     >
       {employeeError ? (
         <div className="mb-4 flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-          {employeeError} Registry dan observability tetap dapat digunakan, tetapi mapping baru dinonaktifkan sampai daftar pegawai tersedia.
+          {employeeError} Status mesin tetap dapat dilihat, tetapi PIN belum bisa dihubungkan ke pegawai baru sampai daftar pegawai tersedia.
         </div>
       ) : null}
+
       <AdminAdmsWave1Operations />
-      <AdminAdmsWave1Details />
-      <AdminAdmsWave2UserInfoCanary />
-      <AdminAdmsMappingAssistant />
       <AdminAdmsDeviceUserCorrection />
-      <AdminAdmsWave2ControlPlane />
-      <AdminAdmsPanel employees={employees} />
+      <AdminAdmsMappingAssistant />
+
+      <details className="mt-5 rounded-2xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-5 text-sm font-bold text-brand-heading">
+          <span>Alat diagnostik & pengaturan teknis</span>
+          <ChevronDown className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+        </summary>
+        <div className="border-t border-border/70 px-5 pb-5">
+          <p className="pt-4 text-xs leading-5 text-muted-foreground">
+            Bagian ini untuk troubleshooting dan verifikasi teknis. Admin operasional sehari-hari biasanya tidak perlu membukanya.
+          </p>
+          <AdminAdmsWave2UserInfoCanary />
+          <AdminAdmsWave1Details />
+          <AdminAdmsWave2ControlPlane />
+          <AdminAdmsPanel employees={employees} />
+        </div>
+      </details>
     </AdminShell>
   );
 }
