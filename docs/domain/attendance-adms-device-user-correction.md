@@ -7,7 +7,7 @@ This slice adds a deliberately narrow write boundary after single-PIN USERINFO r
 It supports two different operations:
 
 1. **Name sync** — an actual device command that writes only the `Name` field for the same already-observed PIN.
-2. **PIN correction plan** — HCIS-local planning metadata for a known typo such as legacy PIN `205291319` and intended PIN `205291318`. It does not mutate the device.
+2. **PIN correction plan** — HCIS-local planning metadata for a known typo such as a legacy PIN and a different intended PIN. It does not mutate the device.
 
 ## Name sync invariant
 
@@ -31,6 +31,26 @@ Requirements:
 A non-negative `CMD=DATA` result proves command execution only. Operational verification still requires a subsequent single-PIN USERINFO read-back and comparison with the expected HCIS name.
 
 A same-value update is intentionally allowed as the first physical canary because it exercises the real write path without changing business data.
+
+## Physical canary verification
+
+**Status:** VERIFIED  
+**Verified:** 2026-08-30
+
+The safe same-PIN name-write path has been verified against one explicitly mapped production canary on the primary attendance device.
+
+Observed evidence:
+
+- the Admin action generated only the allowlisted same-PIN `DATA UPDATE USERINFO ... Name=...` command;
+- the device completed the write with non-negative return code (`0`) and `DATA` result;
+- a subsequent strict single-PIN USERINFO query also completed with return code `0` and `DATA` result;
+- the post-write safe roster observation preserved the same PIN;
+- the device-side name matched the mapped HCIS employee name after read-back;
+- previously observed card metadata remained unchanged.
+
+No employee name, PIN, card number, biometric material, or screenshot from the production canary is stored in this public repository.
+
+This verification proves only the narrow same-PIN name synchronization contract. It does **not** prove PIN migration, user cloning, deletion/recreation, biometric template transfer, biometric collection, enrollment, restore, or cross-device distribution.
 
 ## PIN correction invariant
 
