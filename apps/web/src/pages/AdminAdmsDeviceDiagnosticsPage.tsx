@@ -18,7 +18,6 @@ import {
   getAdmsTelemetry,
   listAdmsBiometricCredentials,
   requestAdmsReadInformation,
-  updateAdmsBiometricPolicy,
   type AdmsBiometricCredentialResponse,
   type AdmsBiometricInventoryResponse,
   type AdmsBiometricPolicy,
@@ -161,22 +160,6 @@ export function AdminAdmsDeviceDiagnosticsPage() {
     }
   }, [device?.lifecycle, deviceId, load, normalizedPin, pinValid]);
 
-  const changeBiometricPilot = useCallback(async (enabled: boolean) => {
-    if (!biometricPolicy) return;
-    if (enabled && !window.confirm("Aktifkan gate koleksi biometrik untuk mesin ini? Gate global, lifecycle aktif, keyring, dan mapping eksplisit tetap wajib sebelum koleksi efektif.")) return;
-    setBusy("biometric");
-    try {
-      const result = await updateAdmsBiometricPolicy(deviceId, enabled);
-      setBiometricPolicy(result);
-      setNotice(enabled ? "Gate pilot biometrik mesin diaktifkan." : "Gate pilot biometrik mesin dinonaktifkan.");
-      setError(null);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Gate pilot biometrik tidak dapat disimpan.");
-    } finally {
-      setBusy(null);
-    }
-  }, [biometricPolicy, deviceId]);
-
   if (loading) {
     return (
       <div className="flex min-h-64 items-center justify-center gap-2 rounded-2xl border border-border/70 bg-white text-sm text-muted-foreground shadow-[var(--shadow-soft)]">
@@ -298,22 +281,15 @@ export function AdminAdmsDeviceDiagnosticsPage() {
           </div>
         </div>
         <div className="mt-4 rounded-xl bg-amber-50 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="text-xs">
-              <div className="font-bold text-amber-950">Gate koleksi</div>
-              <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-amber-900">
-                <span>global <strong>{biometricPolicy?.globalCollectionEnabled ? "ON" : "OFF"}</strong></span>
-                <span>device <strong>{biometricPolicy?.deviceCollectionEnabled ? "ON" : "OFF"}</strong></span>
-                <span>effective <strong>{biometricPolicy?.effectiveCollectionEnabled ? "ON" : "OFF"}</strong></span>
-              </div>
+          <div className="text-xs">
+            <div className="font-bold text-amber-950">Gate koleksi · observasi saja pada tahap ini</div>
+            <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-amber-900">
+              <span>global <strong>{biometricPolicy?.globalCollectionEnabled ? "ON" : "OFF"}</strong></span>
+              <span>device <strong>{biometricPolicy?.deviceCollectionEnabled ? "ON" : "OFF"}</strong></span>
+              <span>effective <strong>{biometricPolicy?.effectiveCollectionEnabled ? "ON" : "OFF"}</strong></span>
             </div>
-            {biometricPolicy?.deviceCollectionEnabled ? (
-              <button type="button" disabled={busy !== null} onClick={() => void changeBiometricPilot(false)} className="h-9 rounded-xl border border-red-200 bg-white px-3 text-xs font-semibold text-red-700 disabled:opacity-50">Nonaktifkan pilot</button>
-            ) : (
-              <button type="button" disabled={busy !== null || !biometricPolicy?.globalCollectionEnabled || biometricPolicy.lifecycle !== "active"} onClick={() => void changeBiometricPilot(true)} className="h-9 rounded-xl border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-900 disabled:opacity-50">Aktifkan pilot</button>
-            )}
+            <div className="mt-2 flex gap-2 text-[11px] leading-5 text-amber-900"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> UI redesign ini tidak menyediakan tombol untuk menyalakan biometric collection. Aktivasi tetap menunggu approval hardware/privacy/key canary terpisah.</div>
           </div>
-          {!biometricPolicy?.globalCollectionEnabled ? <div className="mt-2 flex gap-2 text-[11px] leading-5 text-amber-900"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> Global biometric collection masih OFF; pilot mesin tidak dapat menjadi efektif.</div> : null}
         </div>
         <div className="mt-4 grid gap-4 xl:grid-cols-2">
           <div className="rounded-xl border border-border/70 p-4">
