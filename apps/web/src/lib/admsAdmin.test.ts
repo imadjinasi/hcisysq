@@ -30,6 +30,10 @@ describe("device admin command copy", () => {
     expect(commandActionLabel(command({ reason: "admin_sync_new" }))).toBe("Minta transaksi terbaru");
     expect(commandActionLabel(command({ reason: "admin_range_recovery" }))).toBe("Ambil ulang transaksi");
     expect(commandActionLabel(command({ reason: "admin_read_information" }))).toBe("Baca informasi mesin");
+    expect(commandActionLabel(command({
+      reason: "admin_query_user_info",
+      wireCommand: "DATA QUERY USERINFO",
+    }))).toBe("Baca roster pengguna");
   });
 
   it("includes the exact PIN for safe single-user operations", () => {
