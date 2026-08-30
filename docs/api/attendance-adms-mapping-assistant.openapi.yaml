@@ -1,0 +1,104 @@
+openapi: 3.1.0
+info:
+  title: HCIS YSQ ATT-005 Mapping Assistant OpenAPI Fragment
+  version: 0.0.1
+  description: |
+    Read-only candidate-ranking contract for explicit ADMS PIN mapping. Name similarity
+    never creates a mapping and is not a confidence/probability score.
+tags:
+  - name: Attendance
+paths:
+  /admin/attendance/adms/devices/{deviceId}/mapping-assistant:
+    get:
+      tags: [Attendance]
+      operationId: getAdmsMappingAssistant
+      summary: Rank HCIS employee candidates for unmapped observed device PINs
+      description: |
+        SUPER_ADMIN-only read surface. Candidate ranking uses safe device display name and
+        active HCIS employee full name only. PIN, card number, employee number/NIP, unit,
+        and external identifiers are not scoring inputs. The endpoint never creates a mapping.
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Unmapped observed PINs with name-only candidate ranking
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [inventorySemantics, completeSnapshot, autoMapping, scoring, note, items]
+                properties:
+                  inventorySemantics: { type: string, const: observed_union }
+                  completeSnapshot: { type: boolean, const: false }
+                  autoMapping: { type: boolean, const: false }
+                  scoring:
+                    type: object
+                    required: [basis, candidateLimit, minimumSimilarity, note]
+                    properties:
+                      basis: { type: string, const: name_only }
+                      candidateLimit: { type: integer, const: 5 }
+                      minimumSimilarity: { type: integer, const: 35 }
+                      note: { type: string }
+                  note: { type: string }
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AdmsMappingAssistantItem'
+        '400': { description: Invalid device ID }
+        '401': { description: Authentication required }
+        '403': { description: SUPER_ADMIN authorization required }
+        '404': { description: Trusted ADMS device not found }
+components:
+  schemas:
+    AdmsMappingAssistantItem:
+      type: object
+      required: [pin, eventCount, requiresUserInfo, candidates]
+      properties:
+        pin:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Device-local PIN. Leading zeroes are significant.
+        eventCount: { type: integer, minimum: 0 }
+        firstEventAt: { type: [string, 'null'], format: date-time }
+        lastEventAt: { type: [string, 'null'], format: date-time }
+        rosterDisplayName: { type: [string, 'null'] }
+        cardNumber:
+          type: [string, 'null']
+          description: Display-only safe roster metadata; not a scoring input.
+        privilege: { type: [string, 'null'] }
+        verifyMode: { type: [string, 'null'] }
+        rosterObservedAt: { type: [string, 'null'], format: date-time }
+        rosterSourceRequestId: { type: [string, 'null'], format: uuid }
+        requiresUserInfo: { type: boolean }
+        candidates:
+          type: array
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/AdmsMappingCandidate'
+    AdmsMappingCandidate:
+      type: object
+      required: [id, employeeNumber, fullName, similarity, matchKind]
+      properties:
+        id: { type: string, format: uuid }
+        employeeNumber:
+          type: string
+          description: Display-only after ranking; not a scoring input.
+        fullName: { type: string }
+        unitName:
+          type: [string, 'null']
+          description: Display-only after ranking; not a scoring input.
+        positionName:
+          type: [string, 'null']
+          description: Display-only after ranking; not a scoring input.
+        similarity:
+          type: integer
+          minimum: 35
+          maximum: 100
+          description: Deterministic name-similarity ordering aid, not confidence/probability.
+        matchKind:
+          type: string
+          enum: [exact_name, close_name, possible_name]
