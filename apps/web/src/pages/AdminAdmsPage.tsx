@@ -1,6 +1,7 @@
 import { AlertTriangle } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { AdminAdmsDeviceUserCorrection } from "@/components/attendance/AdminAdmsDeviceUserCorrection";
 import { AdminAdmsMappingAssistant } from "@/components/attendance/AdminAdmsMappingAssistant";
 import { AdminAdmsPanel } from "@/components/attendance/AdminAdmsPanel";
 import { AdminAdmsWave1Details } from "@/components/attendance/AdminAdmsWave1Details";
@@ -66,6 +67,7 @@ export function AdminAdmsPage() {
       <AdminAdmsWave1Details />
       <AdminAdmsWave2UserInfoCanary />
       <AdminAdmsMappingAssistant />
+      <AdminAdmsDeviceUserCorrection />
       <AdminAdmsWave2ControlPlane />
       <AdminAdmsPanel employees={employees} />
     </AdminShell>

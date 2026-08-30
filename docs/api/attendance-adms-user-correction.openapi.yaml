@@ -1,0 +1,125 @@
+openapi: 3.1.0
+info:
+  title: HCIS YSQ ADMS Device User Correction Fragment
+  version: 0.0.1
+  description: |
+    SUPER_ADMIN-only safe write and planning routes. Name sync writes only the mapped
+    employee full name to the same device PIN. PIN correction remains HCIS-local planning;
+    destructive user/PIN/biometric mutation is not exposed.
+tags:
+  - name: Attendance
+paths:
+  /admin/attendance/adms/devices/{deviceId}/users/{pin}/commands/sync-name:
+    post:
+      tags: [Attendance]
+      operationId: syncMappedAdmsUserName
+      summary: Queue a name-only USERINFO update for one mapped observed PIN
+      description: |
+        Target name is loaded server-side from the active employee referenced by the current
+        explicit mapping. The caller cannot provide Name, PIN replacement, privilege, password,
+        card, verification mode, or biometric data. A later single-PIN USERINFO read-back is
+        required for physical verification.
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+        - $ref: '#/components/parameters/Pin'
+      responses:
+        '202':
+          description: Name-only DATA UPDATE USERINFO command queued
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Device inactive, PIN unmapped, USERINFO unobserved, or another command is active
+
+  /admin/attendance/adms/devices/{deviceId}/user-corrections:
+    get:
+      tags: [Attendance]
+      operationId: listAdmsUserCorrectionPlans
+      summary: List device user correction plans
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: Planning-only correction records
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Attendance]
+      operationId: createAdmsUserCorrectionPlan
+      summary: Record a planning-only legacy PIN to intended PIN correction
+      description: |
+        Creates HCIS-local metadata only. No device command is sent. Legacy PIN must already
+        be explicitly mapped and have USERINFO evidence. Intended PIN is rejected if any active
+        mapping, USERINFO observation, or ATTLOG fact exists for it on the same device.
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [legacyPin, intendedPin]
+              properties:
+                legacyPin:
+                  type: string
+                  pattern: '^[0-9]{1,128}$'
+                intendedPin:
+                  type: string
+                  pattern: '^[0-9]{1,128}$'
+      responses:
+        '201':
+          description: Planning-only correction recorded; destructivePinMutationEnabled is false
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Missing explicit legacy mapping/evidence, intended PIN conflict, or duplicate active plan
+
+  /admin/attendance/adms/user-corrections/{correctionId}:
+    delete:
+      tags: [Attendance]
+      operationId: cancelAdmsUserCorrectionPlan
+      summary: Cancel a planning-only correction
+      parameters:
+        - name: correctionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204':
+          description: Plan cancelled; no device command sent
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Correction plan is already terminal
+
+components:
+  parameters:
+    DeviceId:
+      name: deviceId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Pin:
+      name: pin
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^[0-9]{1,128}$'
+        description: Device-local PIN. Leading zeroes are significant.
+  responses:
+    Unauthenticated:
+      description: Authentication required
+    Forbidden:
+      description: SUPER_ADMIN authorization required
+    NotFound:
+      description: Target device/user/correction not found
+    ValidationError:
+      description: Request validation failed

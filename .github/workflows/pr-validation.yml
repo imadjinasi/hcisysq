@@ -74,6 +74,9 @@ jobs:
       - name: Rehearse Wave 2 USERINFO migration
         run: node apps/api/scripts/rehearse-wave2-userinfo-upgrade.mjs
 
+      - name: Rehearse Wave 2 user correction migration
+        run: node apps/api/scripts/rehearse-wave2-user-correction-upgrade.mjs
+
       - name: Typecheck
         run: npm run typecheck
 
