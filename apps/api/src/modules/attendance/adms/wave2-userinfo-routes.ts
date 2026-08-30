@@ -7,7 +7,7 @@ import { z } from "zod";
 import type { ApiConfig } from "../../../config/env.js";
 import { requirePrincipalFromCookie } from "../../auth/authorization.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../../auth/service.js";
-import { userInfoQueryWireCommand } from "./protocol.js";
+import { userInfoQueryWireCommand, userInfoRosterQueryWireCommand } from "./protocol.js";
 
 const deviceIdSchema = z.object({ deviceId: z.string().uuid() });
 const singlePinUserInfoSchema = z.object({
@@ -200,6 +200,167 @@ export async function registerAdmsWave2UserInfoRoutes(
           pin: body.data.pin,
           fullRoster: false,
           verificationRequired: "command_success_and_new_safe_roster_observation",
+        },
+      });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      const databaseError = error as Error & { code?: string };
+      if (databaseError.code === "23505") {
+        return reply.status(409).send({
+          code: "ADMS_COMMAND_ACTIVE",
+          message: "Command lain menjadi aktif untuk mesin ini. Muat ulang sebelum mencoba lagi.",
+        });
+      }
+      throw error;
+    } finally {
+      client.release();
+    }
+  });
+
+  app.post("/admin/attendance/adms/devices/:deviceId/commands/query-user-info-roster", async (request, reply) => {
+    const principal = await authenticate(auth, request, reply);
+    if (!principal) return;
+
+    const params = deviceIdSchema.safeParse(request.params);
+    if (!params.success) {
+      return reply.status(400).send({
+        code: "INVALID_ADMS_ROSTER_QUERY",
+        message: "Mesin untuk canary roster USERINFO tidak valid.",
+      });
+    }
+
+    const wireCommand = userInfoRosterQueryWireCommand();
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const device = await client.query<{ id: string; lifecycle: string }>(
+        `SELECT id, lifecycle
+         FROM attendance_adms_devices
+         WHERE id = $1
+         FOR UPDATE`,
+        [params.data.deviceId],
+      );
+      const target = device.rows[0];
+      if (!target) {
+        await client.query("ROLLBACK");
+        return reply.status(404).send({ code: "ADMS_DEVICE_NOT_FOUND", message: "Mesin tidak ditemukan." });
+      }
+      if (target.lifecycle !== "active") {
+        await client.query("ROLLBACK");
+        return reply.status(409).send({
+          code: "ADMS_DEVICE_NOT_ACTIVE",
+          message: "Canary roster USERINFO hanya dapat diminta ke mesin lifecycle active.",
+        });
+      }
+
+      const safeRosterObserved = await client.query<{ observed: boolean }>(
+        `SELECT EXISTS (
+           SELECT 1
+           FROM attendance_adms_device_roster_entries r
+           WHERE r.device_id = $1
+         ) AS observed`,
+        [target.id],
+      );
+      if (safeRosterObserved.rows[0]?.observed !== true) {
+        await client.query("ROLLBACK");
+        return reply.status(409).send({
+          code: "ADMS_SAFE_ROSTER_NOT_OBSERVED",
+          message: "Canary roster penuh baru boleh dijalankan setelah safe USERINFO roster observation terbukti pada mesin ini.",
+        });
+      }
+
+      const active = await client.query<{
+        id: string;
+        commandNumber: string;
+        status: string;
+      }>(
+        `SELECT id, command_number::text AS "commandNumber", status
+         FROM attendance_adms_commands
+         WHERE device_id = $1
+           AND status IN ('pending', 'delivered', 'acknowledged')
+         ORDER BY created_at, command_number
+         LIMIT 1`,
+        [target.id],
+      );
+      if (active.rows[0]) {
+        await client.query("ROLLBACK");
+        return reply.status(409).send({
+          code: "ADMS_COMMAND_ACTIVE",
+          message: "Masih ada command aktif untuk mesin ini. Tunggu terminal status sebelum canary roster USERINFO.",
+          command: active.rows[0],
+        });
+      }
+
+      const commandId = randomUUID();
+      const inserted = await client.query<{
+        id: string;
+        commandNumber: string;
+        commandType: string;
+        reason: string;
+        status: string;
+        createdAt: Date;
+        expiresAt: Date;
+      }>(
+        `INSERT INTO attendance_adms_commands (
+           id, device_id, command_type, wire_command, reason, status,
+           requested_by_account_id, requested_range_start, requested_range_end, expires_at
+         ) VALUES (
+           $1, $2, 'query_user_info', $3, 'admin_query_user_info', 'pending',
+           $4, NULL, NULL, now() + interval '15 minutes'
+         )
+         RETURNING
+           id,
+           command_number::text AS "commandNumber",
+           command_type AS "commandType",
+           reason,
+           status,
+           created_at AS "createdAt",
+           expires_at AS "expiresAt"`,
+        [commandId, target.id, wireCommand, principal.id],
+      );
+      const item = inserted.rows[0]!;
+      const metadata = {
+        reason: "admin_query_user_info",
+        capability: "full_roster_userinfo_canary",
+        fullRoster: true,
+        inventorySemantics: "observed_only",
+        completeSnapshot: false,
+        safeRosterPrerequisite: true,
+      } as const;
+
+      await client.query(
+        `INSERT INTO attendance_adms_command_events (
+           id, command_id, event_type, actor_account_id, metadata
+         ) VALUES ($1, $2, 'queued', $3, $4::jsonb)`,
+        [randomUUID(), commandId, principal.id, JSON.stringify(metadata)],
+      );
+
+      await client.query(
+        `INSERT INTO attendance_adms_admin_audit_events (
+           id, actor_account_id, action, device_id, mapping_id, before_state, after_state
+         ) VALUES ($1, $2, 'command_requested', $3, NULL, NULL, $4::jsonb)`,
+        [
+          randomUUID(),
+          principal.id,
+          target.id,
+          JSON.stringify({
+            commandId,
+            commandNumber: item.commandNumber,
+            commandType: "query_user_info",
+            ...metadata,
+          }),
+        ],
+      );
+
+      await client.query("COMMIT");
+      reply.header("Cache-Control", "no-store");
+      return reply.status(202).send({
+        item: {
+          ...item,
+          fullRoster: true,
+          inventorySemantics: "observed_only",
+          completeSnapshot: false,
+          verificationRequired: "command_success_and_new_safe_roster_observations",
         },
       });
     } catch (error) {
