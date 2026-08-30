@@ -1,0 +1,258 @@
+import { AlertTriangle, Fingerprint, RefreshCw, Search } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+import { AdminShell } from "@/layouts/AdminShell";
+import {
+  connectivityLabel,
+  getAdmsDeviceHealth,
+  type AdmsConnectivityStatus,
+  type AdmsDeviceHealth,
+} from "@/lib/admsAdmin";
+import { listAdmsDevices, type AdmsDevice } from "@/lib/attendance";
+import { cn } from "@/lib/utils";
+
+function fmt(value: string | null) {
+  if (!value) return "Belum pernah";
+  return new Intl.DateTimeFormat("id-ID", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZone: "Asia/Jakarta",
+  }).format(new Date(value));
+}
+
+function connectivityClass(status: AdmsConnectivityStatus) {
+  if (status === "online") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (status === "offline") return "border-red-200 bg-red-50 text-red-700";
+  return "border-slate-200 bg-slate-100 text-slate-600";
+}
+
+function lifecycleLabel(value: AdmsDevice["lifecycle"]) {
+  if (value === "active") return "Aktif";
+  if (value === "disabled") return "Dinonaktifkan";
+  return "Karantina";
+}
+
+function lifecycleClass(value: AdmsDevice["lifecycle"]) {
+  if (value === "active") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (value === "disabled") return "border-slate-200 bg-slate-100 text-slate-700";
+  return "border-amber-200 bg-amber-50 text-amber-800";
+}
+
+export function AdminAdmsDevicesPage() {
+  const [devices, setDevices] = useState<AdmsDevice[]>([]);
+  const [healthById, setHealthById] = useState<Record<string, AdmsDeviceHealth>>({});
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState<AdmsConnectivityStatus | "all">("all");
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
+
+  const load = useCallback(async (initial: boolean) => {
+    if (initial) setLoading(true);
+    else setRefreshing(true);
+
+    try {
+      const response = await listAdmsDevices();
+      const healthResults = await Promise.allSettled(
+        response.items.map(async (device) => [device.id, await getAdmsDeviceHealth(device.id)] as const),
+      );
+      const healthEntries = healthResults.flatMap((result) =>
+        result.status === "fulfilled" ? [result.value] : [],
+      );
+      setDevices(response.items);
+      setHealthById(Object.fromEntries(healthEntries));
+      setLastRefreshedAt(new Date());
+      setError(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Daftar mesin fingerprint tidak dapat dimuat.");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load(true);
+    const timer = window.setInterval(() => void load(false), 30_000);
+    return () => window.clearInterval(timer);
+  }, [load]);
+
+  const summary = useMemo(() => {
+    let online = 0;
+    let offline = 0;
+    let unknown = 0;
+    let attention = 0;
+    for (const device of devices) {
+      const connectivity = healthById[device.id]?.connectivityStatus ?? "unknown";
+      if (connectivity === "online") online += 1;
+      else if (connectivity === "offline") offline += 1;
+      else unknown += 1;
+      if (connectivity === "offline" || device.lifecycle !== "active" || (device.unmappedPinCount ?? 0) > 0) attention += 1;
+    }
+    return { online, offline, unknown, attention };
+  }, [devices, healthById]);
+
+  const filtered = useMemo(() => {
+    const needle = search.trim().toLocaleLowerCase("id-ID");
+    return devices.filter((device) => {
+      const connectivity = healthById[device.id]?.connectivityStatus ?? "unknown";
+      if (status !== "all" && connectivity !== status) return false;
+      if (!needle) return true;
+      return [device.displayName ?? "", device.serialNumber, device.lastIp ?? ""]
+        .some((value) => value.toLocaleLowerCase("id-ID").includes(needle));
+    });
+  }, [devices, healthById, search, status]);
+
+  return (
+    <AdminShell
+      active="attendance-devices"
+      title="Mesin Fingerprint"
+      description="Pantau kondisi mesin, lalu buka satu mesin untuk mengelola pengguna, transaksi, perintah, dan pengaturan dalam konteks yang sama."
+    >
+      <div className="mb-5 flex flex-wrap items-center gap-2 text-xs font-semibold text-muted-foreground">
+        <span>{devices.length} mesin</span>
+        <span aria-hidden="true">·</span>
+        <span className="text-emerald-700">{summary.online} online</span>
+        <span aria-hidden="true">·</span>
+        <span className={summary.offline > 0 ? "text-red-700" : undefined}>{summary.offline} offline</span>
+        {summary.unknown > 0 ? <><span aria-hidden="true">·</span><span>{summary.unknown} belum diketahui</span></> : null}
+        <span aria-hidden="true">·</span>
+        <span className={summary.attention > 0 ? "text-amber-700" : undefined}>{summary.attention} perlu perhatian</span>
+      </div>
+
+      <section className="rounded-2xl border border-border/70 bg-white shadow-[var(--shadow-soft)]">
+        <div className="flex flex-col gap-3 border-b border-border/70 p-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-1 flex-col gap-3 sm:flex-row">
+            <label className="relative block min-w-0 flex-1 sm:max-w-sm">
+              <span className="sr-only">Cari mesin</span>
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Cari nama, serial, atau IP"
+                className="h-10 w-full rounded-xl border border-border bg-white pl-9 pr-3 text-sm outline-none transition focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/15"
+              />
+            </label>
+            <label className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+              <span>Status</span>
+              <select
+                value={status}
+                onChange={(event) => setStatus(event.target.value as AdmsConnectivityStatus | "all")}
+                className="h-10 rounded-xl border border-border bg-white px-3 text-sm font-medium text-brand-heading outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/15"
+              >
+                <option value="all">Semua</option>
+                <option value="online">Online</option>
+                <option value="offline">Offline</option>
+                <option value="unknown">Belum diketahui</option>
+              </select>
+            </label>
+          </div>
+          <div className="flex items-center justify-between gap-3 lg:justify-end">
+            <span className="text-[11px] text-muted-foreground">
+              {lastRefreshedAt ? `Diperbarui ${lastRefreshedAt.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}` : "Belum diperbarui"}
+            </span>
+            <button
+              type="button"
+              onClick={() => void load(false)}
+              disabled={refreshing || loading}
+              className="inline-flex h-9 items-center gap-2 rounded-xl border border-border px-3 text-xs font-semibold text-brand-heading hover:bg-surface disabled:opacity-60"
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} aria-hidden="true" />
+              {refreshing ? "Memuat..." : "Muat ulang"}
+            </button>
+          </div>
+        </div>
+
+        {error ? (
+          <div className="m-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{error}</div>
+        ) : null}
+
+        {loading ? (
+          <div className="p-8 text-center text-sm text-muted-foreground">Memuat daftar mesin...</div>
+        ) : filtered.length === 0 ? (
+          <div className="p-8 text-center">
+            <Fingerprint className="mx-auto h-7 w-7 text-muted-foreground" aria-hidden="true" />
+            <p className="mt-3 text-sm font-semibold text-brand-heading">Tidak ada mesin yang sesuai.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Ubah pencarian atau filter status.</p>
+          </div>
+        ) : (
+          <>
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full min-w-[880px] text-left text-sm">
+                <thead className="bg-surface text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Mesin</th>
+                    <th className="px-4 py-3">Serial</th>
+                    <th className="px-4 py-3">IP terakhir</th>
+                    <th className="px-4 py-3">Aktivitas terakhir</th>
+                    <th className="px-4 py-3">Mapping</th>
+                    <th className="px-4 py-3">Lifecycle</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/70">
+                  {filtered.map((device) => {
+                    const health = healthById[device.id];
+                    const connectivity = health?.connectivityStatus ?? "unknown";
+                    return (
+                      <tr key={device.id} className="hover:bg-surface/70">
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${connectivityClass(connectivity)}`}>{connectivityLabel(connectivity)}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <a href={`/admin/attendance/devices/${device.id}`} className="font-bold text-brand-heading hover:text-brand-primary-deep hover:underline">
+                            {device.displayName?.trim() || "Mesin tanpa nama"}
+                          </a>
+                        </td>
+                        <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{device.serialNumber}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{health?.lastIp ?? device.lastIp ?? "—"}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{fmt(health?.lastSeenAt ?? device.lastSeenAt)}</td>
+                        <td className="px-4 py-3">
+                          <div className="font-semibold text-brand-heading">{device.activeMappingCount ?? 0} terhubung</div>
+                          {(device.unmappedPinCount ?? 0) > 0 ? (
+                            <div className="mt-0.5 flex items-center gap-1 text-xs text-amber-700"><AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" /> {device.unmappedPinCount} belum terhubung</div>
+                          ) : null}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${lifecycleClass(device.lifecycle)}`}>{lifecycleLabel(device.lifecycle)}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="divide-y divide-border/70 md:hidden">
+              {filtered.map((device) => {
+                const health = healthById[device.id];
+                const connectivity = health?.connectivityStatus ?? "unknown";
+                return (
+                  <a key={device.id} href={`/admin/attendance/devices/${device.id}`} className="block p-4 hover:bg-surface/70">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate font-bold text-brand-heading">{device.displayName?.trim() || "Mesin tanpa nama"}</p>
+                        <p className="mt-1 truncate font-mono text-xs text-muted-foreground">{device.serialNumber}</p>
+                      </div>
+                      <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-bold ${connectivityClass(connectivity)}`}>{connectivityLabel(connectivity)}</span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                      <span>Aktivitas {fmt(health?.lastSeenAt ?? device.lastSeenAt)}</span>
+                      <span>{device.activeMappingCount ?? 0} mapping</span>
+                      {(device.unmappedPinCount ?? 0) > 0 ? <span className="text-amber-700">{device.unmappedPinCount} PIN perlu ditinjau</span> : null}
+                    </div>
+                  </a>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </section>
+    </AdminShell>
+  );
+}
