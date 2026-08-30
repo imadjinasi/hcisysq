@@ -2,6 +2,7 @@
 
 **Status:** RETIRED / NOT VERIFIED  
 **Observed:** 2026-08-30  
+**Hotfix deployed:** 2026-08-31 (Asia/Jakarta)  
 **Scope:** physical validation of exact `DATA QUERY USERINFO` on the primary attendance device
 
 ## Result
@@ -36,11 +37,30 @@ This evidence does not claim that any biometric format has been decoded, importe
 
 ## Runtime remediation
 
-The follow-up hotfix:
+Hotfix merge `e8f9e50ccabb270a993971101d48a785aa31dcf2`:
 
 - removes the full-roster Admin action;
 - removes the full-roster API endpoint;
 - removes exact `DATA QUERY USERINFO` from the application command serializer allowlist;
 - preserves migration `0031` as applied history;
-- adds a database insert guard that rejects any new full-roster USERINFO command while preserving the historical canary command as evidence;
+- adds migration `0032_attendance_adms_retire_full_roster_query.sql` with a database insert guard rejecting any new command whose wire command is exactly `DATA QUERY USERINFO`;
+- preserves the historical failed canary command as immutable evidence;
 - leaves single-PIN USERINFO, safe same-PIN name sync, attendance recovery, and biometric gates unchanged.
+
+## Production hotfix verification
+
+**Status:** VERIFIED DEPLOYED  
+**Verified:** 2026-08-31 (Asia/Jakarta)
+
+Operator-provided production verification confirmed:
+
+- API recreation applied `0032_attendance_adms_retire_full_roster_query.sql`;
+- API returned healthy after restart;
+- web health, API health, and API readiness all returned successful responses;
+- PostgreSQL was not restarted;
+- database trigger `attendance_adms_reject_retired_full_roster_query` exists on `attendance_adms_commands` before insert;
+- provenance-only verification found zero biometric credentials linked to request-journal rows in the failed canary time window.
+
+The credential verification used only row counts and request provenance. No biometric payload, ciphertext, hash, PIN, employee identity, card number, or other sensitive value was read for that check.
+
+Conclusion: the unsafe full-roster command surface is removed from the deployed application and hard-blocked for future inserts at the database boundary. The failed canary remains historical evidence only.
