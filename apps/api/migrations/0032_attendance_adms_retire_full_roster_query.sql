@@ -3,9 +3,7 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 BEGIN
-  IF NEW.command_type = 'query_user_info'
-     AND NEW.reason = 'admin_query_user_info'
-     AND NEW.wire_command = 'DATA QUERY USERINFO' THEN
+  IF NEW.wire_command = 'DATA QUERY USERINFO' THEN
     RAISE EXCEPTION 'full roster USERINFO query is retired after physical firmware validation';
   END IF;
   RETURN NEW;
