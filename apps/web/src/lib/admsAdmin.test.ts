@@ -41,6 +41,10 @@ describe("device admin command copy", () => {
       reason: "admin_update_user_info",
       wireCommand: "DATA UPDATE USERINFO PIN=205291319\tName=Muhammad Kamal Faza",
     }))).toBe("Sinkronkan nama pengguna 205291319");
+    expect(commandActionLabel(command({
+      reason: "admin_update_user_info",
+      wireCommand: "DATA UPDATE USERINFO PIN=0205291319\tName=Leading Zero",
+    }))).toBe("Sinkronkan nama pengguna 0205291319");
   });
 
   it("translates lifecycle states without protocol jargon", () => {
