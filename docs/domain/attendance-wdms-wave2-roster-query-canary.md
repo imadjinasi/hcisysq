@@ -35,6 +35,8 @@ The existing command transport wraps the command using the numeric device comman
 
 No query parameters, PIN selector, template table, arbitrary command text, or vendor option may be supplied through this endpoint.
 
+The application reuses the existing durable `query_user_info` command type and `admin_query_user_info` reason. A forward-only additive migration expands only the database wire/shape CHECK constraints so the exact no-parameter roster query is accepted in addition to the already-supported single-PIN form. It does not create a new table, rewrite attendance data, or broaden arbitrary command execution.
+
 ## Authorization and queueing
 
 Only `SUPER_ADMIN` may queue the command.
@@ -103,6 +105,10 @@ The ordinary `Pengguna` route may show the resulting safe observations but must 
 - biometric collection enablement;
 - enrollment, distribution, restore, or destructive maintenance.
 
-## Rollback
+## Migration and rollback
 
-This slice adds no schema and changes no attendance facts. Rollback is removal/disablement of the full-roster query endpoint and diagnostics action. Existing safe roster observations remain observational evidence and must not be deleted as part of rollback.
+Migration `0031_attendance_adms_full_roster_query.sql` changes only the existing command wire/shape CHECK constraints. Existing rows remain valid and no attendance fact or roster observation is rewritten.
+
+Operational rollback is to remove/disable the roster-query endpoint and diagnostics action. Retaining the expanded database CHECK after an application rollback is safe because command creation remains application allowlist-gated. Restoring the older CHECK shape is optional and must only be done after confirming no persisted full-roster command row would violate it.
+
+Existing safe roster observations remain observational evidence and must not be deleted as part of rollback.
