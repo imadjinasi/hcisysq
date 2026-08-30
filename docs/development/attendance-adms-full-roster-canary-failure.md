@@ -18,7 +18,7 @@ Observed redacted transport evidence:
 - none of those requests produced a new safe roster observation;
 - the known-good strict single-PIN USERINFO path had previously produced one small `OPERLOG` request containing exactly one safe roster observation.
 
-No production employee identifiers, PINs, card numbers, raw USERINFO, biometric templates, passwords, or screenshots are stored in this repository evidence.
+No production employee identifiers, PINs, card numbers, raw USERINFO, biometric templates, passwords, or screenshots are stored in this repository evidence. The sensitive request bodies were not inspected to infer their content beyond transport classification and safe record counts.
 
 ## Safety conclusion
 
