@@ -28,6 +28,7 @@ Untuk frontend, baca juga:
 - `design/ui-guidelines.md`
 - `design/ui-foundation.md`
 - `domain/attendance-device-admin-information-architecture.md` untuk information architecture Admin Mesin Fingerprint (ATT-006)
+- `domain/attendance-device-admin-verification.md` untuk bukti implementasi/deployment ATT-006 dan physical safe-name canary yang sudah terverifikasi
 
 ## Status dokumen
 
@@ -36,6 +37,7 @@ Untuk frontend, baca juga:
 - `PROPOSED` — keputusan diajukan, belum menjadi aturan wajib.
 - `ACCEPTED` — menjadi acuan implementasi.
 - `ACTIVE` — foundation/direction yang sedang berlaku.
+- `VERIFIED` — implementation/operational evidence untuk scope dokumen sudah dicatat tanpa menyatakan scope induk lain selesai.
 - `VERIFIED MVP BASELINE` — perilaku/slice MVP sudah memiliki implementation + verification evidence yang dirujuk checkpoint; bukan pernyataan Pilot/Production Ready.
 - `VERIFIED COMPLETE` — completion criteria dokumen tersebut sudah dipenuhi pada checkpoint yang disebutkan.
 - `SUPERSEDED` — digantikan dokumen/ADR lain.
