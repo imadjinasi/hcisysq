@@ -9,6 +9,7 @@ import {
   KeyRound,
   LayoutDashboard,
   LogOut,
+  Menu,
   ShieldCheck,
   Upload,
   UsersRound,
@@ -35,24 +36,94 @@ export type AdminNavKey =
   | "payslips"
   | "access";
 
-const navItems: Array<{
+type AdminNavItem = {
   key: AdminNavKey;
   label: string;
   href: string;
   icon: typeof LayoutDashboard;
-}> = [
-  { key: "overview", label: "Ringkasan", href: "/admin", icon: LayoutDashboard },
-  { key: "employees", label: "Daftar Pegawai", href: "/admin/employees", icon: UsersRound },
-  { key: "import", label: "Impor Pegawai", href: "/admin/employees/import", icon: Upload },
-  { key: "history", label: "Riwayat Impor", href: "/admin/employees/imports", icon: History },
-  { key: "organization", label: "Struktur Organisasi", href: "/admin/organization", icon: Building2 },
-  { key: "attendance", label: "Kehadiran", href: "/admin/attendance", icon: Clock3 },
-  { key: "attendance-devices", label: "Mesin Fingerprint", href: "/admin/attendance/devices", icon: Fingerprint },
-  { key: "leave", label: "Konfigurasi Cuti", href: "/admin/leave", icon: CalendarDays },
-  { key: "leave-calendar", label: "Kalender Kerja", href: "/admin/leave/calendar", icon: CalendarRange },
-  { key: "payslips", label: "Payslip", href: "/admin/payslips", icon: WalletCards },
-  { key: "access", label: "Account & Akses", href: "/admin/access", icon: KeyRound },
+};
+
+type AdminNavGroup = {
+  label: string | null;
+  items: AdminNavItem[];
+};
+
+const navGroups: AdminNavGroup[] = [
+  {
+    label: null,
+    items: [{ key: "overview", label: "Ringkasan", href: "/admin", icon: LayoutDashboard }],
+  },
+  {
+    label: "Pegawai",
+    items: [
+      { key: "employees", label: "Daftar Pegawai", href: "/admin/employees", icon: UsersRound },
+      { key: "import", label: "Impor Pegawai", href: "/admin/employees/import", icon: Upload },
+      { key: "history", label: "Riwayat Impor", href: "/admin/employees/imports", icon: History },
+    ],
+  },
+  {
+    label: "Organisasi",
+    items: [{ key: "organization", label: "Struktur Organisasi", href: "/admin/organization", icon: Building2 }],
+  },
+  {
+    label: "Kehadiran",
+    items: [
+      { key: "attendance", label: "Rekaman Kehadiran", href: "/admin/attendance", icon: Clock3 },
+      { key: "attendance-devices", label: "Mesin Fingerprint", href: "/admin/attendance/devices", icon: Fingerprint },
+    ],
+  },
+  {
+    label: "Cuti",
+    items: [
+      { key: "leave", label: "Kebijakan Cuti", href: "/admin/leave", icon: CalendarDays },
+      { key: "leave-calendar", label: "Kalender Kerja", href: "/admin/leave/calendar", icon: CalendarRange },
+    ],
+  },
+  {
+    label: "Payslip",
+    items: [{ key: "payslips", label: "Pengelolaan Payslip", href: "/admin/payslips", icon: WalletCards }],
+  },
+  {
+    label: "Sistem",
+    items: [{ key: "access", label: "Account & Akses", href: "/admin/access", icon: KeyRound }],
+  },
 ];
+
+function AdminNavigation({ active, compact = false }: { active: AdminNavKey; compact?: boolean }) {
+  return (
+    <nav className={compact ? "space-y-4" : "space-y-5"} aria-label="Navigasi Super Admin">
+      {navGroups.map((group, groupIndex) => (
+        <div key={group.label ?? `root-${groupIndex}`}>
+          {group.label ? (
+            <p className="mb-1.5 px-3 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground/80">{group.label}</p>
+          ) : null}
+          <div className="space-y-1">
+            {group.items.map((item) => {
+              const Icon = item.icon;
+              const selected = item.key === active;
+              return (
+                <a
+                  key={item.key}
+                  href={item.href}
+                  aria-current={selected ? "page" : undefined}
+                  className={cn(
+                    "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors",
+                    selected
+                      ? "bg-brand-primary-pale text-brand-primary-deep"
+                      : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
+                  )}
+                >
+                  <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
+                  {item.label}
+                </a>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </nav>
+  );
+}
 
 export function AdminShell({
   children,
@@ -105,28 +176,19 @@ export function AdminShell({
           </div>
         </div>
 
-        <nav className="flex gap-2 overflow-x-auto px-4 pb-4 lg:block lg:space-y-1 lg:px-4 lg:pb-0" aria-label="Navigasi Super Admin">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const selected = item.key === active;
-            return (
-              <a
-                key={item.key}
-                href={item.href}
-                aria-current={selected ? "page" : undefined}
-                className={cn(
-                  "flex shrink-0 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors",
-                  selected
-                    ? "bg-brand-primary-pale text-brand-primary-deep"
-                    : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
-                )}
-              >
-                <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
-                {item.label}
-              </a>
-            );
-          })}
-        </nav>
+        <details className="mx-4 mb-4 rounded-xl border border-border bg-surface lg:hidden">
+          <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-3 text-sm font-bold text-brand-heading">
+            <Menu className="h-4 w-4" aria-hidden="true" />
+            Menu administrasi
+          </summary>
+          <div className="border-t border-border bg-white p-2">
+            <AdminNavigation active={active} compact />
+          </div>
+        </details>
+
+        <div className="hidden px-4 lg:block">
+          <AdminNavigation active={active} />
+        </div>
 
         <div className="hidden px-4 pb-5 pt-8 lg:block">
           <div className="rounded-2xl border border-border/70 bg-surface p-4">
