@@ -189,6 +189,7 @@ const deviceTimestampPattern = "\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}";
 const attlogRangeCommandPattern = new RegExp(
   `^DATA QUERY ATTLOG StartTime=${deviceTimestampPattern}\\tEndTime=${deviceTimestampPattern}$`,
 );
+const userInfoRosterQueryCommand = "DATA QUERY USERINFO";
 const userInfoQueryCommandPattern = /^DATA QUERY USERINFO PIN=\d{1,128}$/;
 const userInfoNameUpdateCommandPattern = /^DATA UPDATE USERINFO PIN=\d{1,128}\tName=[^\t\r\n]{1,160}$/u;
 
@@ -196,6 +197,10 @@ export function attlogRangeWireCommand(startTime: string, endTime: string) {
   const command = `DATA QUERY ATTLOG StartTime=${startTime}\tEndTime=${endTime}`;
   if (!attlogRangeCommandPattern.test(command)) throw new Error("Invalid ADMS ATTLOG range command");
   return command;
+}
+
+export function userInfoRosterQueryWireCommand() {
+  return userInfoRosterQueryCommand;
 }
 
 export function userInfoQueryWireCommand(pin: string) {
@@ -222,6 +227,7 @@ export function deviceCommandWireBody(commandNumber: string | number, wireComman
   if (
     wireCommand !== "LOG" &&
     wireCommand !== "INFO" &&
+    wireCommand !== userInfoRosterQueryCommand &&
     !attlogRangeCommandPattern.test(wireCommand) &&
     !userInfoQueryCommandPattern.test(wireCommand) &&
     !userInfoNameUpdateCommandPattern.test(wireCommand)
