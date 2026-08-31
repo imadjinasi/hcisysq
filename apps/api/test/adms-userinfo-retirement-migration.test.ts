@@ -30,7 +30,7 @@ async function expectInsertRejected(client: Client, deviceId: string, wireComman
 }
 
 describe.skipIf(!databaseUrl)("0033 active USERINFO read retirement migration", () => {
-  it("preserves historical C:11/C:12/C:13 evidence and rejects only new USERINFO reads", async () => {
+  it("preserves historical C:10-C:13 evidence and rejects only new USERINFO reads", async () => {
     const client = new Client({ connectionString: databaseUrl! });
     const schemaName = `userinfo_retirement_${randomUUID().replaceAll("-", "")}`;
     const quotedSchema = `"${schemaName}"`;
@@ -57,10 +57,11 @@ describe.skipIf(!databaseUrl)("0033 active USERINFO read retirement migration", 
            id, command_number, device_id, command_type, wire_command, reason,
            status, completed_at, return_code, result_command
          ) OVERRIDING SYSTEM VALUE VALUES
-           ($1, 11, $4, 'query_user_info', 'DATA QUERY USERINFO', 'admin_query_user_info', 'succeeded', now(), 0, 'DATA'),
-           ($2, 12, $4, 'query_user_info', 'DATA QUERY USERINFO PIN=0042', 'admin_query_user_info', 'succeeded', now(), 0, 'DATA'),
-           ($3, 13, $4, 'update_user_info', 'DATA UPDATE USERINFO PIN=0042\tName=Synthetic Employee', 'admin_update_user_info', 'succeeded', now(), 0, 'DATA')`,
-        [randomUUID(), randomUUID(), randomUUID(), deviceId],
+           ($1, 10, $5, 'update_user_info', 'DATA UPDATE USERINFO PIN=0042\tName=Synthetic Employee', 'admin_update_user_info', 'succeeded', now(), 0, 'DATA'),
+           ($2, 11, $5, 'query_user_info', 'DATA QUERY USERINFO PIN=0042', 'admin_query_user_info', 'succeeded', now(), 0, 'DATA'),
+           ($3, 12, $5, 'query_user_info', 'DATA QUERY USERINFO', 'admin_query_user_info', 'succeeded', now(), 0, 'DATA'),
+           ($4, 13, $5, 'query_user_info', 'DATA QUERY USERINFO PIN=0042', 'admin_query_user_info', 'succeeded', now(), 0, 'DATA')`,
+        [randomUUID(), randomUUID(), randomUUID(), randomUUID(), deviceId],
       );
 
       await applyMigration(client, "0032_attendance_adms_retire_full_roster_query.sql");
@@ -69,13 +70,14 @@ describe.skipIf(!databaseUrl)("0033 active USERINFO read retirement migration", 
       const historical = await client.query<{ commandNumber: string; wireCommand: string }>(
         `SELECT command_number::text AS "commandNumber", wire_command AS "wireCommand"
          FROM attendance_adms_commands
-         WHERE command_number IN (11, 12, 13)
+         WHERE command_number IN (10, 11, 12, 13)
          ORDER BY command_number`,
       );
       expect(historical.rows).toEqual([
-        { commandNumber: "11", wireCommand: "DATA QUERY USERINFO" },
-        { commandNumber: "12", wireCommand: "DATA QUERY USERINFO PIN=0042" },
-        { commandNumber: "13", wireCommand: "DATA UPDATE USERINFO PIN=0042\tName=Synthetic Employee" },
+        { commandNumber: "10", wireCommand: "DATA UPDATE USERINFO PIN=0042\tName=Synthetic Employee" },
+        { commandNumber: "11", wireCommand: "DATA QUERY USERINFO PIN=0042" },
+        { commandNumber: "12", wireCommand: "DATA QUERY USERINFO" },
+        { commandNumber: "13", wireCommand: "DATA QUERY USERINFO PIN=0042" },
       ]);
 
       await expectInsertRejected(client, deviceId, "DATA QUERY USERINFO");
