@@ -14,10 +14,11 @@ paths:
     get:
       tags: [Attendance]
       operationId: listObservedAdmsDeviceRoster
-      summary: List safe roster observations for one trusted device
+      summary: List safe passive roster observations for one trusted device
       description: |
-        Returns only allowlisted roster observations. This is not a complete device snapshot:
-        absence from this list must not be interpreted as proof that a user is missing on-device.
+        Returns only allowlisted roster observations already received by HCIS. This is not a
+        complete device snapshot: absence from this list must not be interpreted as proof that a
+        user is missing on-device. HCIS does not issue an active USERINFO read to complete this list.
       parameters:
         - $ref: '#/components/parameters/DeviceId'
       responses:
