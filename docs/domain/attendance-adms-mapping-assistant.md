@@ -28,13 +28,13 @@ The assistant MUST NOT mutate attendance, employee, roster, or mapping state whi
 For one registered ADMS device, the assistant may read:
 
 - observed PIN values from immutable `attendance_adms_events`;
-- safe USERINFO roster projection from `attendance_adms_device_roster_entries`;
+- passive safe USERINFO roster projection from `attendance_adms_device_roster_entries`;
 - current explicit active mappings;
 - active HCIS employee names.
 
 Safe device fields such as card number may be displayed for human review, but they are not scoring inputs.
 
-Because full roster snapshot semantics are not physically validated yet, absence from the observed roster MUST NOT be interpreted as absence from the device.
+The roster is intentionally `observed_only` / `completeSnapshot: false`. Active full-roster and single-PIN USERINFO reads are retired for the physically tested firmware, so absence from the observed roster MUST NOT be interpreted as absence from the device and the assistant MUST NOT issue a read command to fill the gap.
 
 ## Candidate eligibility
 
@@ -75,7 +75,7 @@ For every unmapped observed PIN:
 
 There is no bulk auto-map button.
 
-If the PIN has no passively/safely observed device name yet, show that name-based recommendations are unavailable. Active USERINFO reads are retired; do not fabricate candidates from PIN/card/NIP.
+If the PIN has no passively/safely observed device name yet, show that name-based recommendations are unavailable. Active USERINFO reads are retired; do not fabricate candidates from PIN/card/NIP and do not provide an alternate raw-command path.
 
 ## Safety and attendance invariants
 
