@@ -24,6 +24,8 @@ describe("VPS deployment scripts", () => {
     expect(deploy).toContain("BIOMETRIC_COLLECTION_ENABLED=0");
     expect(deploy).toContain("git pull --ff-only");
     expect(deploy).toContain("Database TIDAK di-rollback otomatis");
+    expect(deploy).toContain('PREVIOUS_SHA=$(git rev-parse HEAD)');
+    expect(deploy).toContain('if [[ "$PREVIOUS_SHA" == "$EXPECTED_SHA" ]]');
     expect(deploy).not.toMatch(/docker\s+compose[^\n]*down\s+-v/);
 
     expect(verify).toContain("attendance_adms_reject_retired_userinfo_reads");
