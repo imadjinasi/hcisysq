@@ -29,12 +29,14 @@ For one registered ADMS device, the assistant may read:
 
 - observed PIN values from immutable `attendance_adms_events`;
 - passive safe USERINFO roster projection from `attendance_adms_device_roster_entries`;
-- current explicit active mappings;
-- active HCIS employee names.
+- current explicit active mappings and the authoritative lifecycle of their HCIS employees;
+- active HCIS employee names for candidate ranking.
 
 Safe device fields such as card number may be displayed for human review, but they are not scoring inputs.
 
 The roster is intentionally `observed_only` / `completeSnapshot: false`. Active full-roster and single-PIN USERINFO reads are retired for the physically tested firmware, so absence from the observed roster MUST NOT be interpreted as absence from the device and the assistant MUST NOT issue a read command to fill the gap.
+
+Explicit HCIS mapping lifecycle is a different fact source from passive device roster observation. A mapping may therefore remain visible and reviewable even when its PIN has no safe roster observation.
 
 ## Candidate eligibility
 
@@ -44,17 +46,20 @@ An employee already actively mapped to a different PIN on the same device is exc
 
 ## Mapped employee lifecycle anomaly
 
-An explicit device mapping may outlive the employee's active HCIS lifecycle. When a roster observation resolves to a current mapping whose employee status is `inactive` or `resigned`, HCIS must treat that as an Admin review state, not as a reason to mutate the device or mapping automatically.
+An explicit device mapping may outlive the employee's active HCIS lifecycle. Whenever a current explicit mapping points to an employee whose authoritative HCIS status is `inactive` or `resigned`, HCIS must treat that as an Admin review state, not as a reason to mutate the device or mapping automatically.
 
-The Admin user list must:
+This review state MUST NOT depend on the existence of a passive USERINFO roster observation for the PIN. The current mapping plus authoritative employee status is sufficient to surface the anomaly.
 
+The Admin user workspace must:
+
+- include current explicit mappings alongside passively observed PIN facts, while clearly distinguishing absent device metadata from proof of on-device absence;
 - keep the historical/current mapping visible;
 - clearly mark the row as requiring review because the mapped employee is no longer active;
 - keep `Akhiri hubungan` available so a Super Admin can explicitly close the mapping while preserving history;
 - disable name synchronization and PIN-correction planning for the inactive/resigned mapping, matching the existing server-side `EMPLOYEE_NOT_ACTIVE` guard;
 - never delete/recreate the device user, change PIN, touch biometrics, or alter attendance automatically.
 
-If employee status is unavailable in the current observed row, HCIS must not guess that the employee is inactive. Only an explicit non-`active` status returned by the authoritative employee join creates this UI warning state.
+If authoritative employee status is unavailable, HCIS must not guess that the employee is inactive. Only an explicit non-`active` employee status creates this review state.
 
 ## Name scoring
 
