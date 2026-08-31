@@ -97,7 +97,7 @@ function createPool(principalType: "EMPLOYEE" | "SUPER_ADMIN") {
 }
 
 describe("ATT-005 Wave 2 metadata-only Admin APIs", () => {
-  it("returns observed roster semantics without guessing missing users", async () => {
+  it("returns passive observed roster semantics without guessing missing users", async () => {
     const { pool } = createPool("SUPER_ADMIN");
     const app = Fastify({ logger: false });
     await registerAdmsWave2AdminRoutes(app, pool, config);
@@ -109,11 +109,14 @@ describe("ATT-005 Wave 2 metadata-only Admin APIs", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({
+    const body = response.json();
+    expect(body).toMatchObject({
       inventorySemantics: "observed_only",
       completeSnapshot: false,
       items: [{ pin: "0042", mappingStatus: "unmapped" }],
     });
+    expect(body.note).toContain("Absennya PIN tidak membuktikan user tidak ada di mesin");
+    expect(body.note).toContain("active USERINFO reads telah dipensiunkan");
     await app.close();
   });
 
