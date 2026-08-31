@@ -42,6 +42,20 @@ Candidates are limited to HCIS employees with `status = active`.
 
 An employee already actively mapped to a different PIN on the same device is excluded from suggestions. Existing active mappings are shown as mapped and are not sent through suggestion ranking.
 
+## Mapped employee lifecycle anomaly
+
+An explicit device mapping may outlive the employee's active HCIS lifecycle. When a roster observation resolves to a current mapping whose employee status is `inactive` or `resigned`, HCIS must treat that as an Admin review state, not as a reason to mutate the device or mapping automatically.
+
+The Admin user list must:
+
+- keep the historical/current mapping visible;
+- clearly mark the row as requiring review because the mapped employee is no longer active;
+- keep `Akhiri hubungan` available so a Super Admin can explicitly close the mapping while preserving history;
+- disable name synchronization and PIN-correction planning for the inactive/resigned mapping, matching the existing server-side `EMPLOYEE_NOT_ACTIVE` guard;
+- never delete/recreate the device user, change PIN, touch biometrics, or alter attendance automatically.
+
+If employee status is unavailable in the current observed row, HCIS must not guess that the employee is inactive. Only an explicit non-`active` status returned by the authoritative employee join creates this UI warning state.
+
 ## Name scoring
 
 Scoring is deterministic and server-side. The frontend does not reproduce domain logic.
@@ -81,6 +95,6 @@ If the PIN has no passively/safely observed device name yet, show that name-base
 
 This feature does not infer lateness, absence, work hours, overtime, payroll deduction, leave conversion, or attendance-resolution outcomes.
 
-Creating a mapping may trigger the existing neutral historical attendance projection for that explicit mapping. Raw ADMS events remain immutable.
+Creating or ending a mapping may trigger only the existing neutral mapping/projection behavior defined elsewhere. Raw ADMS events remain immutable.
 
 Biometric collection/query/write behavior is unchanged and remains separately gated.
