@@ -145,4 +145,4 @@ echo "=== ADMS PASSIVE MAPPING SUMMARY SQL SMOKE ==="
 echo
 echo "=== VERIFY PASS ==="
 echo "verified_sha=$EXPECTED_SHA"
-echo "device_commands_executed=0"
+echo "verification_device_commands_requested=0"
