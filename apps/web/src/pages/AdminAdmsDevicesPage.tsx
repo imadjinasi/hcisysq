@@ -9,6 +9,10 @@ import {
   type AdmsDeviceHealth,
 } from "@/lib/admsAdmin";
 import {
+  getAdmsMappingLifecycleSummary,
+  type AdmsMappingLifecycleSummary,
+} from "@/lib/admsMappingSummary";
+import {
   claimDetectedAdmsDevice,
   listDetectedAdmsDevices,
   type AdmsDetectedDevice,
@@ -50,6 +54,7 @@ function lifecycleClass(value: AdmsDevice["lifecycle"]) {
 export function AdminAdmsDevicesPage() {
   const [devices, setDevices] = useState<AdmsDevice[]>([]);
   const [healthById, setHealthById] = useState<Record<string, AdmsDeviceHealth>>({});
+  const [mappingSummaryById, setMappingSummaryById] = useState<Record<string, AdmsMappingLifecycleSummary>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,14 +74,23 @@ export function AdminAdmsDevicesPage() {
 
     try {
       const response = await listAdmsDevices();
-      const healthResults = await Promise.allSettled(
-        response.items.map(async (device) => [device.id, await getAdmsDeviceHealth(device.id)] as const),
-      );
+      const [healthResults, mappingSummaryResults] = await Promise.all([
+        Promise.allSettled(
+          response.items.map(async (device) => [device.id, await getAdmsDeviceHealth(device.id)] as const),
+        ),
+        Promise.allSettled(
+          response.items.map(async (device) => [device.id, await getAdmsMappingLifecycleSummary(device.id)] as const),
+        ),
+      ]);
       const healthEntries = healthResults.flatMap((result) =>
+        result.status === "fulfilled" ? [result.value] : [],
+      );
+      const mappingSummaryEntries = mappingSummaryResults.flatMap((result) =>
         result.status === "fulfilled" ? [result.value] : [],
       );
       setDevices(response.items);
       setHealthById(Object.fromEntries(healthEntries));
+      setMappingSummaryById(Object.fromEntries(mappingSummaryEntries));
       setLastRefreshedAt(new Date());
       setError(null);
     } catch (cause) {
@@ -103,10 +117,15 @@ export function AdminAdmsDevicesPage() {
       if (connectivity === "online") online += 1;
       else if (connectivity === "offline") offline += 1;
       else unknown += 1;
-      if (connectivity === "offline" || device.lifecycle !== "active" || (device.unmappedPinCount ?? 0) > 0) attention += 1;
+      if (
+        connectivity === "offline"
+        || device.lifecycle !== "active"
+        || (device.unmappedPinCount ?? 0) > 0
+        || (mappingSummaryById[device.id]?.reviewRequiredCount ?? 0) > 0
+      ) attention += 1;
     }
     return { online, offline, unknown, attention };
-  }, [devices, healthById]);
+  }, [devices, healthById, mappingSummaryById]);
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase("id-ID");
@@ -262,6 +281,7 @@ export function AdminAdmsDevicesPage() {
                   {filtered.map((device) => {
                     const health = healthById[device.id];
                     const connectivity = health?.connectivityStatus ?? "unknown";
+                    const mappingReviewCount = mappingSummaryById[device.id]?.reviewRequiredCount ?? 0;
                     return (
                       <tr key={device.id} className="hover:bg-surface/70">
                         <td className="px-4 py-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${connectivityClass(connectivity)}`}>{connectivityLabel(connectivity)}</span></td>
@@ -272,6 +292,7 @@ export function AdminAdmsDevicesPage() {
                         <td className="px-4 py-3">
                           <div className="font-semibold text-brand-heading">{device.activeMappingCount ?? 0} terhubung</div>
                           {(device.unmappedPinCount ?? 0) > 0 ? <div className="mt-0.5 flex items-center gap-1 text-xs text-amber-700"><AlertTriangle className="h-3.5 w-3.5" /> {device.unmappedPinCount} belum terhubung</div> : null}
+                          {mappingReviewCount > 0 ? <div className="mt-0.5 flex items-center gap-1 text-xs font-semibold text-orange-800"><AlertTriangle className="h-3.5 w-3.5" /> {mappingReviewCount} hubungan perlu ditinjau</div> : null}
                         </td>
                         <td className="px-4 py-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${lifecycleClass(device.lifecycle)}`}>{lifecycleLabel(device.lifecycle)}</span></td>
                       </tr>
@@ -284,13 +305,19 @@ export function AdminAdmsDevicesPage() {
               {filtered.map((device) => {
                 const health = healthById[device.id];
                 const connectivity = health?.connectivityStatus ?? "unknown";
+                const mappingReviewCount = mappingSummaryById[device.id]?.reviewRequiredCount ?? 0;
                 return (
                   <a key={device.id} href={`/admin/attendance/devices/${device.id}`} className="block p-4 hover:bg-surface/70">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0"><p className="truncate font-bold text-brand-heading">{device.displayName?.trim() || "Mesin tanpa nama"}</p><p className="mt-1 truncate font-mono text-xs text-muted-foreground">{device.serialNumber}</p></div>
                       <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-bold ${connectivityClass(connectivity)}`}>{connectivityLabel(connectivity)}</span>
                     </div>
-                    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground"><span>Aktivitas {fmt(health?.lastSeenAt ?? device.lastSeenAt)}</span><span>{device.activeMappingCount ?? 0} mapping</span>{(device.unmappedPinCount ?? 0) > 0 ? <span className="text-amber-700">{device.unmappedPinCount} PIN perlu ditinjau</span> : null}</div>
+                    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                      <span>Aktivitas {fmt(health?.lastSeenAt ?? device.lastSeenAt)}</span>
+                      <span>{device.activeMappingCount ?? 0} mapping</span>
+                      {(device.unmappedPinCount ?? 0) > 0 ? <span className="text-amber-700">{device.unmappedPinCount} PIN perlu ditinjau</span> : null}
+                      {mappingReviewCount > 0 ? <span className="font-semibold text-orange-800">{mappingReviewCount} hubungan pegawai perlu ditinjau</span> : null}
+                    </div>
                   </a>
                 );
               })}
