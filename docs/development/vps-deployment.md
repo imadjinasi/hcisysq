@@ -20,35 +20,57 @@ Before production cutover:
 - the target commit is merged to `origin/main`;
 - required GitHub Actions validation is green for that exact PR head;
 - the operator has explicitly approved the production deployment;
-- the VPS working tree is clean;
+- the VPS working tree is clean and still points at the currently deployed application SHA;
 - production environment secrets remain only on the VPS;
 - `BIOMETRIC_COLLECTION_ENABLED=0` remains required until the separate biometric production gate is explicitly approved;
 - migration recovery notes for the release have been reviewed.
 
 Never use `docker compose down -v`.
 
+Do not pull the target commit manually before running the deploy script. The script intentionally captures the current local HEAD as the application rollback baseline before it fast-forwards to the target SHA.
+
+## First adoption bootstrap
+
+ATT-005 Package 1 is the release that first introduces the repository deploy script. Because the currently deployed baseline does not yet contain `scripts/deploy-vps.sh`, fetch the target and execute the script from a temporary file **without changing the working-tree HEAD first**:
+
+```bash
+cd /var/www/hcis
+git fetch origin main
+git show origin/main:scripts/deploy-vps.sh > /tmp/hcis-deploy-vps.sh
+chmod 700 /tmp/hcis-deploy-vps.sh
+/tmp/hcis-deploy-vps.sh <EXPECTED_MAIN_SHA>
+rm -f /tmp/hcis-deploy-vps.sh
+```
+
+This preserves the real pre-deploy SHA for the application rollback guard. The script itself verifies that `origin/main` exactly equals the expected SHA before backup or cutover.
+
+After Package 1 has been deployed successfully, later releases can call the checked-in script directly from the still-current production baseline.
+
 ## Deploy
 
-From the production repository working tree:
+For normal releases after first adoption, from the production repository working tree:
 
 ```bash
 ./scripts/deploy-vps.sh <EXPECTED_MAIN_SHA>
 ```
 
+The script refuses to run if local HEAD already equals the target SHA, because that would lose the previous application baseline needed for a meaningful rollback guard. If source was manually moved to the target before the runtime was cut over, restore the repository to the actual deployed SHA and follow the runbook rather than bypassing this guard.
+
 The deploy script:
 
-1. verifies a clean working tree and exact `origin/main` SHA;
+1. verifies a clean working tree and preserves its current HEAD as the application rollback baseline;
 2. refuses to continue if biometric collection is not OFF;
-3. creates a timestamped PostgreSQL custom-format backup before application migration/cutover;
-4. records backup checksum and deployment metadata under ignored `backups/deploy/`;
-5. fast-forwards local `main` only;
-6. builds target API and Web images before replacing running services;
-7. recreates API and lets the existing API-start migration runner apply additive migrations;
-8. waits for API health/readiness;
-9. recreates Web and waits for Web health;
-10. runs local proxy health smoke checks;
-11. records the migration and Compose snapshots;
-12. re-checks the retired USERINFO safety trigger and biometric gate.
+3. verifies the exact `origin/main` target SHA;
+4. creates a timestamped PostgreSQL custom-format backup before application migration/cutover;
+5. records backup checksum and deployment metadata under ignored `backups/deploy/`;
+6. fast-forwards local `main` only;
+7. builds target API and Web images before replacing running services;
+8. recreates API and lets the existing API-start migration runner apply additive migrations;
+9. waits for API health/readiness;
+10. recreates Web and waits for Web health;
+11. runs local proxy health smoke checks;
+12. records the migration and Compose snapshots;
+13. re-checks the retired USERINFO safety trigger and biometric gate.
 
 PostgreSQL is not intentionally restarted by the normal application cutover.
 
@@ -84,7 +106,7 @@ The verification script checks:
 - read-only ADMS mapping lifecycle summary SQL;
 - biometric collection environment gate remains OFF.
 
-The verification script sends **zero device commands**.
+The verification script requests **zero device commands**.
 
 ## UAT policy
 
