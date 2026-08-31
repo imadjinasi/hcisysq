@@ -28,7 +28,7 @@ describe("VPS deployment scripts", () => {
 
     expect(verify).toContain("attendance_adms_reject_retired_userinfo_reads");
     expect(verify).toContain("BIOMETRIC_COLLECTION_ENABLED=0");
-    expect(verify).toContain("device_commands_executed=0");
+    expect(verify).toContain("verification_device_commands_requested=0");
     expect(verify).not.toMatch(/docker\s+compose[^\n]*down\s+-v/);
   });
 });
