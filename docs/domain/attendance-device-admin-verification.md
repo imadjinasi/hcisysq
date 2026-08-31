@@ -30,12 +30,14 @@ Verified properties:
 
 - only the allowlisted same-PIN name update was issued;
 - device result was successful with non-negative return code and `DATA` result;
-- strict single-PIN read-back succeeded;
+- the then-approved strict single-PIN read-back succeeded;
 - the same PIN remained present after read-back;
 - device-side name matched the mapped HCIS employee name;
 - previously observed card metadata remained unchanged.
 
 Production employee identifiers, PINs, card numbers, screenshots, and other personal data are intentionally not stored in this public repository.
+
+Subsequent redacted physical evidence showed additional `OPERLOG` and `BIODATA` requests in the same single-PIN USERINFO response sequence. Active USERINFO reads are now retired. Immediate name-sync readback is no longer permitted; future verification requires passive/safely observed evidence or a separately approved protocol capability.
 
 ## Boundaries that remain unchanged
 

@@ -202,23 +202,6 @@ export async function listAdmsUserCorrections(deviceId: string): Promise<AdmsUse
   );
 }
 
-export async function queryAdmsUserInfo(deviceId: string, pin: string) {
-  return readJson<{
-    item: AdmsQueuedCommand & {
-      pin: string;
-      fullRoster: false;
-      verificationRequired: string;
-    };
-  }>(
-    await fetch(`/api/admin/attendance/adms/devices/${deviceId}/commands/query-user-info`, {
-      method: "POST",
-      credentials: "include",
-      headers: { Accept: "application/json", "Content-Type": "application/json" },
-      body: JSON.stringify({ pin }),
-    }),
-  );
-}
-
 export async function syncAdmsUserName(deviceId: string, pin: string) {
   return readJson<{
     item: AdmsQueuedCommand & {

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This slice adds a deliberately narrow write boundary after single-PIN USERINFO read and explicit HCIS mapping are proven.
+This slice adds a deliberately narrow write boundary after historical safe USERINFO observation and explicit HCIS mapping are proven. Active USERINFO reads are now retired.
 
 It supports two different operations:
 
@@ -28,7 +28,7 @@ Requirements:
 - command contains only `PIN` and `Name`;
 - PIN, card, privilege, password, group, timezone, verify mode, biometric template, and photo are unchanged.
 
-A non-negative `CMD=DATA` result proves command execution only. Operational verification still requires a subsequent single-PIN USERINFO read-back and comparison with the expected HCIS name.
+A non-negative `CMD=DATA` result proves command execution only. Immediate active USERINFO readback is retired. Future verification requires passive/safely observed evidence or a separately reviewed and approved protocol capability; HCIS must not issue an alternate active readback command.
 
 A same-value update is intentionally allowed as the first physical canary because it exercises the real write path without changing business data.
 
@@ -43,12 +43,14 @@ Observed evidence:
 
 - the Admin action generated only the allowlisted same-PIN `DATA UPDATE USERINFO ... Name=...` command;
 - the device completed the write with non-negative return code (`0`) and `DATA` result;
-- a subsequent strict single-PIN USERINFO query also completed with return code `0` and `DATA` result;
+- the then-approved strict single-PIN USERINFO query completed with return code `0` and `DATA` result;
 - the post-write safe roster observation preserved the same PIN;
 - the device-side name matched the mapped HCIS employee name after read-back;
 - previously observed card metadata remained unchanged.
 
 No employee name, PIN, card number, biometric material, or screenshot from the production canary is stored in this public repository.
+
+Later physical evidence showed that the single-PIN query also produced additional `OPERLOG` and `BIODATA` traffic in the same response sequence. That read capability is now retired and the historical canary must not be interpreted as approval for another active readback.
 
 This verification proves only the narrow same-PIN name synchronization contract. It does **not** prove PIN migration, user cloning, deletion/recreation, biometric template transfer, biometric collection, enrollment, restore, or cross-device distribution.
 

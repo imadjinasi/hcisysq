@@ -124,7 +124,7 @@ export async function registerAdmsWave2UserCorrectionRoutes(
         await client.query("ROLLBACK");
         return reply.status(409).send({
           code: "ADMS_USERINFO_NOT_OBSERVED",
-          message: "Baca USERINFO PIN ini lebih dulu sebelum mengirim perubahan nama.",
+          message: "Sinkronisasi nama membutuhkan observasi USERINFO aman yang sudah tersedia. Active USERINFO readback telah dipensiunkan.",
         });
       }
 
@@ -218,7 +218,7 @@ export async function registerAdmsWave2UserCorrectionRoutes(
           sameValue,
           fields: ["Name"],
           expectedResultCommand: "DATA",
-          verificationRequired: "command_success_then_single_pin_userinfo_readback",
+          verificationRequired: "active_userinfo_readback_retired_passive_or_separately_approved_evidence_required",
         },
       });
     } catch (error) {

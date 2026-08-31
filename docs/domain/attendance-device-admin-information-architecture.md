@@ -20,7 +20,7 @@ The current `/admin/attendance/devices` route mounts several large operational a
 - device detail and lifecycle administration;
 - PIN mapping assistant;
 - user-name synchronization and correction planning;
-- single-PIN USERINFO canary;
+- historical USERINFO command evidence, with active USERINFO reads retired;
 - Wave 1 detail/diagnostics;
 - Wave 2 biometric control plane.
 
@@ -118,7 +118,7 @@ No visible page may contain several independent device selectors for different p
 
 Ordinary Admin UI uses task language such as:
 
-- `Baca data pengguna`;
+- `Baca data pengguna` only as a historical command label;
 - `Sinkronkan nama`;
 - `Ambil ulang transaksi`;
 - `Riwayat perintah`;
@@ -427,7 +427,6 @@ The large standalone Mapping Assistant panel is removed once this workflow is av
 
 Row overflow/actions may include only capability-safe operations, for example:
 
-- `Baca ulang dari mesin`;
 - `Sinkronkan nama`;
 - `Koreksi PIN`;
 - `Akhiri hubungan ke pegawai` where applicable.
@@ -517,10 +516,10 @@ Recommended columns:
 - completed time;
 - outcome summary.
 
-Examples of human-readable actions:
+Examples of human-readable command-history actions:
 
 - `Baca informasi mesin`;
-- `Baca data pengguna 205291319`;
+- `Baca data pengguna <PIN>` for preserved historical rows only;
 - `Sinkronkan nama pengguna 205291319`;
 - `Ambil ulang transaksi 29 Agu 06:15–06:25`.
 
@@ -586,7 +585,7 @@ Rules:
 | Internal / protocol term | Ordinary Admin copy |
 | --- | --- |
 | Mapping | Hubungkan ke pegawai / Hubungan pegawai |
-| USERINFO query | Baca data pengguna |
+| Historical USERINFO query | Baca data pengguna — historical command label only |
 | update_user_info | Sinkronkan nama pengguna |
 | DATA QUERY ATTLOG | Ambil ulang transaksi |
 | command evidence | Status perintah |

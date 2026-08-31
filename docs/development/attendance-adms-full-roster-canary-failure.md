@@ -26,7 +26,7 @@ For the physically tested firmware, `DATA QUERY USERINFO` cannot be treated as a
 
 The capability is therefore retired from the HCIS Admin/API serializer surface. It must not be retried on production hardware without a new, separately reviewed protocol hypothesis and an explicit safety design that accounts for the observed broad `OPERLOG` / `BIODATA` side effect.
 
-The strict single-PIN command `DATA QUERY USERINFO PIN=<digits>` remains the only physically verified USERINFO read capability.
+The strict single-PIN command was subsequently found to produce additional `OPERLOG` and `BIODATA` traffic in the same response sequence. It is also retired; see `attendance-adms-single-pin-userinfo-canary-failure.md`.
 
 ## Data handling boundary
 
@@ -43,4 +43,5 @@ The follow-up hotfix:
 - removes exact `DATA QUERY USERINFO` from the application command serializer allowlist;
 - preserves migration `0031` as applied history;
 - adds a database insert guard that rejects any new full-roster USERINFO command while preserving the historical canary command as evidence;
-- leaves single-PIN USERINFO, safe same-PIN name sync, attendance recovery, and biometric gates unchanged.
+- was superseded by migration `0033`, which also rejects new strict single-PIN USERINFO reads while preserving historical evidence rows;
+- leaves safe same-PIN name sync, attendance recovery, and biometric gates unchanged.

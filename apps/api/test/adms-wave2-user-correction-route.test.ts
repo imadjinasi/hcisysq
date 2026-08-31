@@ -172,7 +172,7 @@ describe("ATT-005 Wave 2 device user correction routes", () => {
         sameValue: true,
         fields: ["Name"],
         expectedResultCommand: "DATA",
-        verificationRequired: "command_success_then_single_pin_userinfo_readback",
+        verificationRequired: "active_userinfo_readback_retired_passive_or_separately_approved_evidence_required",
       },
     });
     await app.close();

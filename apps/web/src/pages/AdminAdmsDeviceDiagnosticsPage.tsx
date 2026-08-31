@@ -1,15 +1,8 @@
-import { AlertTriangle, Database, Fingerprint, Info, Loader2, RefreshCw, Search, ShieldCheck } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertTriangle, Database, Fingerprint, Info, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 
 import { useDeviceAdmin } from "@/components/attendance/device-admin/DeviceAdminContext";
-import {
-  commandStatusLabel,
-  getAdmsDeviceRoster,
-  listAdmsCommands,
-  queryAdmsUserInfo,
-  type AdmsCommandItem,
-  type AdmsRosterResponse,
-} from "@/lib/admsAdmin";
+import { commandStatusLabel } from "@/lib/admsAdmin";
 import {
   getAdmsBiometricInventory,
   getAdmsBiometricPolicy,
@@ -55,8 +48,6 @@ export function AdminAdmsDeviceDiagnosticsPage() {
   const [telemetry, setTelemetry] = useState<AdmsTelemetry | null>(null);
   const [reconciliation, setReconciliation] = useState<AdmsReconciliationResponse | null>(null);
   const [logs, setLogs] = useState<AdmsSafeLogs | null>(null);
-  const [roster, setRoster] = useState<AdmsRosterResponse | null>(null);
-  const [commands, setCommands] = useState<AdmsCommandItem[]>([]);
   const [biometricPolicy, setBiometricPolicy] = useState<AdmsBiometricPolicy | null>(null);
   const [credentials, setCredentials] = useState<AdmsBiometricCredentialResponse | null>(null);
   const [inventory, setInventory] = useState<AdmsBiometricInventoryResponse | null>(null);
@@ -64,15 +55,12 @@ export function AdminAdmsDeviceDiagnosticsPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [canaryPin, setCanaryPin] = useState("");
 
   const load = useCallback(async () => {
-    const [nextTelemetry, nextReconciliation, nextLogs, nextRoster, nextCommands, nextPolicy, nextCredentials, nextInventory] = await Promise.all([
+    const [nextTelemetry, nextReconciliation, nextLogs, nextPolicy, nextCredentials, nextInventory] = await Promise.all([
       getAdmsTelemetry(deviceId),
       getAdmsReconciliation(deviceId),
       getAdmsSafeLogs(deviceId),
-      getAdmsDeviceRoster(deviceId),
-      listAdmsCommands(deviceId),
       getAdmsBiometricPolicy(deviceId),
       listAdmsBiometricCredentials(deviceId),
       getAdmsBiometricInventory(deviceId),
@@ -80,8 +68,6 @@ export function AdminAdmsDeviceDiagnosticsPage() {
     setTelemetry(nextTelemetry);
     setReconciliation(nextReconciliation);
     setLogs(nextLogs);
-    setRoster(nextRoster);
-    setCommands(nextCommands.items);
     setBiometricPolicy(nextPolicy);
     setCredentials(nextCredentials);
     setInventory(nextInventory);
@@ -96,26 +82,6 @@ export function AdminAdmsDeviceDiagnosticsPage() {
       })
       .finally(() => setLoading(false));
   }, [load]);
-
-  const normalizedPin = canaryPin.trim();
-  const pinValid = /^\d{1,128}$/.test(normalizedPin);
-  const latestUserInfoCommand = useMemo(() => commands.find(
-    (item) => item.commandType === "query_user_info" && item.wireCommand === `DATA QUERY USERINFO PIN=${normalizedPin}`,
-  ) ?? null, [commands, normalizedPin]);
-  const rosterItem = useMemo(
-    () => roster?.items.find((item) => item.pin === normalizedPin) ?? null,
-    [normalizedPin, roster?.items],
-  );
-  const userInfoCommandSucceeded = Boolean(
-    latestUserInfoCommand?.status === "succeeded"
-      && (latestUserInfoCommand.returnCode ?? -1) >= 0,
-  );
-  const rosterObservedAfterDelivery = Boolean(
-    latestUserInfoCommand?.deliveredAt
-      && rosterItem?.sourceRequestId
-      && new Date(rosterItem.lastSeenAt).getTime() >= new Date(latestUserInfoCommand.deliveredAt).getTime(),
-  );
-  const canaryVerified = userInfoCommandSucceeded && rosterObservedAfterDelivery;
 
   const refresh = useCallback(async () => {
     setBusy("refresh");
@@ -143,22 +109,6 @@ export function AdminAdmsDeviceDiagnosticsPage() {
       setBusy(null);
     }
   }, [device?.lifecycle, deviceId, load]);
-
-  const queryUserInfo = useCallback(async () => {
-    if (!pinValid || device?.lifecycle !== "active") return;
-    if (!window.confirm(`Jalankan pembacaan metadata pengguna untuk satu PIN ${normalizedPin}? Tidak ada template biometrik yang diminta.`)) return;
-    setBusy("userinfo");
-    try {
-      const result = await queryAdmsUserInfo(deviceId, normalizedPin);
-      setNotice(`Perintah C:${result.item.commandNumber} untuk PIN ${normalizedPin} sudah dibuat.`);
-      setError(null);
-      await load();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Permintaan baca metadata pengguna tidak dapat dibuat.");
-    } finally {
-      setBusy(null);
-    }
-  }, [device?.lifecycle, deviceId, load, normalizedPin, pinValid]);
 
   if (loading) {
     return (
@@ -214,32 +164,6 @@ export function AdminAdmsDeviceDiagnosticsPage() {
             ))}
           </div>
         </details>
-      </section>
-
-      <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
-        <div className="flex items-center gap-2 text-sm font-bold text-brand-heading"><Search className="h-4 w-4" /> Single-PIN metadata canary</div>
-        <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">
-          Pembacaan hanya satu PIN numerik yang sudah pernah teramati. Sukses baru dianggap terbukti bila command sukses dan ada safe roster observation setelah delivery.
-        </p>
-        <div className="mt-4 flex flex-wrap items-end gap-3">
-          <label className="min-w-64 flex-1 text-xs font-semibold text-muted-foreground">
-            PIN mesin
-            <input value={canaryPin} onChange={(event) => setCanaryPin(event.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="contoh: 205291319" className="mt-1 h-10 w-full rounded-xl border border-border px-3 font-mono text-sm text-brand-heading" />
-          </label>
-          <button type="button" disabled={busy !== null || !pinValid || device?.lifecycle !== "active"} onClick={() => void queryUserInfo()} className="h-10 rounded-xl bg-brand-primary px-4 text-xs font-bold text-white disabled:opacity-50">
-            {busy === "userinfo" ? "Mengirim…" : "Baca 1 PIN"}
-          </button>
-        </div>
-        {normalizedPin && latestUserInfoCommand ? (
-          <div className={`mt-4 rounded-xl border p-4 text-xs ${canaryVerified ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
-            <div className="font-bold">C:{latestUserInfoCommand.commandNumber} · {commandStatusLabel(latestUserInfoCommand.status)}</div>
-            <div className="mt-1">Return {latestUserInfoCommand.returnCode ?? "—"} · Result {latestUserInfoCommand.resultCommand ?? "—"} · Delivered {fmt(latestUserInfoCommand.deliveredAt)}</div>
-            <div className="mt-2 font-semibold">
-              {canaryVerified ? "VERIFIED: command sukses dan safe roster observation baru terbukti setelah delivery." : userInfoCommandSucceeded ? "Command sukses, tetapi safe roster observation baru setelah delivery belum terbukti." : "Canary belum mencapai terminal success."}
-            </div>
-            {rosterItem ? <div className="mt-2">Roster: PIN {rosterItem.pin} · {rosterItem.displayName ?? "—"} · kartu {rosterItem.cardNumber ?? "—"} · observed {fmt(rosterItem.lastSeenAt)}</div> : null}
-          </div>
-        ) : null}
       </section>
 
       <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">

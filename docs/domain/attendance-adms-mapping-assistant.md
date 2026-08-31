@@ -75,7 +75,7 @@ For every unmapped observed PIN:
 
 There is no bulk auto-map button.
 
-If the PIN has no safe device name yet, show that USERINFO must be read first; do not fabricate candidates from PIN/card/NIP.
+If the PIN has no passively/safely observed device name yet, show that name-based recommendations are unavailable. Active USERINFO reads are retired; do not fabricate candidates from PIN/card/NIP.
 
 ## Safety and attendance invariants
 

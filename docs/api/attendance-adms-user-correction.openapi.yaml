@@ -17,8 +17,9 @@ paths:
       description: |
         Target name is loaded server-side from the active employee referenced by the current
         explicit mapping. The caller cannot provide Name, PIN replacement, privilege, password,
-        card, verification mode, or biometric data. A later single-PIN USERINFO read-back is
-        required for physical verification.
+        card, verification mode, or biometric data. Immediate active USERINFO read-back is
+        retired. Future verification requires passive/safely observed evidence or a separately
+        reviewed and approved protocol capability.
       parameters:
         - $ref: '#/components/parameters/DeviceId'
         - $ref: '#/components/parameters/Pin'

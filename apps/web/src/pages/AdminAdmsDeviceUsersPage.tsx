@@ -10,7 +10,6 @@ import {
   listAdmsCommands,
   listAdmsUserCorrections,
   planAdmsPinCorrection,
-  queryAdmsUserInfo,
   syncAdmsUserName,
   type AdmsCommandItem,
   type AdmsMappingAssistantItem,
@@ -237,20 +236,6 @@ export function AdminAdmsDeviceUsersPage() {
     }
   }, [employeeQuery, mappedEmployeeIds]);
 
-  const readUser = useCallback(async (row: UserRow) => {
-    setBusyKey(`read:${row.pin}`);
-    try {
-      const result = await queryAdmsUserInfo(deviceId, row.pin);
-      setNotice(`Permintaan C:${result.item.commandNumber} untuk membaca PIN ${row.pin} sudah dibuat. Status selanjutnya dapat dilihat di tab Perintah.`);
-      setError(null);
-      await load();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Permintaan baca pengguna tidak dapat dibuat.");
-    } finally {
-      setBusyKey(null);
-    }
-  }, [deviceId, load]);
-
   const syncName = useCallback(async (row: UserRow) => {
     if (!row.employeeName || !row.rosterObserved) return;
     const sameValue = row.displayName === row.employeeName;
@@ -473,14 +458,6 @@ export function AdminAdmsDeviceUsersPage() {
                               Aksi
                             </summary>
                             <div className="absolute right-0 z-20 mt-1 w-56 rounded-xl border border-border bg-white p-1.5 shadow-lg">
-                              <button
-                                type="button"
-                                disabled={busyKey !== null}
-                                onClick={() => void readUser(row)}
-                                className="w-full rounded-lg px-3 py-2 text-left text-xs font-medium hover:bg-surface disabled:opacity-50"
-                              >
-                                Baca ulang dari mesin
-                              </button>
                               {mapped ? (
                                 <>
                                   <button
