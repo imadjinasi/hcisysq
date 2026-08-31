@@ -34,12 +34,6 @@ type MappingLifecycleRow = {
   employeeStatus: "active" | "inactive" | "resigned";
 };
 
-type MappingLifecycleSummaryRow = {
-  deviceId: string;
-  activeMappingCount: number;
-  reviewRequiredCount: number;
-};
-
 async function authenticate(
   auth: AuthService,
   request: FastifyRequest,
@@ -209,38 +203,6 @@ export async function registerAdmsWave2AdminRoutes(
     } finally {
       client.release();
     }
-  });
-
-  app.get("/admin/attendance/adms/devices/:deviceId/mapping-lifecycle-summary", async (request, reply) => {
-    const principal = await authenticate(auth, request, reply);
-    if (!principal) return;
-    const params = deviceIdSchema.safeParse(request.params);
-    if (!params.success) {
-      return reply.status(400).send({ code: "INVALID_ADMS_DEVICE", message: "ID mesin tidak valid." });
-    }
-
-    const result = await pool.query<MappingLifecycleSummaryRow>(
-      `SELECT
-         d.id AS "deviceId",
-         count(m.id)::int AS "activeMappingCount",
-         (count(m.id) FILTER (WHERE emp.status <> 'active'))::int AS "reviewRequiredCount"
-       FROM attendance_adms_devices d
-       LEFT JOIN attendance_adms_employee_mappings m
-         ON m.device_id = d.id
-        AND m.effective_from <= now()
-        AND (m.effective_to IS NULL OR m.effective_to > now())
-       LEFT JOIN employees emp ON emp.id = m.employee_id
-       WHERE d.id = $1
-       GROUP BY d.id`,
-      [params.data.deviceId],
-    );
-    const item = result.rows[0];
-    if (!item) {
-      return reply.status(404).send({ code: "ADMS_DEVICE_NOT_FOUND", message: "Mesin tidak ditemukan." });
-    }
-
-    reply.header("Cache-Control", "no-store");
-    return reply.send({ item });
   });
 
   app.get("/admin/attendance/adms/devices/:deviceId/roster", async (request, reply) => {
