@@ -295,6 +295,7 @@ export function connectivityLabel(status: AdmsConnectivityStatus) {
 }
 
 export function commandStatusLabel(status: string) {
+  if (status === "queued") return "Menunggu giliran";
   if (status === "pending") return "Menunggu mesin";
   if (status === "delivered") return "Sudah dikirim";
   if (status === "acknowledged") return "Diterima mesin";
@@ -308,6 +309,7 @@ export function commandStatusLabel(status: string) {
 export function commandActionLabel(command: Pick<AdmsCommandItem, "reason" | "wireCommand" | "requestedRangeStart" | "requestedRangeEnd">) {
   if (command.reason === "admin_sync_new") return "Minta transaksi terbaru";
   if (command.reason === "admin_range_recovery") return "Ambil ulang transaksi";
+  if (command.reason === "admin_long_range_recovery") return "Pemulihan periode panjang";
   if (command.reason === "scheduled_reconciliation") return "Rekonsiliasi transaksi terjadwal";
   if (command.reason === "registration_recovery") return "Pemulihan transaksi awal";
   if (command.reason === "admin_read_information") return "Baca informasi mesin";
