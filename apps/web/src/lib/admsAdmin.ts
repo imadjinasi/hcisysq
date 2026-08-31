@@ -32,10 +32,25 @@ export interface AdmsRosterItem {
   mappingStatus: "mapped" | "unmapped";
 }
 
+export interface AdmsMappingLifecycleItem {
+  mappingId: string;
+  pin: string;
+  employeeId: string;
+  employeeNumber: string;
+  employeeName: string;
+  employeeStatus: "active" | "inactive" | "resigned";
+}
+
 export interface AdmsRosterResponse {
   inventorySemantics: "observed_only";
   completeSnapshot: false;
   note: string;
+  mappingLifecycle: {
+    semantics: "active_explicit_mappings";
+    activeMappingCount: number;
+    reviewRequiredCount: number;
+    items: AdmsMappingLifecycleItem[];
+  };
   items: AdmsRosterItem[];
 }
 
