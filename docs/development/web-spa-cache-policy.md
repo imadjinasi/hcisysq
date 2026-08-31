@@ -1,6 +1,6 @@
 # HCIS Web SPA Cache Policy
 
-**Status:** ACCEPTED  
+**Status:** VERIFIED  
 **Updated:** 2026-08-31
 
 ## Problem
@@ -18,7 +18,7 @@ The production Nginx web container uses two different cache policies:
 
 SPA route fallback continues to resolve through `/index.html`, so normal navigation receives the current application shell while hashed assets retain efficient caching.
 
-## Verification
+## Repository verification
 
 Repository tests lock both boundaries:
 
@@ -26,4 +26,16 @@ Repository tests lock both boundaries:
 - static assets remain immutable;
 - the SPA fallback remains `/index.html`.
 
-Production deployment verification should compare the externally served `index.html` asset references with the container when a stale-client regression is suspected. A browser hard refresh or InPrivate session may be used diagnostically, but it is not the primary cache-control mechanism.
+## Production verification
+
+The policy was deployed on 2026-08-31 together with the current Attendance Admin workspace release. Read-only verification confirmed:
+
+- the deployed `index.html` returned the required no-store/no-cache headers;
+- the content-hashed JavaScript asset retained the immutable one-week cache policy;
+- API health, API readiness, and web health remained successful;
+- the existing database USERINFO retirement guard remained present;
+- retired full-roster and single-PIN USERINFO controls were absent from the built web artifact.
+
+A fresh Microsoft Edge InPrivate session then loaded the current hashed JavaScript asset from the network and verified the production Admin UI without issuing any device command. Retired USERINFO controls were absent, Users used passive-observation wording, Diagnostics did not expose raw biometric/request material, and global/device/effective biometric collection remained OFF. The inactive/resigned mapping presentation was not exercised because no such mapping was visible in that production device sample; this is recorded as `NOT OBSERVED`, not as a failure.
+
+The stale-client incident is therefore closed as a cache-regression issue. A browser hard refresh or InPrivate session remains useful diagnostically, but browser-specific behavior is not the primary cache-control mechanism.
