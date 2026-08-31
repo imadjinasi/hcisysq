@@ -13,12 +13,13 @@ import {
   syncAdmsUserName,
   type AdmsCommandItem,
   type AdmsMappingAssistantItem,
+  type AdmsMappingLifecycleItem,
   type AdmsRosterItem,
   type AdmsUserCorrectionItem,
 } from "@/lib/admsAdmin";
 import { listEmployees, type AdminEmployeeListItem } from "@/lib/adminEmployees";
-import { createAdmsMapping, endAdmsMapping } from "@/lib/attendance";
 import { employeeLifecycleLabel, mappedEmployeeNeedsReview } from "@/lib/admsUserState";
+import { createAdmsMapping, endAdmsMapping } from "@/lib/attendance";
 
 type UserRow = {
   pin: string;
@@ -67,6 +68,7 @@ function commandSucceeded(command: AdmsCommandItem | null) {
 export function AdminAdmsDeviceUsersPage() {
   const { deviceId, detail, refresh: refreshDevice } = useDeviceAdmin();
   const [roster, setRoster] = useState<AdmsRosterItem[]>([]);
+  const [mappingLifecycle, setMappingLifecycle] = useState<AdmsMappingLifecycleItem[]>([]);
   const [assistantItems, setAssistantItems] = useState<AdmsMappingAssistantItem[]>([]);
   const [corrections, setCorrections] = useState<AdmsUserCorrectionItem[]>([]);
   const [commands, setCommands] = useState<AdmsCommandItem[]>([]);
@@ -92,6 +94,7 @@ export function AdminAdmsDeviceUsersPage() {
       listAdmsCommands(deviceId),
     ]);
     setRoster(rosterResult.items);
+    setMappingLifecycle(rosterResult.mappingLifecycle.items);
     setAssistantItems(assistantResult.items);
     setCorrections(correctionResult.items);
     setCommands(commandResult.items);
@@ -154,6 +157,23 @@ export function AdminAdmsDeviceUsersPage() {
         assistant: current?.assistant ?? null,
       });
     }
+    for (const item of mappingLifecycle) {
+      const current = result.get(item.pin);
+      result.set(item.pin, {
+        pin: item.pin,
+        displayName: current?.displayName ?? null,
+        cardNumber: current?.cardNumber ?? null,
+        lastSeenAt: current?.lastSeenAt ?? null,
+        eventCount: current?.eventCount ?? 0,
+        rosterObserved: current?.rosterObserved ?? false,
+        mappingId: item.mappingId,
+        employeeId: item.employeeId,
+        employeeNumber: item.employeeNumber,
+        employeeName: item.employeeName,
+        employeeStatus: item.employeeStatus,
+        assistant: current?.assistant ?? null,
+      });
+    }
     for (const item of assistantItems) {
       const current = result.get(item.pin);
       result.set(item.pin, {
@@ -172,7 +192,7 @@ export function AdminAdmsDeviceUsersPage() {
       });
     }
     return Array.from(result.values()).sort((a, b) => a.pin.localeCompare(b.pin, "id", { numeric: true }));
-  }, [assistantItems, detail?.observedPins, roster]);
+  }, [assistantItems, detail?.observedPins, mappingLifecycle, roster]);
 
   const filteredRows = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("id-ID");
@@ -323,7 +343,7 @@ export function AdminAdmsDeviceUsersPage() {
           <div>
             <h2 className="text-base font-bold text-brand-heading">Pengguna mesin</h2>
             <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">
-              Tinjau PIN yang pernah teramati, hubungkan ke pegawai HCIS, dan jalankan tindakan aman untuk satu pengguna tanpa berpindah konteks mesin.
+              Tinjau PIN yang pernah teramati atau sudah mempunyai hubungan eksplisit di HCIS, lalu kelola mapping tanpa menebak isi lengkap mesin.
             </p>
           </div>
           <button
@@ -338,7 +358,7 @@ export function AdminAdmsDeviceUsersPage() {
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2 text-xs">
-          <span className="rounded-full bg-surface px-3 py-1.5 font-semibold text-brand-heading">{rows.length} PIN teramati</span>
+          <span className="rounded-full bg-surface px-3 py-1.5 font-semibold text-brand-heading">{rows.length} PIN dikenal HCIS</span>
           <span className="rounded-full bg-emerald-50 px-3 py-1.5 font-semibold text-emerald-700">{mappedCount} terhubung</span>
           <span className="rounded-full bg-amber-50 px-3 py-1.5 font-semibold text-amber-800">{unmappedCount} belum terhubung</span>
           {reviewCount > 0 ? (
@@ -517,7 +537,7 @@ export function AdminAdmsDeviceUsersPage() {
           </div>
         )}
         <div className="border-t border-border/70 bg-surface/50 px-4 py-3 text-[11px] leading-5 text-muted-foreground">
-          Daftar ini adalah gabungan PIN dari punch dan metadata pengguna aman yang pernah teramati secara pasif. PIN yang tidak terlihat di sini tidak membuktikan pengguna sudah tidak ada di mesin.
+          Workspace ini menggabungkan PIN dari punch, metadata pengguna aman yang pernah teramati secara pasif, dan mapping eksplisit HCIS. PIN yang tidak terlihat di sini tidak membuktikan pengguna sudah tidak ada di mesin.
         </div>
       </section>
 
