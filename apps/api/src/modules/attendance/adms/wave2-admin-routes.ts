@@ -250,7 +250,7 @@ export async function registerAdmsWave2AdminRoutes(
     return reply.send({
       inventorySemantics: "observed_only",
       completeSnapshot: false,
-      note: "Absennya PIN dari daftar ini belum membuktikan user hilang dari mesin sampai full roster query tervalidasi pada hardware.",
+      note: "Daftar ini hanya berisi observasi aman yang pernah diterima HCIS. Absennya PIN tidak membuktikan user tidak ada di mesin; active USERINFO reads telah dipensiunkan untuk firmware ini.",
       items: result.rows.map((row) => ({
         ...row,
         mappingStatus: row.mappingId ? "mapped" : "unmapped",
