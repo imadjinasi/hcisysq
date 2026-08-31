@@ -59,6 +59,8 @@ The Admin user workspace must:
 - disable name synchronization and PIN-correction planning for the inactive/resigned mapping, matching the existing server-side `EMPLOYEE_NOT_ACTIVE` guard;
 - never delete/recreate the device user, change PIN, touch biometrics, or alter attendance automatically.
 
+The top-level fingerprint-device list may surface only a count of current mappings requiring lifecycle review. That summary is read-only and intentionally excludes PINs, employee identity, roster metadata, card data, and biometric data. The operator must open the device's `Pengguna` workspace to review the explicit mapping itself. A failed/unavailable summary must not be treated as proof that no anomaly exists.
+
 If authoritative employee status is unavailable, HCIS must not guess that the employee is inactive. Only an explicit non-`active` employee status creates this review state.
 
 ## Name scoring
