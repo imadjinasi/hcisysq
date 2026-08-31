@@ -39,6 +39,12 @@ function createPool(principalType: "EMPLOYEE" | "SUPER_ADMIN") {
     if (sql === "SELECT id FROM attendance_adms_devices WHERE id = $1") {
       return { rows: [{ id: deviceId }], rowCount: 1 };
     }
+    if (sql.includes("count(m.id)::int AS \"activeMappingCount\"")) {
+      return {
+        rows: [{ deviceId, activeMappingCount: 3, reviewRequiredCount: 1 }],
+        rowCount: 1,
+      };
+    }
     if (sql.includes("FROM attendance_adms_device_roster_entries r")) {
       return {
         rows: [
@@ -143,6 +149,31 @@ describe("ATT-005 Wave 2 metadata-only Admin APIs", () => {
     });
     expect(body.note).toContain("Absennya PIN tidak membuktikan user tidak ada di mesin");
     expect(body.note).toContain("active USERINFO reads telah dipensiunkan");
+    await app.close();
+  });
+
+  it("returns lightweight mapping review counts without roster or biometric data", async () => {
+    const { pool, query } = createPool("SUPER_ADMIN");
+    const app = Fastify({ logger: false });
+    await registerAdmsWave2AdminRoutes(app, pool, config);
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/admin/attendance/adms/devices/${deviceId}/mapping-lifecycle-summary`,
+      headers: { cookie: "hcis_session=test-token" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["cache-control"]).toBe("no-store");
+    expect(response.json()).toEqual({
+      item: { deviceId, activeMappingCount: 3, reviewRequiredCount: 1 },
+    });
+    expect(
+      query.mock.calls.some(([sql]) => String(sql).includes("attendance_adms_device_roster_entries")),
+    ).toBe(false);
+    expect(
+      query.mock.calls.some(([sql]) => String(sql).includes("attendance_biometric_credentials")),
+    ).toBe(false);
     await app.close();
   });
 
