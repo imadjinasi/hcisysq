@@ -10,6 +10,34 @@ info:
 tags:
   - name: Attendance
 paths:
+  /admin/attendance/adms/devices/{deviceId}/mapping-lifecycle-summary:
+    get:
+      tags: [Attendance]
+      operationId: getAdmsDeviceMappingLifecycleSummary
+      summary: Read count-only lifecycle review status for current explicit mappings
+      description: |
+        SUPER_ADMIN read-only summary used by the fingerprint-device list. It reads only
+        current explicit HCIS mappings plus authoritative employee lifecycle and never sends
+        a device command. The response contains counts only: no PIN, employee identity,
+        roster metadata, card data, biometric data, or raw device payload.
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: Count-only explicit mapping lifecycle summary
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [item]
+                properties:
+                  item:
+                    $ref: '#/components/schemas/AdmsMappingLifecycleCountSummary'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /admin/attendance/adms/devices/{deviceId}/roster:
     get:
       tags: [Attendance]
@@ -234,6 +262,19 @@ components:
           description: True only when global and device gates are ON and lifecycle is active.
         enabledAt: { type: [string, 'null'], format: date-time }
         enabledByAccountId: { type: [string, 'null'], format: uuid }
+
+    AdmsMappingLifecycleCountSummary:
+      type: object
+      required: [deviceId, activeMappingCount, reviewRequiredCount]
+      properties:
+        deviceId: { type: string, format: uuid }
+        activeMappingCount:
+          type: integer
+          minimum: 0
+        reviewRequiredCount:
+          type: integer
+          minimum: 0
+          description: Current explicit mappings whose authoritative HCIS employee status is inactive or resigned.
 
     AdmsMappingLifecycleSummary:
       type: object
