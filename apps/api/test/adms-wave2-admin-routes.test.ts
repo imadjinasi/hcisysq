@@ -63,6 +63,21 @@ function createPool(principalType: "EMPLOYEE" | "SUPER_ADMIN") {
         rowCount: 1,
       };
     }
+    if (sql.includes("FROM attendance_adms_employee_mappings m") && sql.includes("emp.status AS \"employeeStatus\"")) {
+      return {
+        rows: [
+          {
+            mappingId: "00000000-0000-4000-8000-000000000831",
+            pin: "0099",
+            employeeId: "00000000-0000-4000-8000-000000000832",
+            employeeNumber: "YSQ-0099",
+            employeeName: "Pegawai Lifecycle Synthetic",
+            employeeStatus: "inactive",
+          },
+        ],
+        rowCount: 1,
+      };
+    }
     if (sql.includes("FROM attendance_biometric_credentials c")) {
       return {
         rows: [
@@ -97,7 +112,7 @@ function createPool(principalType: "EMPLOYEE" | "SUPER_ADMIN") {
 }
 
 describe("ATT-005 Wave 2 metadata-only Admin APIs", () => {
-  it("returns passive observed roster semantics without guessing missing users", async () => {
+  it("returns passive observed roster semantics plus explicit mapping lifecycle facts", async () => {
     const { pool } = createPool("SUPER_ADMIN");
     const app = Fastify({ logger: false });
     await registerAdmsWave2AdminRoutes(app, pool, config);
@@ -113,6 +128,17 @@ describe("ATT-005 Wave 2 metadata-only Admin APIs", () => {
     expect(body).toMatchObject({
       inventorySemantics: "observed_only",
       completeSnapshot: false,
+      mappingLifecycle: {
+        semantics: "active_explicit_mappings",
+        activeMappingCount: 1,
+        reviewRequiredCount: 1,
+        items: [
+          {
+            pin: "0099",
+            employeeStatus: "inactive",
+          },
+        ],
+      },
       items: [{ pin: "0042", mappingStatus: "unmapped" }],
     });
     expect(body.note).toContain("Absennya PIN tidak membuktikan user tidak ada di mesin");
