@@ -1,5 +1,6 @@
 import { DeviceAdminProvider } from "@/components/attendance/device-admin/DeviceAdminContext";
 import { DeviceDetailShell, type DeviceAdminSection } from "@/components/attendance/device-admin/DeviceDetailShell";
+import { LongRangeRecoveryPanel } from "@/components/attendance/device-admin/LongRangeRecoveryPanel";
 import { AdminAdmsDeviceCommandsPage } from "@/pages/AdminAdmsDeviceCommandsPage";
 import { AdminAdmsDeviceDiagnosticsPage } from "@/pages/AdminAdmsDeviceDiagnosticsPage";
 import { AdminAdmsDeviceOverviewPage } from "@/pages/AdminAdmsDeviceOverviewPage";
@@ -10,7 +11,14 @@ import { AdminAdmsDeviceUsersPage } from "@/pages/AdminAdmsDeviceUsersPage";
 function sectionContent(section: DeviceAdminSection) {
   if (section === "overview") return <AdminAdmsDeviceOverviewPage />;
   if (section === "users") return <AdminAdmsDeviceUsersPage />;
-  if (section === "transactions") return <AdminAdmsDeviceTransactionsPage />;
+  if (section === "transactions") {
+    return (
+      <>
+        <AdminAdmsDeviceTransactionsPage />
+        <LongRangeRecoveryPanel />
+      </>
+    );
+  }
   if (section === "commands") return <AdminAdmsDeviceCommandsPage />;
   if (section === "settings") return <AdminAdmsDeviceSettingsPage />;
   return <AdminAdmsDeviceDiagnosticsPage />;
