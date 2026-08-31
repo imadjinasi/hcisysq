@@ -37,6 +37,13 @@ fi
 
 COMPOSE=(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
 PREVIOUS_SHA=$(git rev-parse HEAD)
+if [[ "$PREVIOUS_SHA" == "$EXPECTED_SHA" ]]; then
+  echo "STOP: working tree sudah berada di target SHA." >&2
+  echo "Deploy harus dimulai dari SHA production sebelumnya agar rollback application memiliki baseline yang benar." >&2
+  echo "Jika runtime target sudah benar-benar terdeploy, gunakan scripts/verify-vps.sh saja." >&2
+  exit 1
+fi
+
 TIMESTAMP=$(date -u +%Y%m%dT%H%M%SZ)
 SHORT_SHA=$(printf '%s' "$EXPECTED_SHA" | cut -c1-12)
 BACKUP_DIR="$BACKUP_ROOT/$TIMESTAMP-$SHORT_SHA"
