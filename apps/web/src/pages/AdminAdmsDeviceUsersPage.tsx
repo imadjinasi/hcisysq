@@ -18,6 +18,7 @@ import {
 } from "@/lib/admsAdmin";
 import { listEmployees, type AdminEmployeeListItem } from "@/lib/adminEmployees";
 import { createAdmsMapping, endAdmsMapping } from "@/lib/attendance";
+import { employeeLifecycleLabel, mappedEmployeeNeedsReview } from "@/lib/admsUserState";
 
 type UserRow = {
   pin: string;
@@ -196,10 +197,11 @@ export function AdminAdmsDeviceUsersPage() {
   );
   const mappedCount = rows.filter((row) => row.mappingId && row.employeeId).length;
   const unmappedCount = rows.length - mappedCount;
+  const reviewCount = rows.filter((row) => mappedEmployeeNeedsReview(row)).length;
 
   const mapEmployee = useCallback(async (row: UserRow, employee: Pick<AdminEmployeeListItem, "id" | "employeeNumber" | "fullName">) => {
     const confirmed = window.confirm(
-      `Hubungkan PIN ${row.pin} (${row.displayName ?? "nama mesin belum dibaca"}) ke ${employee.fullName} (${employee.employeeNumber})?\n\nIni keputusan eksplisit Admin. Kemiripan nama hanya rekomendasi dan tidak pernah membuat mapping otomatis.`,
+      `Hubungkan PIN ${row.pin} (${row.displayName ?? "nama mesin belum teramati"}) ke ${employee.fullName} (${employee.employeeNumber})?\n\nIni keputusan eksplisit Admin. Kemiripan nama hanya rekomendasi dan tidak pernah membuat mapping otomatis.`,
     );
     if (!confirmed) return;
     setBusyKey(`map:${row.pin}`);
@@ -237,7 +239,7 @@ export function AdminAdmsDeviceUsersPage() {
   }, [employeeQuery, mappedEmployeeIds]);
 
   const syncName = useCallback(async (row: UserRow) => {
-    if (!row.employeeName || !row.rosterObserved) return;
+    if (!row.employeeName || !row.rosterObserved || mappedEmployeeNeedsReview(row)) return;
     const sameValue = row.displayName === row.employeeName;
     const confirmed = window.confirm(
       sameValue
@@ -275,7 +277,7 @@ export function AdminAdmsDeviceUsersPage() {
   }, [refreshAll]);
 
   const saveCorrection = useCallback(async () => {
-    if (!correctionTarget || !correctionTarget.rosterObserved) return;
+    if (!correctionTarget || !correctionTarget.rosterObserved || mappedEmployeeNeedsReview(correctionTarget)) return;
     const target = intendedPin.trim();
     if (!/^\d{1,128}$/.test(target) || target === correctionTarget.pin) {
       setError("PIN yang seharusnya harus berupa angka dan berbeda dari PIN mesin saat ini.");
@@ -339,6 +341,9 @@ export function AdminAdmsDeviceUsersPage() {
           <span className="rounded-full bg-surface px-3 py-1.5 font-semibold text-brand-heading">{rows.length} PIN teramati</span>
           <span className="rounded-full bg-emerald-50 px-3 py-1.5 font-semibold text-emerald-700">{mappedCount} terhubung</span>
           <span className="rounded-full bg-amber-50 px-3 py-1.5 font-semibold text-amber-800">{unmappedCount} belum terhubung</span>
+          {reviewCount > 0 ? (
+            <span className="rounded-full bg-orange-50 px-3 py-1.5 font-semibold text-orange-800">{reviewCount} hubungan perlu ditinjau</span>
+          ) : null}
           {corrections.some((item) => item.status === "planned") ? (
             <span className="rounded-full bg-sky-50 px-3 py-1.5 font-semibold text-sky-700">
               {corrections.filter((item) => item.status === "planned").length} rencana koreksi PIN
@@ -395,6 +400,7 @@ export function AdminAdmsDeviceUsersPage() {
               <tbody className="divide-y divide-border/60">
                 {filteredRows.map((row) => {
                   const mapped = Boolean(row.mappingId && row.employeeId);
+                  const mappingReview = mappedEmployeeNeedsReview(row);
                   const plan = plannedByPin.get(row.pin) ?? null;
                   const nameCommand = latestNameCommand(commands, row.pin);
                   return (
@@ -404,15 +410,18 @@ export function AdminAdmsDeviceUsersPage() {
                         <div className="mt-1 text-[11px] text-muted-foreground">{row.eventCount} punch tersimpan</div>
                       </td>
                       <td className="px-4 py-4">
-                        <div className="font-semibold text-brand-heading">{row.displayName ?? "Nama belum dibaca"}</div>
+                        <div className="font-semibold text-brand-heading">{row.displayName ?? "Nama belum teramati"}</div>
                         <div className="mt-1 text-xs text-muted-foreground">Kartu {row.cardNumber ?? "—"}</div>
-                        {!row.rosterObserved ? <div className="mt-1 text-[11px] font-medium text-amber-700">Metadata pengguna belum dibaca</div> : null}
+                        {!row.rosterObserved ? <div className="mt-1 text-[11px] font-medium text-amber-700">Metadata pengguna belum teramati</div> : null}
                       </td>
                       <td className="px-4 py-4">
                         {mapped ? (
                           <>
                             <div className="font-semibold text-brand-heading">{row.employeeName ?? "Pegawai terhubung"}</div>
                             <div className="mt-1 text-xs text-muted-foreground">{row.employeeNumber ?? "—"}</div>
+                            {mappingReview ? (
+                              <div className="mt-1 text-[11px] font-semibold text-orange-800">{employeeLifecycleLabel(row.employeeStatus)} · tinjau hubungan ini</div>
+                            ) : null}
                           </>
                         ) : (
                           <span className="text-xs text-muted-foreground">Belum terhubung</span>
@@ -420,11 +429,13 @@ export function AdminAdmsDeviceUsersPage() {
                       </td>
                       <td className="px-4 py-4">
                         <div className="space-y-1.5">
-                          <span className={mapped
-                            ? "inline-flex rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700"
-                            : "inline-flex rounded-full bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800"}
+                          <span className={mappingReview
+                            ? "inline-flex rounded-full bg-orange-50 px-2 py-1 text-[11px] font-semibold text-orange-800"
+                            : mapped
+                              ? "inline-flex rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700"
+                              : "inline-flex rounded-full bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800"}
                           >
-                            {mapped ? "Terhubung" : "Belum terhubung"}
+                            {mappingReview ? "Perlu ditinjau" : mapped ? "Terhubung" : "Belum terhubung"}
                           </span>
                           {plan ? (
                             <div className="text-[11px] font-medium text-sky-700">Rencana PIN {plan.legacyPin} → {plan.intendedPin}</div>
@@ -460,9 +471,14 @@ export function AdminAdmsDeviceUsersPage() {
                             <div className="absolute right-0 z-20 mt-1 w-56 rounded-xl border border-border bg-white p-1.5 shadow-lg">
                               {mapped ? (
                                 <>
+                                  {mappingReview ? (
+                                    <div className="rounded-lg bg-orange-50 px-3 py-2 text-[11px] leading-4 text-orange-900">
+                                      Pegawai HCIS sudah tidak aktif. Akhiri hubungan jika mapping ini tidak lagi berlaku.
+                                    </div>
+                                  ) : null}
                                   <button
                                     type="button"
-                                    disabled={busyKey !== null || !row.employeeName || !row.rosterObserved}
+                                    disabled={busyKey !== null || mappingReview || !row.employeeName || !row.rosterObserved}
                                     onClick={() => void syncName(row)}
                                     className="w-full rounded-lg px-3 py-2 text-left text-xs font-medium hover:bg-surface disabled:opacity-50"
                                   >
@@ -470,7 +486,7 @@ export function AdminAdmsDeviceUsersPage() {
                                   </button>
                                   <button
                                     type="button"
-                                    disabled={busyKey !== null || !row.rosterObserved}
+                                    disabled={busyKey !== null || mappingReview || !row.rosterObserved}
                                     onClick={() => {
                                       setCorrectionTarget(row);
                                       setIntendedPin(plan?.intendedPin ?? "");
@@ -501,7 +517,7 @@ export function AdminAdmsDeviceUsersPage() {
           </div>
         )}
         <div className="border-t border-border/70 bg-surface/50 px-4 py-3 text-[11px] leading-5 text-muted-foreground">
-          Daftar ini adalah gabungan PIN yang pernah teramati dari punch dan metadata pengguna aman. PIN yang tidak terlihat di sini belum membuktikan pengguna sudah tidak ada di mesin.
+          Daftar ini adalah gabungan PIN dari punch dan metadata pengguna aman yang pernah teramati secara pasif. PIN yang tidak terlihat di sini tidak membuktikan pengguna sudah tidak ada di mesin.
         </div>
       </section>
 
@@ -522,7 +538,7 @@ export function AdminAdmsDeviceUsersPage() {
 
             <div className="mt-4 rounded-xl border border-border/70 bg-surface p-3">
               <div className="text-xs text-muted-foreground">Nama di mesin</div>
-              <div className="mt-1 font-semibold text-brand-heading">{mappingTarget.displayName ?? "Belum dibaca"}</div>
+              <div className="mt-1 font-semibold text-brand-heading">{mappingTarget.displayName ?? "Belum teramati"}</div>
             </div>
 
             <div className="mt-5">
