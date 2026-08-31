@@ -114,6 +114,7 @@ export function AdminAdmsDevicesPage() {
     let attention = 0;
     for (const device of devices) {
       const connectivity = healthById[device.id]?.connectivityStatus ?? "unknown";
+      const mappingSummary = mappingSummaryById[device.id];
       if (connectivity === "online") online += 1;
       else if (connectivity === "offline") offline += 1;
       else unknown += 1;
@@ -121,7 +122,8 @@ export function AdminAdmsDevicesPage() {
         connectivity === "offline"
         || device.lifecycle !== "active"
         || (device.unmappedPinCount ?? 0) > 0
-        || (mappingSummaryById[device.id]?.reviewRequiredCount ?? 0) > 0
+        || !mappingSummary
+        || mappingSummary.reviewRequiredCount > 0
       ) attention += 1;
     }
     return { online, offline, unknown, attention };
@@ -281,7 +283,8 @@ export function AdminAdmsDevicesPage() {
                   {filtered.map((device) => {
                     const health = healthById[device.id];
                     const connectivity = health?.connectivityStatus ?? "unknown";
-                    const mappingReviewCount = mappingSummaryById[device.id]?.reviewRequiredCount ?? 0;
+                    const mappingSummary = mappingSummaryById[device.id];
+                    const mappingReviewCount = mappingSummary?.reviewRequiredCount ?? null;
                     return (
                       <tr key={device.id} className="hover:bg-surface/70">
                         <td className="px-4 py-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${connectivityClass(connectivity)}`}>{connectivityLabel(connectivity)}</span></td>
@@ -292,7 +295,8 @@ export function AdminAdmsDevicesPage() {
                         <td className="px-4 py-3">
                           <div className="font-semibold text-brand-heading">{device.activeMappingCount ?? 0} terhubung</div>
                           {(device.unmappedPinCount ?? 0) > 0 ? <div className="mt-0.5 flex items-center gap-1 text-xs text-amber-700"><AlertTriangle className="h-3.5 w-3.5" /> {device.unmappedPinCount} belum terhubung</div> : null}
-                          {mappingReviewCount > 0 ? <div className="mt-0.5 flex items-center gap-1 text-xs font-semibold text-orange-800"><AlertTriangle className="h-3.5 w-3.5" /> {mappingReviewCount} hubungan perlu ditinjau</div> : null}
+                          {mappingReviewCount === null ? <div className="mt-0.5 text-xs text-muted-foreground">Status lifecycle mapping belum diketahui</div> : null}
+                          {mappingReviewCount !== null && mappingReviewCount > 0 ? <div className="mt-0.5 flex items-center gap-1 text-xs font-semibold text-orange-800"><AlertTriangle className="h-3.5 w-3.5" /> {mappingReviewCount} hubungan perlu ditinjau</div> : null}
                         </td>
                         <td className="px-4 py-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${lifecycleClass(device.lifecycle)}`}>{lifecycleLabel(device.lifecycle)}</span></td>
                       </tr>
@@ -305,7 +309,8 @@ export function AdminAdmsDevicesPage() {
               {filtered.map((device) => {
                 const health = healthById[device.id];
                 const connectivity = health?.connectivityStatus ?? "unknown";
-                const mappingReviewCount = mappingSummaryById[device.id]?.reviewRequiredCount ?? 0;
+                const mappingSummary = mappingSummaryById[device.id];
+                const mappingReviewCount = mappingSummary?.reviewRequiredCount ?? null;
                 return (
                   <a key={device.id} href={`/admin/attendance/devices/${device.id}`} className="block p-4 hover:bg-surface/70">
                     <div className="flex items-start justify-between gap-3">
@@ -316,7 +321,8 @@ export function AdminAdmsDevicesPage() {
                       <span>Aktivitas {fmt(health?.lastSeenAt ?? device.lastSeenAt)}</span>
                       <span>{device.activeMappingCount ?? 0} mapping</span>
                       {(device.unmappedPinCount ?? 0) > 0 ? <span className="text-amber-700">{device.unmappedPinCount} PIN perlu ditinjau</span> : null}
-                      {mappingReviewCount > 0 ? <span className="font-semibold text-orange-800">{mappingReviewCount} hubungan pegawai perlu ditinjau</span> : null}
+                      {mappingReviewCount === null ? <span>Status lifecycle mapping belum diketahui</span> : null}
+                      {mappingReviewCount !== null && mappingReviewCount > 0 ? <span className="font-semibold text-orange-800">{mappingReviewCount} hubungan pegawai perlu ditinjau</span> : null}
                     </div>
                   </a>
                 );
