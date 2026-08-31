@@ -25,6 +25,15 @@ type BiometricCollectionPolicyRow = {
   enabledByAccountId: string | null;
 };
 
+type MappingLifecycleRow = {
+  mappingId: string;
+  pin: string;
+  employeeId: string;
+  employeeNumber: string;
+  employeeName: string;
+  employeeStatus: "active" | "inactive" | "resigned";
+};
+
 async function authenticate(
   auth: AuthService,
   request: FastifyRequest,
@@ -212,45 +221,73 @@ export async function registerAdmsWave2AdminRoutes(
       return reply.status(404).send({ code: "ADMS_DEVICE_NOT_FOUND", message: "Mesin tidak ditemukan." });
     }
 
-    const result = await pool.query(
-      `SELECT
-         r.id,
-         r.pin,
-         r.display_name AS "displayName",
-         r.card_number AS "cardNumber",
-         r.privilege,
-         r.verify_mode AS "verifyMode",
-         r.safe_metadata AS "safeMetadata",
-         r.first_seen_at AS "firstSeenAt",
-         r.last_seen_at AS "lastSeenAt",
-         r.source_request_id AS "sourceRequestId",
-         m.id AS "mappingId",
-         m.employee_id AS "employeeId",
-         emp.employee_number AS "employeeNumber",
-         emp.full_name AS "employeeName",
-         emp.status AS "employeeStatus"
-       FROM attendance_adms_device_roster_entries r
-       LEFT JOIN LATERAL (
-         SELECT id, employee_id
-         FROM attendance_adms_employee_mappings
-         WHERE device_id = r.device_id
-           AND pin = r.pin
-           AND effective_from <= now()
-           AND (effective_to IS NULL OR effective_to > now())
-         ORDER BY effective_from DESC
-         LIMIT 1
-       ) m ON true
-       LEFT JOIN employees emp ON emp.id = m.employee_id
-       WHERE r.device_id = $1
-       ORDER BY r.pin`,
-      [params.data.deviceId],
-    );
+    const [result, mappingLifecycle] = await Promise.all([
+      pool.query(
+        `SELECT
+           r.id,
+           r.pin,
+           r.display_name AS "displayName",
+           r.card_number AS "cardNumber",
+           r.privilege,
+           r.verify_mode AS "verifyMode",
+           r.safe_metadata AS "safeMetadata",
+           r.first_seen_at AS "firstSeenAt",
+           r.last_seen_at AS "lastSeenAt",
+           r.source_request_id AS "sourceRequestId",
+           m.id AS "mappingId",
+           m.employee_id AS "employeeId",
+           emp.employee_number AS "employeeNumber",
+           emp.full_name AS "employeeName",
+           emp.status AS "employeeStatus"
+         FROM attendance_adms_device_roster_entries r
+         LEFT JOIN LATERAL (
+           SELECT id, employee_id
+           FROM attendance_adms_employee_mappings
+           WHERE device_id = r.device_id
+             AND pin = r.pin
+             AND effective_from <= now()
+             AND (effective_to IS NULL OR effective_to > now())
+           ORDER BY effective_from DESC
+           LIMIT 1
+         ) m ON true
+         LEFT JOIN employees emp ON emp.id = m.employee_id
+         WHERE r.device_id = $1
+         ORDER BY r.pin`,
+        [params.data.deviceId],
+      ),
+      pool.query<MappingLifecycleRow>(
+        `SELECT
+           m.id AS "mappingId",
+           m.pin,
+           m.employee_id AS "employeeId",
+           emp.employee_number AS "employeeNumber",
+           emp.full_name AS "employeeName",
+           emp.status AS "employeeStatus"
+         FROM attendance_adms_employee_mappings m
+         JOIN employees emp ON emp.id = m.employee_id
+         WHERE m.device_id = $1
+           AND m.effective_from <= now()
+           AND (m.effective_to IS NULL OR m.effective_to > now())
+         ORDER BY m.pin, m.effective_from DESC`,
+        [params.data.deviceId],
+      ),
+    ]);
+
+    const mappingReviewRequiredCount = mappingLifecycle.rows.filter(
+      (item) => item.employeeStatus !== "active",
+    ).length;
 
     reply.header("Cache-Control", "no-store");
     return reply.send({
       inventorySemantics: "observed_only",
       completeSnapshot: false,
       note: "Daftar ini hanya berisi observasi aman yang pernah diterima HCIS. Absennya PIN tidak membuktikan user tidak ada di mesin; active USERINFO reads telah dipensiunkan untuk firmware ini.",
+      mappingLifecycle: {
+        semantics: "active_explicit_mappings",
+        activeMappingCount: mappingLifecycle.rows.length,
+        reviewRequiredCount: mappingReviewRequiredCount,
+        items: mappingLifecycle.rows,
+      },
       items: result.rows.map((row) => ({
         ...row,
         mappingStatus: row.mappingId ? "mapped" : "unmapped",
