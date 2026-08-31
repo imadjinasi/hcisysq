@@ -3,11 +3,11 @@
 **Status:** VERIFIED  
 **Specification:** `docs/domain/attendance-device-admin-information-architecture.md`  
 **Implementation merge:** `82dcd5455eb24d4f5c31513c3ed245b9dfca5a57`  
-**Verified:** 2026-08-30
+**Verified:** 2026-08-31
 
 ## Result
 
-The ATT-006 fingerprint-device Admin information architecture is implemented on `main` and has been deployed through the approved web-only production release path.
+The ATT-006 fingerprint-device Admin information architecture is implemented on `main` and has been deployed through the approved production release path.
 
 Operator verification confirmed the intended product structure:
 
@@ -20,7 +20,23 @@ Operator verification confirmed the intended product structure:
 - ordinary UI vocabulary hides protocol/Wave terminology unless explicit technical detail is opened;
 - route-scoped loading replaces the previous monolithic cockpit and hidden polling model.
 
-The deployment verification also confirmed that the frontend release did not restart the API or PostgreSQL services and that web health, API health, API readiness, and the new Admin SPA route remained healthy.
+Deployment verification confirmed web health, API health, API readiness, and the Admin SPA routes remained healthy without restarting PostgreSQL.
+
+## Frontend cache-regression closure
+
+After an earlier verification was misled by a stale Microsoft Edge SPA session, HCIS adopted an explicit application-shell cache policy: mutable `index.html` is non-cacheable while content-hashed assets remain immutable.
+
+Production verification on 2026-08-31 confirmed both server and browser sides of that fix:
+
+- current `index.html` no-store/no-cache headers were present;
+- the current content-hashed JavaScript asset retained immutable caching;
+- a fresh Edge InPrivate session loaded the current asset and showed no retired full-roster or single-PIN USERINFO controls;
+- Users used passive-observation wording and explicit mapping semantics;
+- Diagnostics exposed no raw request/biometric material;
+- global/device/effective biometric collection remained OFF;
+- zero device commands were issued during the frontend verification.
+
+The inactive/resigned mapping visual state was `NOT OBSERVED` in that production sample because the visible mapping was not inactive/resigned. This does not invalidate the cache-regression verification.
 
 ## Physical safe-write verification
 
@@ -55,4 +71,6 @@ This verification does not approve or prove:
 
 ## Remaining ATT-005 work
 
-ATT-006 is complete, but ATT-005 WDMS-compatible device parity remains in implementation. The next operational milestone is the safe roster-synchronization portion of Wave 2, followed later by separately gated biometric credential canaries and Wave 3 operations/maintenance.
+ATT-006 is complete, but ATT-005 WDMS-compatible device parity remains in implementation. Roster/user identity handling is now constrained to passive observations plus explicit HCIS mappings; active USERINFO reads are a retired path, not a future synchronization milestone.
+
+Remaining safe work should strengthen passive mapping lifecycle observability and other metadata/control-plane behavior that does not require USERINFO or biometric device commands. Separately gated biometric credential operations and Wave 3 maintenance remain future work and require their own hardware/security evidence before activation.
