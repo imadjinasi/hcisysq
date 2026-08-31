@@ -7,6 +7,7 @@ import { registerAdmsAdminRoutes } from "./modules/attendance/adms/admin-routes.
 import { registerAdmsIngressRoutes } from "./modules/attendance/adms/routes.js";
 import { registerAdmsWave1AdminRoutes } from "./modules/attendance/adms/wave1-admin-routes.js";
 import { registerAdmsWave1OpsRoutes } from "./modules/attendance/adms/wave1-ops-routes.js";
+import { registerAdmsWave1RecoveryRoutes } from "./modules/attendance/adms/wave1-recovery-routes.js";
 import { registerAdmsWave2AdminRoutes } from "./modules/attendance/adms/wave2-admin-routes.js";
 import { registerAdmsWave2MappingAssistantRoutes } from "./modules/attendance/adms/wave2-mapping-assistant-routes.js";
 import { registerAdmsWave2UserCorrectionRoutes } from "./modules/attendance/adms/wave2-user-correction-routes.js";
@@ -60,6 +61,7 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerAdmsAdminRoutes(app, pool, config);
   await registerAdmsWave1AdminRoutes(app, pool, config);
   await registerAdmsWave1OpsRoutes(app, pool, config);
+  await registerAdmsWave1RecoveryRoutes(app, pool, config);
   await registerAdmsWave2AdminRoutes(app, pool, config);
   await registerAdmsWave2MappingAssistantRoutes(app, pool, config);
   await registerAdmsWave2UserCorrectionRoutes(app, pool, config);

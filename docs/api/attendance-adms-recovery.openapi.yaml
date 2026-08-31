@@ -1,0 +1,169 @@
+openapi: 3.1.0
+info:
+  title: HCIS YSQ ATT-005 Long-Range Recovery Fragment
+  version: 0.0.1
+  description: |
+    Contract fragment for serialized historical attendance recovery. No new device
+    protocol command is introduced: every executable chunk is the existing allowlisted
+    bounded DATA QUERY ATTLOG command. Active USERINFO reads remain retired.
+tags:
+  - name: Attendance
+paths:
+  /admin/attendance/adms/devices/{deviceId}/recovery-jobs:
+    get:
+      tags: [Attendance]
+      operationId: listAdmsRecoveryJobs
+      summary: List recent serialized bounded ATTLOG recovery jobs
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: Recent recovery jobs and chunk progress
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [execution, maxChunkDays, maxRangeDays, note, items]
+                properties:
+                  execution:
+                    type: string
+                    const: serialized_bounded_attlog
+                  maxChunkDays:
+                    type: integer
+                    const: 31
+                  maxRangeDays:
+                    type: integer
+                    const: 730
+                  note: { type: string }
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/AdmsRecoveryJob' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/attendance/adms/devices/{deviceId}/transfers/attendance-recovery-job:
+    post:
+      tags: [Attendance]
+      operationId: requestAdmsLongRangeRecovery
+      summary: Queue a serialized sequence of proven bounded ATTLOG range commands
+      description: |
+        SUPER_ADMIN operation for ranges greater than 31 days and no greater than 730 days.
+        The server creates only allowlisted DATA QUERY ATTLOG commands, each no longer than
+        chunkDays (maximum 31 days), and permits only one chunk to be active at a time.
+        This is not a new upload-all wire command and does not query USERINFO or biometric data.
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [startAt, endAt]
+              properties:
+                startAt: { type: string, format: date-time }
+                endAt: { type: string, format: date-time }
+                chunkDays:
+                  type: integer
+                  minimum: 1
+                  maximum: 31
+                  default: 31
+      responses:
+        '201':
+          description: Recovery job created; the first bounded chunk is pending and later chunks are queued
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [item]
+                properties:
+                  item:
+                    type: object
+                    required:
+                      [id, deviceId, requestedRangeStart, requestedRangeEnd, chunkDays, totalChunks, status]
+                    properties:
+                      id: { type: string, format: uuid }
+                      deviceId: { type: string, format: uuid }
+                      requestedRangeStart: { type: string, format: date-time }
+                      requestedRangeEnd: { type: string, format: date-time }
+                      chunkDays: { type: integer, minimum: 1, maximum: 31 }
+                      totalChunks: { type: integer, minimum: 2 }
+                      status: { type: string, const: running }
+                      firstCommandNumber: { type: [string, 'null'] }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Device inactive, another command is active, or another recovery job is running
+
+  /admin/attendance/adms/recovery-jobs/{jobId}/cancel:
+    post:
+      tags: [Attendance]
+      operationId: cancelAdmsRecoveryJob
+      summary: Cancel a long-range recovery only while its current chunk has not been delivered
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Recovery job cancelled and remaining queued chunks stopped }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Job already terminal or current chunk already delivered/acknowledged
+
+components:
+  parameters:
+    DeviceId:
+      name: deviceId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    Unauthenticated:
+      description: Authentication required
+    Forbidden:
+      description: SUPER_ADMIN authorization required
+    NotFound:
+      description: Device or recovery job not found
+    ValidationError:
+      description: Request validation failed
+
+  schemas:
+    AdmsRecoveryJob:
+      type: object
+      required:
+        [id, deviceId, requestedRangeStart, requestedRangeEnd, chunkDays, totalChunks, status,
+         succeededChunks, failedChunks, expiredChunks, cancelledChunks, queuedChunks, activeChunks,
+         createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        deviceId: { type: string, format: uuid }
+        requestedRangeStart: { type: string, format: date-time }
+        requestedRangeEnd: { type: string, format: date-time }
+        chunkDays: { type: integer, minimum: 1, maximum: 31 }
+        totalChunks: { type: integer, minimum: 1 }
+        status:
+          type: string
+          enum: [running, succeeded, failed, cancelled]
+        failureReason:
+          type: [string, 'null']
+          enum: [chunk_failed, chunk_expired, null]
+        completedAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        succeededChunks: { type: integer, minimum: 0 }
+        failedChunks: { type: integer, minimum: 0 }
+        expiredChunks: { type: integer, minimum: 0 }
+        cancelledChunks: { type: integer, minimum: 0 }
+        queuedChunks: { type: integer, minimum: 0 }
+        activeChunks: { type: integer, minimum: 0, maximum: 1 }
+        activeCommandNumber: { type: [string, 'null'] }
