@@ -2,18 +2,20 @@
 
 **Status:** PRE-PRODUCTION HARDENING  
 **Applies to:** ATT-005 Wave 1 device plane + Wave 2 roster/biometric control-plane foundation  
+**Updated:** 2026-08-31  
 **Production biometric collection:** OFF unless every enablement gate below is explicitly satisfied
 
 This runbook does not authorize a production deploy by itself. Production deployment remains a human-operated VPS action. It also does not replace physical-device validation: synthetic CI proves software behavior only.
 
 ## Fixed safety boundary
 
-Until the remaining physical canaries are complete:
+Current production evidence establishes these boundaries:
 
 - keep `BIOMETRIC_COLLECTION_ENABLED=0`;
 - keep every per-device biometric pilot gate OFF;
-- do not send roster/template/enrollment/delete/restore commands to fingerprint devices;
-- do not enable periodic reconciliation automatically unless the previously validated Wave 1 operating policy explicitly calls for it;
+- active `DATA QUERY USERINFO` and `DATA QUERY USERINFO PIN=<digits>` are retired for the physically tested firmware and must not be retried;
+- the device roster is passive `observed_only` evidence and is never treated as a complete machine snapshot;
+- do not send template/enrollment/delete/restore/distribution commands to fingerprint devices without a separately reviewed protocol capability and physical safety plan;
 - do not interpret roster absence as a missing device user/template;
 - do not infer late, absence, work hours, overtime, payroll, leave, or attendance-resolution outcomes from raw fingerprint facts;
 - keep device PIN to `employees.id` mapping explicit; leading zeroes remain significant.
@@ -22,67 +24,64 @@ Effective passive biometric collection requires both the global application gate
 
 ## Deployment status
 
-Wave 1 production deployment is complete at exact commit:
+The original Wave 1 production deployment was verified at exact commit:
 
 ```text
 1e061cd88daa0686bd487f4813cd17d483ff8cd2
 ```
 
-Verified on 2026-08-29:
+Later ATT-005 safety hotfixes were deployed and verified through exact production commit:
 
-- PostgreSQL, API and web healthy;
-- `/api/health` and `/api/ready` return HTTP 200;
-- normal ADMS polling continues;
-- Wave 1 Operations / Transactions-Reconciliation-Logs UI is present;
-- device `SPK7245000707` is active and online;
-- periodic bounded reconciliation remains OFF.
+```text
+be30654064c21e0fd41ffe9b34e22883aaf084cd
+```
+
+That production closure confirmed migration `0033_attendance_adms_retire_all_userinfo_reads.sql`, healthy API/readiness, the database USERINFO-read insert guard, removal of active USERINFO Admin surfaces, and biometric collection remaining OFF.
 
 ## Physical Wave 1 status
 
-Verified:
+Verified on the physical primary device:
 
-1. **INFO read-only canary** — safe telemetry returned from the physical device after deployment, including firmware, MAC, LAN IP and user/fingerprint/face/transaction counts.
-2. **Fresh realtime ATTLOG on deployed Wave 1** — natural operational punches at 09:14:08 and 09:25:12 Asia/Jakarta were received by HCIS 10 seconds later with distinct source-request provenance.
+1. **INFO read-only canary** — safe telemetry returned from the physical device.
+2. **Fresh realtime ATTLOG** — natural operational punches reached HCIS with near-realtime transport and immutable provenance.
+3. **Bounded historical ATTLOG** — the documented `DATA QUERY ATTLOG StartTime=... EndTime=...` path returned the expected historical evidence.
+4. **Identical-range retransmission/dedupe** — repeating the same bounded request retained one immutable raw-event identity and produced duplicate evidence instead of a second raw event.
 
-Pending:
+The remaining online/offline transition is an observational follow-up when operationally practical, not a blocker for the already-verified bounded ATTLOG path.
 
-1. **Bounded historical ATTLOG canary** using documented `DATA QUERY ATTLOG StartTime=... EndTime=...`.
-2. **Repeat identical range** and prove raw-event dedupe/retransmission behavior.
-3. **Online/offline transition** when operationally practical.
+## Wave 2 USERINFO status
 
-## Bounded historical canary
+Two different USERINFO read shapes were physically exercised before retirement:
 
-Use device `SPK7245000707` and this exact narrow range:
+- full-roster `DATA QUERY USERINFO` produced broad sensitive `OPERLOG`/`BIODATA` transport side effects and failed its safe roster-only contract;
+- strict single-PIN `DATA QUERY USERINFO PIN=<digits>` completed functionally and produced a fresh safe roster observation, but the same response sequence also contained additional `OPERLOG` and `BIODATA` traffic.
 
-```text
-Start: 2026-08-29 06:15:00 Asia/Jakarta
-End:   2026-08-29 06:25:00 Asia/Jakarta
-```
+The sensitive request bodies were not inspected. Biometric vault credential delta remained zero while the global collection gate was OFF.
 
-The range contains the known historical punch at 06:19:26.
+Therefore functional `Return=0` / `CMD=DATA` success is not metadata-only safety evidence for either USERINFO read shape. Both active read paths are retired at API, serializer, database insert, and Admin UI boundaries. Do not use serialized per-PIN refresh as a workaround.
 
-Procedure:
+Detailed redacted records:
 
-1. In **WDMS Core Device Plane → Data Transfer**, select `SPK7245000707`.
-2. Enter the exact start/end values above.
-3. Click **Upload rentang** once.
-4. Do not click **Sync transaksi baru**.
-5. Do not enable periodic bounded reconciliation.
-6. Wait for the command to reach terminal status.
-7. Confirm Historical Reconciliation records the requested range and an ATTLOG response.
-8. Confirm the known 06:19:26 raw transaction is not duplicated as a second immutable raw event identity.
-9. Submit the identical range once more.
-10. Confirm the second retransmission also leaves the persisted raw-event identity deduplicated.
+- `docs/development/attendance-adms-full-roster-canary-failure.md`;
+- `docs/development/attendance-adms-single-pin-userinfo-canary-failure.md`.
 
-Stop if the command fails, is quarantined, returns an undocumented negative result, or the device stops normal polling.
+## Current roster operating model
 
-## Wave 2 boundary
+Roster inventory is now passive-only:
 
-Do not enable roster/template query, distribution, enrollment, delete or restore behavior until bounded historical recovery/dedup above is physically verified.
+- HCIS may project allowlisted safe USERINFO observations that the device sends naturally or that already exist as historical evidence;
+- `inventorySemantics` remains `observed_only`;
+- `completeSnapshot` remains `false`;
+- absence of a PIN never proves absence from the device;
+- mapping remains explicit and never uses name/card/NIP/unit as identity proof;
+- same-PIN name-only update remains a separately allowlisted write for an already safely observed and explicitly mapped user;
+- immediate active USERINFO readback after a name update is retired. Verification must use passive/safely observed evidence or a separately reviewed future capability.
+
+No alternate roster dump or raw-command endpoint is authorized.
 
 ## Biometric pilot controls
 
-When Wave 2 collection is eventually approved, passive biometric collection is effective only when all conditions hold:
+If Wave 2 collection is eventually approved, passive biometric collection is effective only when all conditions hold:
 
 - global `BIOMETRIC_COLLECTION_ENABLED=1` with a valid keyring;
 - exact device pilot gate is audited ON;
@@ -92,9 +91,13 @@ When Wave 2 collection is eventually approved, passive biometric collection is e
 
 Disable/quarantine resets the per-device pilot gate OFF. Reactivation does not restore it. Passive import and policy toggle serialize on the same device-row lock so a committed disable forms a real stop boundary.
 
+The existence of this software control plane is not approval to enable production biometric collection. Hardware behavior, privacy/retention, key ownership, and a separately approved physical canary are still required first.
+
 ## Rollback
 
-Application rollback must not alter fingerprint device configuration or fabricate recovery commands. Keep biometric collection OFF during rollback. After any rollback/redeploy, record the exact deployed Git commit and repeat health/readiness + normal polling checks before treating later physical observations as evidence for that build.
+Application rollback must not alter fingerprint device configuration or fabricate recovery commands. Keep biometric collection OFF during rollback. Migration `0033` is a fail-closed safety boundary and must not be dropped merely to restore an old UI or endpoint. Re-enabling active USERINFO reads requires a new reviewed protocol decision and additive remediation, not operational rollback.
+
+After any rollback/redeploy, record the exact deployed Git commit and repeat health/readiness + normal polling checks before treating later physical observations as evidence for that build.
 
 ## Key operations
 
