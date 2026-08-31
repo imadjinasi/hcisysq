@@ -14,21 +14,23 @@ paths:
     get:
       tags: [Attendance]
       operationId: listObservedAdmsDeviceRoster
-      summary: List safe passive roster observations for one trusted device
+      summary: List safe passive roster observations and explicit mapping lifecycle facts
       description: |
         Returns only allowlisted roster observations already received by HCIS. This is not a
         complete device snapshot: absence from this list must not be interpreted as proof that a
         user is missing on-device. HCIS does not issue an active USERINFO read to complete this list.
+        The response separately includes lifecycle facts for current explicit HCIS mappings, so an
+        inactive/resigned mapped employee can be reviewed even when that PIN has no roster observation.
       parameters:
         - $ref: '#/components/parameters/DeviceId'
       responses:
         '200':
-          description: Safe observed roster with current explicit HCIS PIN mapping when available
+          description: Safe observed roster plus current explicit HCIS mapping lifecycle facts
           content:
             application/json:
               schema:
                 type: object
-                required: [inventorySemantics, completeSnapshot, note, items]
+                required: [inventorySemantics, completeSnapshot, note, mappingLifecycle, items]
                 properties:
                   inventorySemantics:
                     type: string
@@ -38,6 +40,8 @@ paths:
                     const: false
                   note:
                     type: string
+                  mappingLifecycle:
+                    $ref: '#/components/schemas/AdmsMappingLifecycleSummary'
                   items:
                     type: array
                     items:
@@ -230,6 +234,42 @@ components:
           description: True only when global and device gates are ON and lifecycle is active.
         enabledAt: { type: [string, 'null'], format: date-time }
         enabledByAccountId: { type: [string, 'null'], format: uuid }
+
+    AdmsMappingLifecycleSummary:
+      type: object
+      required: [semantics, activeMappingCount, reviewRequiredCount, items]
+      properties:
+        semantics:
+          type: string
+          const: active_explicit_mappings
+        activeMappingCount:
+          type: integer
+          minimum: 0
+        reviewRequiredCount:
+          type: integer
+          minimum: 0
+          description: Current explicit mappings whose HCIS employee status is not active.
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdmsMappingLifecycleItem'
+
+    AdmsMappingLifecycleItem:
+      type: object
+      required: [mappingId, pin, employeeId, employeeNumber, employeeName, employeeStatus]
+      properties:
+        mappingId: { type: string, format: uuid }
+        pin:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Device-local PIN; leading zeroes are significant.
+        employeeId: { type: string, format: uuid }
+        employeeNumber: { type: string }
+        employeeName: { type: string }
+        employeeStatus:
+          type: string
+          enum: [active, inactive, resigned]
 
     ObservedAdmsRosterItem:
       type: object
