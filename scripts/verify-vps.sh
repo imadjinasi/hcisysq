@@ -115,7 +115,7 @@ BIO_AUDIT_TRIGGER=$("${COMPOSE[@]}" exec -T postgres sh -lc '
   psql -X -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "
     SELECT count(*)
     FROM pg_trigger
-    WHERE tgname = '\''attendance_biometric_audit_events_append_only'\''
+    WHERE tgname = '\''attendance_biometric_audit_immutable'\''
       AND NOT tgisinternal
   "
 ')
