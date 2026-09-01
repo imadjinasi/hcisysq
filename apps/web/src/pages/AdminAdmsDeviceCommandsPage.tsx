@@ -1,6 +1,8 @@
 import { Loader2, RefreshCw, Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { PaginationBar } from "@/components/PaginationBar";
+import { useDeviceAdmin } from "@/components/attendance/device-admin/DeviceAdminContext";
 import {
   cancelAdmsCommand,
   commandActionLabel,
@@ -8,7 +10,6 @@ import {
   listAdmsCommands,
   type AdmsCommandItem,
 } from "@/lib/admsAdmin";
-import { useDeviceAdmin } from "@/components/attendance/device-admin/DeviceAdminContext";
 
 function fmt(value: string | null) {
   if (!value) return "—";
@@ -43,6 +44,8 @@ export function AdminAdmsDeviceCommandsPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [selected, setSelected] = useState<AdmsCommandItem | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -84,6 +87,20 @@ export function AdminAdmsDeviceCommandsPage() {
         .some((value) => value.toLocaleLowerCase("id-ID").includes(needle));
     });
   }, [items, query, status]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query, status, pageSize]);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+    if (page > totalPages) setPage(totalPages);
+  }, [filtered.length, page, pageSize]);
+
+  const pagedItems = useMemo(
+    () => filtered.slice((page - 1) * pageSize, page * pageSize),
+    [filtered, page, pageSize],
+  );
 
   const cancel = useCallback(async (command: AdmsCommandItem) => {
     if (!window.confirm(`Batalkan perintah C:${command.commandNumber} (${commandActionLabel(command)})?`)) return;
@@ -138,6 +155,7 @@ export function AdminAdmsDeviceCommandsPage() {
             aria-label="Filter status perintah"
           >
             <option value="all">Semua status</option>
+            <option value="queued">Menunggu giliran</option>
             <option value="pending">Menunggu mesin</option>
             <option value="delivered">Sudah dikirim</option>
             <option value="acknowledged">Diterima mesin</option>
@@ -175,7 +193,7 @@ export function AdminAdmsDeviceCommandsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60">
-                {filtered.map((item) => (
+                {pagedItems.map((item) => (
                   <tr key={item.id} className="align-top hover:bg-surface/40">
                     <td className="px-4 py-4 font-mono text-xs font-bold text-brand-heading">C:{item.commandNumber}</td>
                     <td className="px-4 py-4">
@@ -220,8 +238,18 @@ export function AdminAdmsDeviceCommandsPage() {
             </table>
           </div>
         )}
-        <div className="border-t border-border/70 bg-surface/50 px-4 py-3 text-[11px] leading-5 text-muted-foreground">
-          Maksimal 100 perintah terbaru ditampilkan. Istilah protokol dan wire command disembunyikan dari tabel utama dan hanya tersedia di detail teknis.
+        <PaginationBar
+          page={page}
+          pageSize={pageSize}
+          total={filtered.length}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setPage(1);
+          }}
+        />
+        <div className="border-t border-border/70 bg-surface/30 px-4 py-3 text-[11px] leading-5 text-muted-foreground">
+          Sumber API tetap membatasi 100 perintah terbaru. Istilah protokol dan wire command disembunyikan dari tabel utama dan hanya tersedia di detail teknis.
         </div>
       </section>
 
