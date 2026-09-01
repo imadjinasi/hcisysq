@@ -11,6 +11,7 @@ import { getCurrentSession, landingPath } from "@/lib/auth";
 import { AccountActivationPage } from "@/pages/AccountActivationPage";
 import { AdminAccessPage } from "@/pages/AdminAccessPage";
 import {
+  AdminAdmsDeviceBiometricsRoutePage,
   AdminAdmsDeviceCommandsRoutePage,
   AdminAdmsDeviceDiagnosticsRoutePage,
   AdminAdmsDeviceOverviewRoutePage,
@@ -220,6 +221,13 @@ const adminAdmsDeviceUsersRoute = createRoute({
   component: AdminAdmsDeviceUsersRoutePage,
 });
 
+const adminAdmsDeviceBiometricsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin/attendance/devices/$deviceId/biometrics",
+  beforeLoad: () => requirePrincipal("SUPER_ADMIN"),
+  component: AdminAdmsDeviceBiometricsRoutePage,
+});
+
 const adminAdmsDeviceTransactionsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/attendance/devices/$deviceId/transactions",
@@ -307,6 +315,7 @@ const routeTree = rootRoute.addChildren([
   adminAdmsDevicesRoute,
   adminAdmsDeviceOverviewRoute,
   adminAdmsDeviceUsersRoute,
+  adminAdmsDeviceBiometricsRoute,
   adminAdmsDeviceTransactionsRoute,
   adminAdmsDeviceCommandsRoute,
   adminAdmsDeviceSettingsRoute,
