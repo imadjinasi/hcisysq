@@ -2,6 +2,7 @@ import { DeviceAdminProvider } from "@/components/attendance/device-admin/Device
 import { DeviceDetailShell, type DeviceAdminSection } from "@/components/attendance/device-admin/DeviceDetailShell";
 import { LongRangeRecoveryPanel } from "@/components/attendance/device-admin/LongRangeRecoveryPanel";
 import { MappingReviewPanel } from "@/components/attendance/device-admin/MappingReviewPanel";
+import { AdminAdmsDeviceBiometricsPage } from "@/pages/AdminAdmsDeviceBiometricsPage";
 import { AdminAdmsDeviceCommandsPage } from "@/pages/AdminAdmsDeviceCommandsPage";
 import { AdminAdmsDeviceDiagnosticsPage } from "@/pages/AdminAdmsDeviceDiagnosticsPage";
 import { AdminAdmsDeviceOverviewPage } from "@/pages/AdminAdmsDeviceOverviewPage";
@@ -21,6 +22,7 @@ function sectionContent(section: DeviceAdminSection) {
       </>
     );
   }
+  if (section === "biometrics") return <AdminAdmsDeviceBiometricsPage />;
   if (section === "transactions") {
     return (
       <>
