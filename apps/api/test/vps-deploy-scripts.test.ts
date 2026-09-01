@@ -30,7 +30,12 @@ describe("VPS deployment scripts", () => {
 
     expect(verify).toContain("attendance_adms_reject_retired_userinfo_reads");
     expect(verify).toContain("BIOMETRIC_COLLECTION_ENABLED=0");
+    expect(verify).toContain("biometric_collection_enabled = true");
+    expect(verify).toContain("attendance_biometric_audit_immutable");
+    expect(verify).toContain("last_reencrypted_by_account_id");
     expect(verify).toContain("verification_device_commands_requested=0");
+    expect(verify).not.toContain("BIOMETRIC_ENCRYPTION_KEYS=");
+    expect(verify).not.toContain("BIOMETRIC_ACTIVE_KEY_ID=");
     expect(verify).not.toMatch(/docker\s+compose[^\n]*down\s+-v/);
   });
 });

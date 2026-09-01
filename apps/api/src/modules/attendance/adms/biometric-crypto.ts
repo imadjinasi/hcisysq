@@ -36,6 +36,12 @@ type BiometricKeyring = {
   keys: Map<string, Buffer>;
 };
 
+export type BiometricKeyringReadiness = {
+  configured: boolean;
+  ready: boolean;
+  configuredKeyCount: number;
+};
+
 function associatedData(context: BiometricPayloadContext) {
   return Buffer.from(
     JSON.stringify([
@@ -50,16 +56,13 @@ function associatedData(context: BiometricPayloadContext) {
   );
 }
 
-function parseKeyring(config: ApiConfig): BiometricKeyring {
-  if (config.BIOMETRIC_COLLECTION_ENABLED !== "1") {
-    throw new Error("Biometric collection is disabled");
-  }
+function parseConfiguredKeyring(config: ApiConfig): BiometricKeyring {
   const activeKeyId = config.BIOMETRIC_ACTIVE_KEY_ID?.trim();
   if (!activeKeyId || !KEY_ID_PATTERN.test(activeKeyId)) {
     throw new Error("BIOMETRIC_ACTIVE_KEY_ID is not configured correctly");
   }
   if (!config.BIOMETRIC_ENCRYPTION_KEYS) {
-    throw new Error("BIOMETRIC_ENCRYPTION_KEYS is required when biometric collection is enabled");
+    throw new Error("BIOMETRIC_ENCRYPTION_KEYS is not configured");
   }
 
   let parsed: unknown;
@@ -85,11 +88,7 @@ function parseKeyring(config: ApiConfig): BiometricKeyring {
   return { activeKeyId, keys };
 }
 
-export function biometricCollectionEnabled(config: ApiConfig) {
-  return config.BIOMETRIC_COLLECTION_ENABLED === "1";
-}
-
-export function encryptBiometricPayload(
+function encryptWithConfiguredKeyring(
   payload: Buffer,
   context: BiometricPayloadContext,
   config: ApiConfig,
@@ -97,7 +96,7 @@ export function encryptBiometricPayload(
   if (payload.length === 0 || payload.length > MAX_BIOMETRIC_PAYLOAD_BYTES) {
     throw new Error("Biometric payload size is outside the supported boundary");
   }
-  const keyring = parseKeyring(config);
+  const keyring = parseConfiguredKeyring(config);
   const key = keyring.keys.get(keyring.activeKeyId)!;
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", key, iv);
@@ -113,12 +112,55 @@ export function encryptBiometricPayload(
   };
 }
 
+export function biometricCollectionEnabled(config: ApiConfig) {
+  return config.BIOMETRIC_COLLECTION_ENABLED === "1";
+}
+
+export function biometricKeyringReadiness(config: ApiConfig): BiometricKeyringReadiness {
+  if (!config.BIOMETRIC_ACTIVE_KEY_ID && !config.BIOMETRIC_ENCRYPTION_KEYS) {
+    return { configured: false, ready: false, configuredKeyCount: 0 };
+  }
+  try {
+    const keyring = parseConfiguredKeyring(config);
+    return {
+      configured: true,
+      ready: true,
+      configuredKeyCount: keyring.keys.size,
+    };
+  } catch {
+    return { configured: true, ready: false, configuredKeyCount: 0 };
+  }
+}
+
+export function activeBiometricKeyId(config: ApiConfig) {
+  return parseConfiguredKeyring(config).activeKeyId;
+}
+
+export function encryptBiometricPayload(
+  payload: Buffer,
+  context: BiometricPayloadContext,
+  config: ApiConfig,
+): EncryptedBiometricPayload {
+  if (!biometricCollectionEnabled(config)) {
+    throw new Error("Biometric collection is disabled");
+  }
+  return encryptWithConfiguredKeyring(payload, context, config);
+}
+
+export function encryptBiometricPayloadForMaintenance(
+  payload: Buffer,
+  context: BiometricPayloadContext,
+  config: ApiConfig,
+): EncryptedBiometricPayload {
+  return encryptWithConfiguredKeyring(payload, context, config);
+}
+
 export function decryptBiometricPayload(
   encrypted: EncryptedBiometricPayload,
   context: BiometricPayloadContext,
   config: ApiConfig,
 ): Buffer {
-  const keyring = parseKeyring(config);
+  const keyring = parseConfiguredKeyring(config);
   const key = keyring.keys.get(encrypted.keyId);
   if (!key) throw new Error("Biometric encryption key is unavailable");
   if (encrypted.iv.length !== 12 || encrypted.authTag.length !== 16) {
@@ -138,4 +180,17 @@ export function decryptBiometricPayload(
     throw new Error("Biometric payload length check failed");
   }
   return plaintext;
+}
+
+export function reencryptBiometricPayload(
+  encrypted: EncryptedBiometricPayload,
+  context: BiometricPayloadContext,
+  config: ApiConfig,
+): EncryptedBiometricPayload {
+  const plaintext = decryptBiometricPayload(encrypted, context, config);
+  const reencrypted = encryptBiometricPayloadForMaintenance(plaintext, context, config);
+  if (reencrypted.sha256 !== encrypted.sha256 || reencrypted.byteLength !== encrypted.byteLength) {
+    throw new Error("Biometric payload changed during re-encryption");
+  }
+  return reencrypted;
 }

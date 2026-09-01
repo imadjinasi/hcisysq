@@ -10,6 +10,7 @@ import { useDeviceAdmin } from "./DeviceAdminContext";
 export type DeviceAdminSection =
   | "overview"
   | "users"
+  | "biometrics"
   | "transactions"
   | "commands"
   | "settings"
@@ -18,6 +19,7 @@ export type DeviceAdminSection =
 const tabs: Array<{ key: Exclude<DeviceAdminSection, "diagnostics">; label: string; suffix: string }> = [
   { key: "overview", label: "Ringkasan", suffix: "" },
   { key: "users", label: "Pengguna", suffix: "/users" },
+  { key: "biometrics", label: "Biometrik", suffix: "/biometrics" },
   { key: "transactions", label: "Transaksi", suffix: "/transactions" },
   { key: "commands", label: "Perintah", suffix: "/commands" },
   { key: "settings", label: "Pengaturan", suffix: "/settings" },

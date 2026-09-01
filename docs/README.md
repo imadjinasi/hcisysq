@@ -30,6 +30,13 @@ Untuk frontend, baca juga:
 - `domain/attendance-device-admin-information-architecture.md` untuk information architecture Admin Mesin Fingerprint (ATT-006)
 - `domain/attendance-device-admin-verification.md` untuk bukti implementasi/deployment ATT-006 dan physical safe-name canary yang sudah terverifikasi
 
+Untuk ATT-005 fingerprint/WDMS, baca juga:
+
+- `domain/attendance-wdms-implementation-plan.md` untuk delivery wave ATT-005;
+- `domain/attendance-wdms-package1-non-biometric-completion.md` untuk non-biometric operations package;
+- `domain/attendance-wdms-package2-biometric-control-plane.md` untuk encrypted-vault readiness, lifecycle review, key rotation procedure, dan fixed biometric hardware boundary;
+- `api/attendance-adms-biometric-control-plane.openapi.yaml` untuk kontrak API metadata-only Package 2.
+
 ## Status dokumen
 
 - `DRAFT` — isi awal, belum disetujui.

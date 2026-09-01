@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, SearchCheck } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { PaginationBar } from "@/components/PaginationBar";
 import { useDeviceAdmin } from "@/components/attendance/device-admin/DeviceAdminContext";
 import { getAdmsMappingAssistant, type AdmsMappingAssistantItem } from "@/lib/admsAdmin";
 import { summarizeAdmsMappingReview } from "@/lib/admsMappingReview";
@@ -19,6 +20,8 @@ export function MappingReviewPanel() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const load = useCallback(async (initial = false) => {
     if (!initial) setRefreshing(true);
@@ -39,6 +42,20 @@ export function MappingReviewPanel() {
   }, [load]);
 
   const summary = useMemo(() => summarizeAdmsMappingReview(items), [items]);
+  const totalPages = Math.max(1, Math.ceil(summary.priorityItems.length / pageSize));
+
+  useEffect(() => {
+    setPage(1);
+  }, [deviceId, pageSize]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  const pageItems = useMemo(
+    () => summary.priorityItems.slice((page - 1) * pageSize, page * pageSize),
+    [page, pageSize, summary.priorityItems],
+  );
 
   return (
     <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
@@ -100,7 +117,7 @@ export function MappingReviewPanel() {
                 Prioritas review
               </div>
               <div className="divide-y divide-border/60">
-                {summary.priorityItems.slice(0, 8).map((item) => {
+                {pageItems.map((item) => {
                   const candidate = item.candidates[0];
                   return (
                     <div key={item.pin} className="grid gap-2 px-3 py-3 text-xs md:grid-cols-[8rem_minmax(0,1fr)_minmax(0,1.2fr)_auto] md:items-center">
@@ -133,6 +150,16 @@ export function MappingReviewPanel() {
                   );
                 })}
               </div>
+              <PaginationBar
+                page={page}
+                pageSize={pageSize}
+                total={summary.priorityItems.length}
+                onPageChange={setPage}
+                onPageSizeChange={(size) => {
+                  setPageSize(size);
+                  setPage(1);
+                }}
+              />
             </div>
           )}
 

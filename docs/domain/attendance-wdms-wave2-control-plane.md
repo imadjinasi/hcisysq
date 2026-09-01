@@ -2,60 +2,65 @@
 
 **Status:** IMPLEMENTATION  
 **Specification:** ATT-005  
-**Updated:** 2026-08-31  
-**Production safety baseline:** `be30654064c21e0fd41ffe9b34e22883aaf084cd`
+**Updated:** 2026-09-01  
+**Production safety baseline before Package 2:** `968ebe3766c7984f97eb3e22a9f7255b76ca5679`
 
 ## Purpose
 
 Wave 2 builds the personnel/roster/biometric control plane on top of the verified Wave 1 device plane without changing attendance meaning and without treating fingerprint devices as an employee master.
 
-The current physical-firmware evidence materially narrows the roster design: active USERINFO reads are retired because both full-roster and strict single-PIN reads produced sensitive transport side effects. The operational roster is therefore passive `observed_only` evidence, not a complete device snapshot.
+Physical-firmware evidence materially narrows the design:
 
-Biometric collection remains production-disabled. The encrypted-vault and policy code is a control-plane foundation only; it is not approval to collect, query, restore, distribute, enroll, or delete production biometrics.
+- active full-roster USERINFO reads are retired;
+- active strict single-PIN USERINFO reads are retired;
+- passive roster evidence is `observed_only`, not a complete device snapshot;
+- same-PIN server-derived name-only synchronization remains a separately verified narrow write;
+- biometric hardware operations remain unavailable until their exact protocol behavior is physically proven safe.
+
+Package 1 completed the production-useful non-biometric control plane. Package 2 completes the HCIS-side encrypted biometric control plane while keeping production biometric collection OFF.
 
 ## Fixed boundaries
 
 - HCIS Employee remains the canonical employee master.
-- Device roster rows are observations of a device, not a second employee database.
-- Device PIN mapping remains explicit and leading zeroes remain significant.
-- Name similarity is recommendation ranking only; it never establishes employee identity.
+- Device roster rows are observations, not a second employee database.
+- Device PIN mapping is explicit; leading zeroes are significant.
+- Name similarity is recommendation ranking only and never creates identity automatically.
 - No roster or biometric path infers late, absence, work hours, overtime, payroll, leave conversion, or attendance-resolution outcome.
-- No biometric payload is returned by routine Admin APIs or rendered in the Admin UI.
-- No generic remote-command input is introduced.
-- Changing biometric collection policy is local HCIS state only; it does not send a command to the device.
-- `BIOMETRIC_COLLECTION_ENABLED=0` remains the production operating requirement until separately approved.
+- No generic remote-command input exists.
+- No normal API/UI/log exposes plaintext biometric/template payload, ciphertext, payload hash, IV, authentication tag, encryption key ID, or key material.
+- `BIOMETRIC_COLLECTION_ENABLED=0` remains the production operating requirement until a separate explicit approval.
 - Active `DATA QUERY USERINFO` and `DATA QUERY USERINFO PIN=<digits>` are retired and must not be retried on the physically tested firmware.
+- Protocol documentation alone is not authorization for a device command.
 
 ## Current executable device-command boundary
 
-After physical validation and the USERINFO safety retirement, the application command serializer permits only the currently approved families:
+The application may serialize only the approved command families:
 
 - `LOG`;
 - `INFO`;
 - bounded `DATA QUERY ATTLOG StartTime=<timestamp>\tEndTime=<timestamp>`;
 - same-PIN name-only `DATA UPDATE USERINFO PIN=<digits>\tName=<server-derived mapped HCIS name>`.
 
-The name-only write does not authorize PIN mutation, privilege/card/password changes, user recreation, template movement, or an active USERINFO readback. A non-negative command result proves command execution only; later verification must use passive/safely observed evidence or a separately reviewed capability.
+Package 2 does not add a new device command.
+
+The same-PIN name-only write does not authorize PIN mutation, privilege/card/password changes, user recreation, template movement, or an active USERINFO readback. Later verification must use passive/safe evidence or a separately reviewed capability.
 
 ## Sensitive ingress redaction
 
-Wave 1 retained raw ATTLOG bodies because they are immutable attendance evidence. That rule does not apply blindly to personnel or biometric data.
+Raw ATTLOG is attendance evidence and remains eligible for lossless request-journal retention. Personnel/biometric traffic is handled differently.
 
 For POST `/iclock/cdata`:
 
-- explicit `table=ATTLOG` remains eligible for lossless request-journal body retention;
-- when no table is supplied, only a structurally valid eleven-field ATTLOG payload receives the legacy ATTLOG fallback;
-- an explicit non-ATTLOG table always wins over shape-based fallback;
-- non-attendance device data is journaled with body `NULL` while retaining hash/byte-length/capture/classification/safe metadata evidence;
-- sensitive tables such as `OPERLOG`, `USERINFO`, `FINGERTMP`, `BIODATA`, and biometric/photo variants are redacted from routine request-journal plaintext;
-- unsupported/non-UTF8 non-attendance device data is also redacted rather than persisted as opaque plaintext/binary;
-- redacted device data is acknowledged so routine plaintext refusal does not intentionally create a retry storm.
+- explicit `table=ATTLOG` may retain the request body as raw attendance evidence;
+- legacy ATTLOG fallback requires the validated eleven-field ATTLOG shape;
+- explicit non-ATTLOG tables override shape fallback;
+- sensitive/non-attendance data is journaled without plaintext body while retaining safe request evidence such as hash, byte length, timestamps, classification, and allowlisted metadata;
+- sensitive families include USERINFO, FINGERTMP, BIODATA, biometric/photo variants, and sensitive OPERLOG framing;
+- unsupported/non-UTF8 non-attendance data is redacted rather than stored as opaque plaintext/binary.
 
 Password fields and biometric templates must not enter `attendance_adms_request_journal.body`.
 
-The ADMS capture boundary remains bounded. Oversized sensitive payloads are not retained in plaintext. Explicit sensitive tables remain hash-only/redacted evidence, while oversized ATTLOG is rejected and never projected as attendance.
-
-## Passive safe observed roster
+## Passive observed roster
 
 `attendance_adms_device_roster_entries` stores only allowlisted observations such as:
 
@@ -64,195 +69,277 @@ The ADMS capture boundary remains bounded. Oversized sensitive payloads are not 
 - card number;
 - privilege;
 - verify mode;
-- selected safe non-secret metadata such as group/timezone;
-- source request ID and first/last observation timestamps.
+- selected non-secret metadata;
+- source request and first/last observation timestamps.
 
-Fields such as device password and unknown vendor fields are discarded rather than copied into `safe_metadata`.
-
-The roster Admin API is intentionally:
+The Admin roster contract is explicitly:
 
 ```text
 inventorySemantics = observed_only
 completeSnapshot = false
 ```
 
-Absence from the roster therefore never proves that a user is absent from the machine. HCIS does not issue USERINFO commands to complete the list. New safe rows may appear only from passive/natural safe observations or preserved historical evidence.
+Absence never proves a device user is absent. HCIS does not issue USERINFO reads to complete the list.
 
-This boundary also applies to the mapping assistant: an observed PIN without a safe device name may remain unmapped and without a name-based recommendation. HCIS must not fabricate identity from PIN, card, NIP, unit, or other fields.
+Mapping lifecycle facts are derived separately from current explicit HCIS mapping + authoritative employee status, so inactive/resigned mappings remain reviewable even when roster metadata was never passively observed.
 
-## Active USERINFO retirement
+The mapping assistant follows the same boundary. A PIN with no passively observed safe name may have no name recommendation. HCIS does not fabricate identity from PIN, card, NIP, unit, or external ID.
 
-Physical validation established two distinct failures of the metadata-only assumption:
+## USERINFO retirement
 
-1. exact full-roster `DATA QUERY USERINFO` produced broad `OPERLOG`/`BIODATA` uploads and did not produce the expected safe roster snapshot;
-2. strict `DATA QUERY USERINFO PIN=<digits>` produced the requested safe roster observation, but the same command-response sequence also included additional `OPERLOG` and `BIODATA` traffic.
+Physical validation established that both expected metadata-only read shapes have broader sensitive transport side effects:
 
-The sensitive request bodies were not inspected or decoded. While the global biometric collection gate was OFF, no biometric vault credential was created from the strict single-PIN canary window.
+1. exact full-roster `DATA QUERY USERINFO` produced broad OPERLOG/BIODATA traffic and did not yield the expected safe snapshot;
+2. strict `DATA QUERY USERINFO PIN=<digits>` yielded a safe user observation but also produced additional OPERLOG/BIODATA traffic in the same response sequence.
 
-Functional `Return=0` / `CMD=DATA` success is therefore insufficient to classify either USERINFO read as metadata-only safe. Both active read shapes are retired at API, serializer, database-insert, and Admin-UI boundaries. A serialized per-PIN refresh is explicitly not an approved workaround.
+Sensitive bodies were redacted and were not decoded. A successful device `Return=0` / `CMD=DATA` is not enough to call either read safe.
 
-Redacted evidence:
+Both active read shapes are retired at UI, API, serializer, and database-insert boundaries. Serialized per-PIN refresh is not an approved workaround.
+
+Evidence anchors:
 
 - `docs/development/attendance-adms-full-roster-canary-failure.md`;
 - `docs/development/attendance-adms-single-pin-userinfo-canary-failure.md`;
 - `docs/domain/attendance-wdms-wave2-userinfo-canary.md`.
 
-## Passive biometric upload boundary
+## Biometric collection gate
 
-The PUSH protocol can send biometric-like records through sensitive ingress such as `OPERLOG`. The software foundation can recognize narrowly allowlisted FP/FACE framing, but production collection remains OFF.
-
-If a future passive biometric pilot is explicitly approved, a candidate payload may be vaulted only when all of these hold:
+Future passive biometric storage requires all of these:
 
 1. process-wide `BIOMETRIC_COLLECTION_ENABLED=1` with a valid biometric keyring;
-2. the exact trusted source device has audited `biometric_collection_enabled=true`;
+2. exact trusted device has audited `biometric_collection_enabled=true`;
 3. device lifecycle is `active`;
-4. the exact device PIN resolves at receipt time through one explicit effective mapping;
-5. the mapped employee is currently active;
-6. payload framing/size/base64/slot/validity rules pass the existing strict parser.
+4. exact source PIN resolves through one explicit effective mapping at receipt time;
+5. mapped employee is active;
+6. strict framing/size/base64/slot/validity checks pass.
 
-The exact payload remains opaque vendor material. HCIS does not perform biometric matching, reverse-engineer minutiae, or convert incompatible formats.
+The opaque vendor payload is not used for biometric matching or format conversion.
 
-HCIS never maps biometric payloads by employee number, name, card number, unit, or external ID. If the PIN is unmapped, ambiguous, or belongs to an inactive employee, sensitive ingress remains redacted evidence only and is not added to the employee vault.
+If the PIN is unmapped/ambiguous, the employee is inactive, or any gate fails, ingress remains redacted evidence and no vault credential is created.
 
-There is no active USERINFO/template recovery fallback. Recovery/import from a device requires a separately reviewed protocol capability; retirement of USERINFO reads must not be bypassed through another raw command shape.
+Policy disable and passive import serialize on the trusted device row (`FOR UPDATE`), so a committed disable cannot race with and accidentally permit a later credential insert.
 
-Every accepted future passive credential must keep source-request provenance pointing to the redacted request-journal row. Positive passive upload evidence may mark the source-device replica as `present`; HCIS still must not infer `missing` merely from absence of evidence.
+### Production state
 
-### Policy/import serialization
+Package 2 production deployment MUST keep:
 
-A policy check followed by a separate vault transaction would leave a race where an Admin could disable the pilot while an already-started import still commits. The Wave 2 foundation therefore serializes both operations on the trusted device row:
+```text
+BIOMETRIC_COLLECTION_ENABLED=0
+```
 
-- passive import begins a transaction and locks `attendance_adms_devices` with `FOR UPDATE`;
-- it evaluates lifecycle and per-device gate under that lock;
-- explicit PIN mapping, encrypted credential insert/audit, and source-device replica-state update commit in the same transaction;
-- the Admin policy PATCH locks the same device row before changing the gate.
+All trusted-device biometric collection gates are expected OFF as well. The standard VPS verifier fails if any per-device collection gate is ON.
 
-Once a pilot-disable transaction commits, a racing passive import waiting on that row observes the disabled gate and cannot create a new credential.
+## Encrypted biometric vault
 
-## Biometric collection policy
+`attendance_biometric_credentials` stores searchable metadata separately from an encrypted opaque payload envelope.
 
-The schema and Admin API provide a dual gate:
+Metadata includes:
 
-- process-wide `BIOMETRIC_COLLECTION_ENABLED`;
-- audited per-device `biometric_collection_enabled`.
-
-Existing devices default device gate OFF. A device gate may be ON only while lifecycle is `active`; disable/quarantine resets it OFF, and later reactivation does not restore it automatically.
-
-Admin policy behavior:
-
-- GET exposes global, device, and effective gate state;
-- PATCH enable requires SUPER_ADMIN, global collection ON, and lifecycle `active`;
-- PATCH disable remains available to SUPER_ADMIN;
-- changes are audited;
-- the policy operation never creates a PUSH command.
-
-Production currently keeps the global gate OFF, so effective collection remains OFF regardless of device-local state.
-
-## Biometric vault
-
-`attendance_biometric_credentials` is independent from the ADMS request journal and stores searchable metadata separately from an encrypted opaque payload envelope.
-
-The model includes:
-
-- canonical HCIS employee relationship;
+- canonical HCIS employee;
 - modality (`fingerprint`, `face`, `palm`, `bio_photo`);
-- optional vendor slot/index and source PIN;
-- vendor format/version metadata;
+- optional slot/index and source PIN;
+- vendor format/version;
 - optional origin device;
 - redacted source-request provenance;
 - capture/import timestamps;
-- encrypted opaque payload envelope;
-- lifecycle (`active`, `retired`, `destroyed`).
+- lifecycle (`active`, `retired`, `destroyed`);
+- payload byte length;
+- non-secret envelope format version;
+- last local re-encryption timestamp/actor metadata.
 
-Routine APIs never return plaintext payload, ciphertext, payload hash, IV, authentication tag, encryption key ID, or key material.
+Cryptographic envelope fields remain database-internal and are not part of routine API/UI output.
 
 ### Encryption
 
-Biometric encryption is separate from authentication encryption. The foundation uses a versioned biometric keyring and authenticated AES-256-GCM envelope with random IV and associated-data binding to credential identity/metadata.
+The vault uses AES-256-GCM with random IV and associated-data binding to credential identity/metadata. Authentication encryption is separate; `AUTH_ENCRYPTION_KEY` is never reused as a biometric key.
 
-Old keys may remain available for old envelopes while new imports use a new active key. `AUTH_ENCRYPTION_KEY` is not reused as a biometric key.
+Old keys may remain in the external keyring so old envelopes can be decrypted while new/local-maintained envelopes use the configured active key.
 
-If global collection is explicitly enabled but key configuration is missing or invalid, configuration validation fails closed. This software safeguard does not authorize turning the gate ON in production.
+## Maintenance keyring with collection OFF
 
-## Credential lifecycle and replica state
+Package 2 separates **vault maintenance readiness** from **collection authorization**.
 
-The schema supports active/retired/destroyed credential lifecycle and known per-device replica evidence. Destructive production actions remain unavailable until retention, backup/restore, ownership, and physical protocol safety are separately approved.
+A valid `BIOMETRIC_ACTIVE_KEY_ID` + `BIOMETRIC_ENCRYPTION_KEYS` keyring may exist while `BIOMETRIC_COLLECTION_ENABLED=0` so already-encrypted vault rows can be checked/re-encrypted locally. This does not open biometric ingress.
 
-Replica state is evidence-driven. HCIS must not infer `missing` merely because a device has never positively reported a credential. Passive safe positive evidence may establish `present`; absence remains unknown.
+Rules:
 
-## Current Admin operating surface
+- ordinary collection encryption still refuses to run while the global collection gate is OFF;
+- local maintenance decrypt/re-encrypt may run with collection OFF only when the keyring is valid;
+- partial keyring configuration fails startup validation;
+- no keyring at all is valid while collection is OFF and leaves local re-encryption blocked;
+- normal readiness APIs reveal no key IDs/material.
 
-Current Wave 2 Admin behavior includes:
+Key material belongs to external infrastructure secret storage, not PostgreSQL or the repository.
 
-- passive observed device roster;
-- explicit PIN-to-employee mapping and name-only recommendation ranking;
-- safe same-PIN server-derived name synchronization for already observed/mapped users;
-- PIN correction planning only, without destructive execution;
-- biometric vault metadata and known replica-state metadata;
-- global/device/effective biometric collection policy display;
-- local per-device biometric pilot policy control, subject to the global gate.
+The complete rotation/escrow procedure is in `attendance-wdms-package2-biometric-control-plane.md`.
 
-The UI/API do not expose active USERINFO reads, full roster dumps, raw arbitrary commands, template query, biometric distribution, remote enrollment, restore, or destructive device-user/biometric operations.
+## Local bounded envelope re-encryption
 
-## What is deliberately not enabled
+Package 2 adds SUPER_ADMIN local vault maintenance that:
 
-- full-roster USERINFO read — **RETIRED**;
-- strict single-PIN USERINFO read — **RETIRED**;
-- fingerprint/face/palm template query;
-- roster PIN mutation or user recreate/delete;
-- biometric distribution to another device;
-- remote enrollment;
-- biometric delete from device;
-- master biometric destruction;
-- restore from HCIS vault;
-- production biometric collection.
+- requires explicit `REENCRYPT_VAULT` confirmation;
+- uses bounded batches (maximum 100 rows);
+- optionally targets selected credential UUIDs;
+- selects only non-destroyed rows not already using the active internal key;
+- uses `FOR UPDATE SKIP LOCKED`;
+- decrypts/authenticates and re-encrypts only inside API process memory;
+- requires envelope version support;
+- verifies SHA and byte length are unchanged;
+- commits each batch transactionally;
+- writes append-only `credential_reencrypted` audit metadata;
+- returns only processed/remaining counts;
+- sends zero device commands.
 
-Protocol documentation alone is not authorization. Physical firmware evidence overrides an assumed safe interpretation when the observed behavior is broader or more sensitive than expected.
+Known source-key absence, GCM/integrity failure, length mismatch, or unsupported envelope version stops and rolls back the batch for manual review.
 
-## Verification status
+## Backup/restore readiness
 
-Software coverage includes:
+A PostgreSQL backup contains encrypted envelope rows but deliberately does not contain key material. Recoverability therefore requires separately protected:
 
-- clean and upgrade-path migrations;
-- strict ingress redaction for sensitive USER/OPERLOG/BIODATA-style traffic;
-- encrypted biometric-vault/key-rotation tests with synthetic data;
-- dual-gate and lifecycle regressions;
-- explicit-mapping-only passive credential association;
-- policy-disable/passive-import serialization;
-- metadata-only Admin API assertions;
-- retired USERINFO serializer/API/UI/database boundaries;
-- same-PIN name-only serializer and route boundaries;
-- synthetic device simulator and oversized sensitive-ingress regressions;
-- typecheck, lint, tests, build, and Compose validation in PR CI.
+1. database backup;
+2. matching external keyring escrow.
 
-Physical status on the primary firmware:
+Package 2 includes a synthetic restore/re-encryption drill using fake opaque bytes only. It verifies old-key decryptability, active-key local re-encryption, integrity preservation, append-only audit, and absence of payload/key IDs from normal metadata response.
 
-- Wave 1 production deployment/version gate: **VERIFIED**;
+This is **not** a physical template-transfer or device-restore test.
+
+## Credential lifecycle
+
+Credential lifecycle remains:
+
+```text
+active -> retired -> destroyed
+```
+
+Package 2 adds no automatic lifecycle mutation.
+
+When an authoritative HCIS employee becomes `inactive` or `resigned`, any non-destroyed credential is marked for review only:
+
+- `lifecycleReviewRequired=true`;
+- review count increases;
+- no auto-retire;
+- no device deletion;
+- no HCIS master destruction.
+
+Master destruction remains blocked until an explicit retention/destruction policy is approved.
+
+## Replica evidence
+
+`attendance_biometric_device_states` remains evidence-driven with states:
+
+```text
+unknown | missing | present | stale | conflict | pending | succeeded | failed
+```
+
+No row means unknown, not missing.
+
+Package 2 does not manufacture new physical evidence. It only exposes known replica metadata/counts safely.
+
+## Capability matrix
+
+Package 2 reports capability state explicitly:
+
+| Capability | State | Notes |
+| --- | --- | --- |
+| Vault metadata | available | HCIS-side metadata only |
+| Local envelope re-encryption | available when keyring ready | no device command |
+| Passive collection | blocked in production | global/device gates OFF |
+| Template query | not_verified | no executable command |
+| Restore to device | not_verified | no executable command |
+| Cross-device distribution | not_verified | no executable command |
+| Remote enrollment | not_verified | no executable command |
+| Device biometric delete | not_verified | no executable command |
+| HCIS master destruction | blocked | retention policy pending |
+
+A capability that is not physically proven is not enabled from WDMS/manual assumptions.
+
+## Admin operating surface
+
+Wave 2 Admin now consists of:
+
+- passive observed roster;
+- explicit PIN mapping and name-only similarity recommendations;
+- safe same-PIN server-derived name sync;
+- PIN correction planning only;
+- mapping lifecycle review;
+- dedicated `Biometrik` workspace;
+- global/device/effective collection status;
+- keyring readiness without identifiers/material;
+- vault counts and lifecycle-review counts;
+- paginated credential metadata;
+- known replica evidence;
+- hardware capability matrix;
+- local envelope re-encryption only when maintenance keyring is ready.
+
+The UI/API intentionally do not expose active USERINFO reads, full roster dumps, arbitrary raw command input, template query, distribution, enrollment, restore, device biometric delete, or HCIS master destruction.
+
+## Package 1 pagination follow-up
+
+The non-blocking Package 1 UAT pagination finding is addressed in the same Package 2 delivery:
+
+- mapping review backlog is paginated instead of truncating to eight items;
+- transaction history is paginated within its bounded API result;
+- command history is paginated within its bounded API result;
+- biometric credential/replica tables are paginated.
+
+Pagination does not change the completeness semantics of the underlying bounded APIs.
+
+## Verification requirements
+
+Software coverage must include:
+
+- clean migration through `0035`;
+- upgrade-path migration rehearsals;
+- encryption/decryption/integrity tests with synthetic data only;
+- collection-OFF + maintenance-keyring local re-encryption;
+- targeted transactional rotation;
+- lifecycle review metadata;
+- no-secret API response assertions;
+- SUPER_ADMIN authorization negatives;
+- append-only biometric audit guard;
+- existing ingress redaction and USERINFO retirement regressions;
+- Web safety regression proving no physical biometric action endpoint appears;
+- pagination regression;
+- typecheck, lint, test, build, and Compose validation.
+
+Normal Package 2 production verification must confirm:
+
+- exact deployed SHA;
+- all containers healthy;
+- latest repo/database migration is `0035`;
+- USERINFO retirement guard remains present;
+- global collection OFF;
+- all per-device biometric collection gates OFF;
+- biometric append-only audit trigger remains present;
+- Package 2 envelope-maintenance columns exist;
+- verifier requests zero device commands.
+
+## Physical status
+
+On the primary tested firmware:
+
 - INFO: **VERIFIED**;
-- fresh realtime ATTLOG: **VERIFIED**;
+- realtime ATTLOG: **VERIFIED**;
 - bounded historical ATTLOG: **VERIFIED**;
 - identical-range retransmission/dedupe: **VERIFIED**;
-- safe same-PIN name-only synchronization: **VERIFIED for its narrow write contract**;
-- full-roster USERINFO read: **RETIRED / NOT SAFE AS METADATA-ONLY**;
-- strict single-PIN USERINFO read: **RETIRED / NOT SAFE AS METADATA-ONLY**;
-- template query/transfer, enrollment, distribution, restore, destructive deletion: **NOT VERIFIED / NOT ENABLED**;
+- same-PIN name-only synchronization: **VERIFIED for its narrow write contract**;
+- full-roster USERINFO: **RETIRED / NOT SAFE AS METADATA-ONLY**;
+- strict single-PIN USERINFO: **RETIRED / NOT SAFE AS METADATA-ONLY**;
+- template query/transfer, enrollment, distribution, restore, destructive biometric deletion: **NOT VERIFIED / NOT ENABLED**;
 - production biometric collection: **OFF**.
 
-## Contract status
+Package 2 software deployment does not change these physical statuses.
 
-The aggregate API contract references the Wave 2 fragment in `docs/api/attendance-adms-wave2.openapi.yaml`. The roster contract remains passive `observed_only` / `completeSnapshot: false`. No active USERINFO query Path Item exists.
+## Contract anchors
 
-Mapping/correction contracts remain separate and preserve explicit identity mapping, planning-only PIN correction, and server-derived same-PIN name-only writes.
+- existing Wave 2 metadata/policy contract: `docs/api/attendance-adms-wave2.openapi.yaml`;
+- Package 2 control-plane contract: `docs/api/attendance-adms-biometric-control-plane.openapi.yaml`;
+- Package 2 operational/security procedure: `docs/domain/attendance-wdms-package2-biometric-control-plane.md`.
 
-## Hardware boundary and next direction
+No active USERINFO query Path Item exists.
 
-Wave 1 transaction recovery is no longer the blocker; its primary physical gates are verified. The blocker is now protocol safety for any additional personnel/biometric device action.
+## Next boundary after Package 2
 
-Next Wave 2 engineering should therefore favor passive/read-only HCIS-side control-plane work that does not issue a new sensitive device command, such as:
+After Package 2 is merged, deployed, verified, and software-UAT passes, ATT-005 may proceed to Package 3 WDMS safe operations/final parity work.
 
-- clearer observed-only roster completeness/status UX;
-- mapping/inactive-employee anomaly detection based only on existing HCIS and observed evidence;
-- biometric key/retention/backup-readiness controls using synthetic fixtures while collection remains OFF;
-- capability documentation for unsupported/retired device operations.
-
-Any future device command outside the current executable allowlist requires a new documented hypothesis, synthetic serializer tests, explicit privacy/safety review, and a separately approved bounded physical canary. Active USERINFO must not be reintroduced as a shortcut.
+A physical biometric canary is **not** implied by Package 2 completion. Any future hardware action outside the current command allowlist requires a new documented protocol hypothesis, serializer tests, privacy/safety review, explicit approval, and a separately bounded physical canary.

@@ -29,19 +29,24 @@ const envSchema = z
     SQ_HUB_MACHINE_CLIENT_SECRET: z.string().min(1).optional(),
   })
   .superRefine((value, ctx) => {
-    if (value.BIOMETRIC_COLLECTION_ENABLED === "1") {
+    const biometricKeyringRequested =
+      value.BIOMETRIC_COLLECTION_ENABLED === "1" ||
+      Boolean(value.BIOMETRIC_ACTIVE_KEY_ID) ||
+      Boolean(value.BIOMETRIC_ENCRYPTION_KEYS);
+
+    if (biometricKeyringRequested) {
       if (!value.BIOMETRIC_ACTIVE_KEY_ID) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["BIOMETRIC_ACTIVE_KEY_ID"],
-          message: "BIOMETRIC_ACTIVE_KEY_ID is required when biometric collection is enabled",
+          message: "BIOMETRIC_ACTIVE_KEY_ID is required when biometric keyring maintenance or collection is configured",
         });
       }
       if (!value.BIOMETRIC_ENCRYPTION_KEYS) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["BIOMETRIC_ENCRYPTION_KEYS"],
-          message: "BIOMETRIC_ENCRYPTION_KEYS is required when biometric collection is enabled",
+          message: "BIOMETRIC_ENCRYPTION_KEYS is required when biometric keyring maintenance or collection is configured",
         });
       } else {
         try {

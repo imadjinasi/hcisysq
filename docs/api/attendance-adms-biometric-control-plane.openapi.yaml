@@ -1,0 +1,275 @@
+openapi: 3.1.0
+info:
+  title: HCIS YSQ ATT-005 Biometric Control Plane API
+  version: 0.0.1
+  description: |
+    Metadata-only SUPER_ADMIN contract for encrypted biometric vault readiness and local
+    envelope maintenance. This fragment does not authorize or define any template query,
+    enrollment, distribution, restore, device-delete, or raw biometric endpoint.
+
+    Normal responses never expose plaintext template bytes, ciphertext, payload hash, IV,
+    authentication tag, encryption key ID, or key material. `BIOMETRIC_COLLECTION_ENABLED=0`
+    remains a valid and expected production state; local vault maintenance can be prepared
+    independently when a valid maintenance keyring is configured.
+tags:
+  - name: Attendance
+paths:
+  /admin/attendance/adms/biometric-control-plane:
+    get:
+      tags: [Attendance]
+      operationId: getAdmsBiometricControlPlane
+      summary: Read fail-closed biometric control-plane readiness
+      description: |
+        Reads HCIS database/configuration state only and sends zero device commands.
+        Replica counts are evidence-only: absence of a row is never interpreted as missing.
+      parameters:
+        - name: deviceId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Safe readiness, vault counts, replica evidence, and capability matrix
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [item]
+                properties:
+                  item: { $ref: '#/components/schemas/BiometricControlPlaneSummary' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/attendance/adms/biometric-control-plane/credentials:
+    get:
+      tags: [Attendance]
+      operationId: listAdmsBiometricControlPlaneCredentials
+      summary: List paginated biometric credential metadata
+      description: |
+        Metadata-only credential list. Encryption key identifiers and cryptographic envelope
+        fields are intentionally absent from the schema.
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 10, maximum: 100, default: 25 }
+        - name: employeeId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: originDeviceId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: modality
+          in: query
+          schema:
+            type: string
+            enum: [fingerprint, face, palm, bio_photo]
+        - name: lifecycleReviewOnly
+          in: query
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Safe paginated credential metadata
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BiometricCredentialPage' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/attendance/adms/biometric-control-plane/reencrypt:
+    post:
+      tags: [Attendance]
+      operationId: reencryptAdmsBiometricVaultBatch
+      summary: Re-encrypt a bounded local HCIS vault batch
+      description: |
+        Local database maintenance only. No PUSH/ADMS command is created and biometric
+        collection does not need to be enabled. The maintenance keyring must contain both the
+        source key needed for decryption and the configured active target key. Each batch is
+        transactional; integrity/version failure rolls back the batch. The response never
+        returns credential payload or cryptographic envelope/key identifiers.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [confirmation]
+              properties:
+                confirmation:
+                  type: string
+                  const: REENCRYPT_VAULT
+                limit:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                  default: 25
+                credentialIds:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Local envelope maintenance result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [rawPayloadExposed, processedCount, remainingCount]
+                properties:
+                  rawPayloadExposed: { type: boolean, const: false }
+                  processedCount: { type: integer, minimum: 0 }
+                  remainingCount: { type: integer, minimum: 0 }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: Maintenance keyring absent or vault integrity/version requires manual review
+
+components:
+  responses:
+    Unauthenticated:
+      description: Authentication required
+    Forbidden:
+      description: SUPER_ADMIN authorization required
+    NotFound:
+      description: Trusted ADMS device not found
+    ValidationError:
+      description: Request validation failed
+
+  schemas:
+    BiometricControlPlaneSummary:
+      type: object
+      required: [rawPayloadExposed, collection, keyring, vault, replica, device, capabilities, retention]
+      properties:
+        rawPayloadExposed: { type: boolean, const: false }
+        collection:
+          type: object
+          required: [globalEnabled, deviceEnabled, effectiveEnabled]
+          properties:
+            globalEnabled: { type: boolean }
+            deviceEnabled: { type: [boolean, 'null'] }
+            effectiveEnabled: { type: boolean }
+        keyring:
+          type: object
+          description: Readiness metadata only; no identifiers or key material.
+          required: [configured, ready, configuredKeyCount]
+          properties:
+            configured: { type: boolean }
+            ready: { type: boolean }
+            configuredKeyCount: { type: integer, minimum: 0 }
+        vault:
+          type: object
+          required:
+            [totalCount, activeCount, retiredCount, destroyedCount, employeeCount, fingerprintCount, faceCount, palmCount, bioPhotoCount, lifecycleReviewRequiredCount, rotationRequiredCount]
+          properties:
+            totalCount: { type: integer, minimum: 0 }
+            activeCount: { type: integer, minimum: 0 }
+            retiredCount: { type: integer, minimum: 0 }
+            destroyedCount: { type: integer, minimum: 0 }
+            employeeCount: { type: integer, minimum: 0 }
+            fingerprintCount: { type: integer, minimum: 0 }
+            faceCount: { type: integer, minimum: 0 }
+            palmCount: { type: integer, minimum: 0 }
+            bioPhotoCount: { type: integer, minimum: 0 }
+            lifecycleReviewRequiredCount: { type: integer, minimum: 0 }
+            rotationRequiredCount:
+              type: [integer, 'null']
+              minimum: 0
+              description: Null when maintenance keyring readiness cannot safely determine active-key drift.
+        replica:
+          type: object
+          required:
+            [inventorySemantics, absenceMeansMissing, unknownCount, missingCount, presentCount, staleCount, conflictCount, pendingCount, succeededCount, failedCount]
+          properties:
+            inventorySemantics: { type: string, const: known_replica_state }
+            absenceMeansMissing: { type: boolean, const: false }
+            unknownCount: { type: integer, minimum: 0 }
+            missingCount: { type: integer, minimum: 0 }
+            presentCount: { type: integer, minimum: 0 }
+            staleCount: { type: integer, minimum: 0 }
+            conflictCount: { type: integer, minimum: 0 }
+            pendingCount: { type: integer, minimum: 0 }
+            succeededCount: { type: integer, minimum: 0 }
+            failedCount: { type: integer, minimum: 0 }
+        device:
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [id, serialNumber, lifecycle]
+              properties:
+                id: { type: string, format: uuid }
+                serialNumber: { type: string }
+                displayName: { type: [string, 'null'] }
+                model: { type: [string, 'null'] }
+                firmwareVersion: { type: [string, 'null'] }
+                lifecycle: { type: string, enum: [active, disabled, quarantined] }
+        capabilities:
+          type: array
+          items: { $ref: '#/components/schemas/BiometricCapability' }
+        retention:
+          type: object
+          required: [automaticDestructionEnabled, inactiveEmployeeAction, masterDestroyEnabled, note]
+          properties:
+            automaticDestructionEnabled: { type: boolean, const: false }
+            inactiveEmployeeAction: { type: string, const: review_only }
+            masterDestroyEnabled: { type: boolean, const: false }
+            note: { type: string }
+
+    BiometricCapability:
+      type: object
+      required: [key, label, state, reason, deviceCommandRequired]
+      properties:
+        key: { type: string }
+        label: { type: string }
+        state: { type: string, enum: [available, blocked, not_verified] }
+        reason: { type: [string, 'null'] }
+        deviceCommandRequired: { type: boolean }
+
+    BiometricCredentialPage:
+      type: object
+      required: [rawPayloadExposed, page, pageSize, total, totalPages, items]
+      properties:
+        rawPayloadExposed: { type: boolean, const: false }
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 10, maximum: 100 }
+        total: { type: integer, minimum: 0 }
+        totalPages: { type: integer, minimum: 1 }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/BiometricCredentialMetadata' }
+
+    BiometricCredentialMetadata:
+      type: object
+      required:
+        [id, employeeId, employeeNumber, employeeName, employeeStatus, modality, vendorFormat, importedAt, lifecycle, envelopeVersion, lifecycleReviewRequired]
+      properties:
+        id: { type: string, format: uuid }
+        employeeId: { type: string, format: uuid }
+        employeeNumber: { type: string }
+        employeeName: { type: string }
+        employeeStatus: { type: string, enum: [active, inactive, resigned] }
+        modality: { type: string, enum: [fingerprint, face, palm, bio_photo] }
+        slotIndex: { type: [integer, 'null'], minimum: 0, maximum: 255 }
+        vendorFormat: { type: string, maxLength: 120 }
+        vendorVersion: { type: [string, 'null'], maxLength: 120 }
+        originDeviceId: { type: [string, 'null'], format: uuid }
+        originDeviceSerial: { type: [string, 'null'] }
+        capturedAt: { type: [string, 'null'], format: date-time }
+        importedAt: { type: string, format: date-time }
+        lifecycle: { type: string, enum: [active, retired, destroyed] }
+        payloadByteLength:
+          type: [integer, 'null']
+          minimum: 0
+          description: Size metadata only; payload is never exposed.
+        envelopeVersion:
+          type: string
+          description: Non-secret envelope format version; no key ID is returned.
+        lastReencryptedAt: { type: [string, 'null'], format: date-time }
+        lifecycleReviewRequired: { type: boolean }

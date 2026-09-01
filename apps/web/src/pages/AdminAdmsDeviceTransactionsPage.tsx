@@ -1,6 +1,7 @@
 import { DownloadCloud, Loader2, RefreshCw, Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { PaginationBar } from "@/components/PaginationBar";
 import { useDeviceAdmin } from "@/components/attendance/device-admin/DeviceAdminContext";
 import {
   listAdmsTransactions,
@@ -24,6 +25,8 @@ export function AdminAdmsDeviceTransactionsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
@@ -66,6 +69,20 @@ export function AdminAdmsDeviceTransactionsPage() {
         .some((value) => String(value).toLocaleLowerCase("id-ID").includes(needle)),
     );
   }, [items, query]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query, pageSize]);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+    if (page > totalPages) setPage(totalPages);
+  }, [filtered.length, page, pageSize]);
+
+  const pagedItems = useMemo(
+    () => filtered.slice((page - 1) * pageSize, page * pageSize),
+    [filtered, page, pageSize],
+  );
 
   const requestLatest = useCallback(async () => {
     setBusy("latest");
@@ -184,7 +201,7 @@ export function AdminAdmsDeviceTransactionsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60">
-                {filtered.map((item) => (
+                {pagedItems.map((item) => (
                   <tr key={item.id} className="hover:bg-surface/40">
                     <td className="px-4 py-4">
                       <div className="font-semibold text-brand-heading">{fmt(item.occurredAt)}</div>
@@ -211,8 +228,18 @@ export function AdminAdmsDeviceTransactionsPage() {
             </table>
           </div>
         )}
-        <div className="border-t border-border/70 bg-surface/50 px-4 py-3 text-[11px] leading-5 text-muted-foreground">
-          Menampilkan sampai 200 transaksi terbaru yang sudah tersimpan. Pengambilan ulang meminta mesin mengirim kembali fakta untuk rentang tertentu; exact duplicate tetap ditangani oleh deduplikasi server.
+        <PaginationBar
+          page={page}
+          pageSize={pageSize}
+          total={filtered.length}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setPage(1);
+          }}
+        />
+        <div className="border-t border-border/70 bg-surface/30 px-4 py-3 text-[11px] leading-5 text-muted-foreground">
+          Sumber API tetap membatasi 200 transaksi terbaru yang tersimpan. Pagination hanya mengatur tampilan; pengambilan ulang tetap meminta fakta mentah dan exact duplicate ditangani deduplikasi server.
         </div>
       </section>
 
