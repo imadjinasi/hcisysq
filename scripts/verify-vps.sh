@@ -103,6 +103,64 @@ done
 echo "retired_userinfo_ui=absent"
 
 echo
+echo "=== BIOMETRIC CONTROL-PLANE SAFETY ==="
+DEVICE_COLLECTION_ON=$("${COMPOSE[@]}" exec -T postgres sh -lc '
+  psql -X -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "
+    SELECT count(*)
+    FROM attendance_adms_devices
+    WHERE biometric_collection_enabled = true
+  "
+')
+BIO_AUDIT_TRIGGER=$("${COMPOSE[@]}" exec -T postgres sh -lc '
+  psql -X -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "
+    SELECT count(*)
+    FROM pg_trigger
+    WHERE tgname = '\''attendance_biometric_audit_events_append_only'\''
+      AND NOT tgisinternal
+  "
+')
+BIO_ENVELOPE_COLUMNS=$("${COMPOSE[@]}" exec -T postgres sh -lc '
+  psql -X -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "
+    SELECT count(*)
+    FROM information_schema.columns
+    WHERE table_schema = '\''public'\''
+      AND table_name = '\''attendance_biometric_credentials'\''
+      AND column_name IN (
+        '\''envelope_version'\'',
+        '\''last_reencrypted_at'\'',
+        '\''last_reencrypted_by_account_id'\''
+      )
+  "
+')
+BIO_CREDENTIAL_COUNTS=$("${COMPOSE[@]}" exec -T postgres sh -lc '
+  psql -X -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "
+    SELECT
+      count(*)::int || '\''|'\'' ||
+      (count(*) FILTER (WHERE lifecycle = '\''active'\''))::int || '\''|'\'' ||
+      (count(*) FILTER (WHERE lifecycle = '\''retired'\''))::int || '\''|'\'' ||
+      (count(*) FILTER (WHERE lifecycle = '\''destroyed'\''))::int
+    FROM attendance_biometric_credentials
+  "
+')
+echo "biometric_global_collection=OFF"
+echo "biometric_device_collection_enabled_count=$DEVICE_COLLECTION_ON"
+echo "biometric_audit_append_only_guard_count=$BIO_AUDIT_TRIGGER"
+echo "biometric_envelope_maintenance_columns=$BIO_ENVELOPE_COLUMNS"
+echo "biometric_credential_counts_total_active_retired_destroyed=$BIO_CREDENTIAL_COUNTS"
+if [[ "$DEVICE_COLLECTION_ON" != "0" ]]; then
+  echo "FAIL: ada device biometric collection gate yang masih ON" >&2
+  exit 1
+fi
+if [[ "$BIO_AUDIT_TRIGGER" != "1" ]]; then
+  echo "FAIL: append-only biometric audit guard tidak tepat satu" >&2
+  exit 1
+fi
+if [[ "$BIO_ENVELOPE_COLUMNS" != "3" ]]; then
+  echo "FAIL: metadata maintenance envelope biometric belum lengkap" >&2
+  exit 1
+fi
+
+echo
 echo "=== SPA CACHE POLICY ==="
 INDEX_HEADERS=$(curl -fsSI http://127.0.0.1:18080/index.html)
 printf '%s\n' "$INDEX_HEADERS" | grep -Ei 'HTTP/|cache-control|pragma|expires'
