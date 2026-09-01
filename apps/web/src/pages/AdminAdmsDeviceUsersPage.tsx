@@ -1,6 +1,7 @@
 import { AlertTriangle, Link2, Loader2, RefreshCw, Search, UserRoundCheck, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { PaginationBar } from "@/components/PaginationBar";
 import { useDeviceAdmin } from "@/components/attendance/device-admin/DeviceAdminContext";
 import {
   cancelAdmsPinCorrection,
@@ -79,6 +80,8 @@ export function AdminAdmsDeviceUsersPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [mappingFilter, setMappingFilter] = useState<"all" | "mapped" | "unmapped">("all");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [mappingTarget, setMappingTarget] = useState<UserRow | null>(null);
   const [employeeQuery, setEmployeeQuery] = useState("");
   const [employeeResults, setEmployeeResults] = useState<AdminEmployeeListItem[]>([]);
@@ -206,6 +209,20 @@ export function AdminAdmsDeviceUsersPage() {
         .some((value) => String(value).toLocaleLowerCase("id-ID").includes(needle));
     });
   }, [mappingFilter, query, rows]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [deviceId, mappingFilter, pageSize, query]);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+    if (page > totalPages) setPage(totalPages);
+  }, [filteredRows.length, page, pageSize]);
+
+  const pagedRows = useMemo(
+    () => filteredRows.slice((page - 1) * pageSize, page * pageSize),
+    [filteredRows, page, pageSize],
+  );
 
   const plannedByPin = useMemo(
     () => new Map(corrections.filter((item) => item.status === "planned").map((item) => [item.legacyPin, item])),
@@ -418,7 +435,7 @@ export function AdminAdmsDeviceUsersPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60">
-                {filteredRows.map((row) => {
+                {pagedRows.map((row) => {
                   const mapped = Boolean(row.mappingId && row.employeeId);
                   const mappingReview = mappedEmployeeNeedsReview(row);
                   const plan = plannedByPin.get(row.pin) ?? null;
@@ -536,6 +553,16 @@ export function AdminAdmsDeviceUsersPage() {
             </table>
           </div>
         )}
+        <PaginationBar
+          page={page}
+          pageSize={pageSize}
+          total={filteredRows.length}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setPage(1);
+          }}
+        />
         <div className="border-t border-border/70 bg-surface/50 px-4 py-3 text-[11px] leading-5 text-muted-foreground">
           Workspace ini menggabungkan PIN dari punch, metadata pengguna aman yang pernah teramati secara pasif, dan mapping eksplisit HCIS. PIN yang tidak terlihat di sini tidak membuktikan pengguna sudah tidak ada di mesin.
         </div>
