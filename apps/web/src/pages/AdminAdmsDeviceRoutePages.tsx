@@ -12,6 +12,11 @@ export function AdminAdmsDeviceUsersRoutePage() {
   return <AdminAdmsDevicePage deviceId={deviceId} section="users" />;
 }
 
+export function AdminAdmsDeviceBiometricsRoutePage() {
+  const { deviceId } = useParams({ from: "/admin/attendance/devices/$deviceId/biometrics" });
+  return <AdminAdmsDevicePage deviceId={deviceId} section="biometrics" />;
+}
+
 export function AdminAdmsDeviceTransactionsRoutePage() {
   const { deviceId } = useParams({ from: "/admin/attendance/devices/$deviceId/transactions" });
   return <AdminAdmsDevicePage deviceId={deviceId} section="transactions" />;
