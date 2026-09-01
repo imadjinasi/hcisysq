@@ -131,7 +131,7 @@ function buildCapabilities(input: {
   const effectiveCollection = Boolean(
     input.globalCollectionEnabled &&
     input.device?.deviceCollectionEnabled &&
-    input.device.lifecycle === "active",
+    input.device?.lifecycle === "active",
   );
 
   return [
@@ -273,13 +273,13 @@ export async function getBiometricControlPlaneSummary(
 
   let rotationRequiredCount: number | null = null;
   if (keyring.ready) {
-    const activeKeyId = activeBiometricKeyId(config);
+    const currentKeyId = activeBiometricKeyId(config);
     const rotationResult = await pool.query<{ count: number }>(
       `SELECT count(*)::int AS count
        FROM attendance_biometric_credentials
        WHERE lifecycle <> 'destroyed'
          AND encryption_key_id IS DISTINCT FROM $1`,
-      [activeKeyId],
+      [currentKeyId],
     );
     rotationRequiredCount = rotationResult.rows[0]?.count ?? 0;
   }
@@ -290,7 +290,7 @@ export async function getBiometricControlPlaneSummary(
       globalEnabled: globalCollectionEnabled,
       deviceEnabled: device?.deviceCollectionEnabled ?? null,
       effectiveEnabled: Boolean(
-        globalCollectionEnabled && device?.deviceCollectionEnabled && device.lifecycle === "active",
+        globalCollectionEnabled && device?.deviceCollectionEnabled && device?.lifecycle === "active",
       ),
     },
     keyring,
@@ -339,13 +339,11 @@ export async function listBiometricControlPlaneCredentials(
   },
 ) {
   const offset = (input.page - 1) * input.pageSize;
-  const params = [
+  const filterParams = [
     input.employeeId ?? null,
     input.originDeviceId ?? null,
     input.modality ?? null,
     input.lifecycleReviewOnly ?? false,
-    input.pageSize,
-    offset,
   ];
 
   const [itemsResult, countResult] = await Promise.all([
@@ -383,7 +381,7 @@ export async function listBiometricControlPlaneCredentials(
          c.slot_index NULLS LAST,
          c.created_at DESC
        LIMIT $5 OFFSET $6`,
-      params,
+      [...filterParams, input.pageSize, offset],
     ),
     pool.query<{ count: number }>(
       `SELECT count(*)::int AS count
@@ -393,7 +391,7 @@ export async function listBiometricControlPlaneCredentials(
          AND ($2::uuid IS NULL OR c.origin_device_id = $2)
          AND ($3::text IS NULL OR c.modality = $3)
          AND (NOT $4::boolean OR (c.lifecycle <> 'destroyed' AND emp.status <> 'active'))`,
-      params.slice(0, 4),
+      filterParams,
     ),
   ]);
 
@@ -431,9 +429,11 @@ function encryptedPayload(row: ReencryptRow): EncryptedBiometricPayload {
 
 async function selectCredentialsForReencryption(
   client: PoolClient,
-  activeKeyId: string,
+  currentKeyId: string,
   limit: number,
+  credentialIds?: string[],
 ) {
+  const selectedIds = credentialIds?.length ? credentialIds : null;
   const result = await client.query<ReencryptRow>(
     `SELECT
        id,
@@ -451,10 +451,11 @@ async function selectCredentialsForReencryption(
      FROM attendance_biometric_credentials
      WHERE lifecycle <> 'destroyed'
        AND encryption_key_id IS DISTINCT FROM $1
+       AND ($3::uuid[] IS NULL OR id = ANY($3::uuid[]))
      ORDER BY updated_at, id
      FOR UPDATE SKIP LOCKED
      LIMIT $2`,
-    [activeKeyId, limit],
+    [currentKeyId, limit, selectedIds],
   );
   return result.rows;
 }
@@ -462,17 +463,23 @@ async function selectCredentialsForReencryption(
 export async function reencryptBiometricCredentialBatch(
   pool: Pool,
   config: ApiConfig,
-  input: { actorAccountId: string; limit: number },
+  input: { actorAccountId: string; limit: number; credentialIds?: string[] },
 ) {
   const readiness = biometricKeyringReadiness(config);
   if (!readiness.ready) {
     throw new Error("Biometric keyring is not configured for vault maintenance");
   }
-  const activeKeyId = activeBiometricKeyId(config);
+  const currentKeyId = activeBiometricKeyId(config);
+  const selectedIds = input.credentialIds?.length ? input.credentialIds : null;
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const rows = await selectCredentialsForReencryption(client, activeKeyId, input.limit);
+    const rows = await selectCredentialsForReencryption(
+      client,
+      currentKeyId,
+      input.limit,
+      input.credentialIds,
+    );
     for (const row of rows) {
       if (row.envelopeVersion !== ENVELOPE_VERSION) {
         throw new Error("Unsupported biometric envelope version");
@@ -528,8 +535,9 @@ export async function reencryptBiometricCredentialBatch(
       `SELECT count(*)::int AS count
        FROM attendance_biometric_credentials
        WHERE lifecycle <> 'destroyed'
-         AND encryption_key_id IS DISTINCT FROM $1`,
-      [activeKeyId],
+         AND encryption_key_id IS DISTINCT FROM $1
+         AND ($2::uuid[] IS NULL OR id = ANY($2::uuid[]))`,
+      [currentKeyId, selectedIds],
     );
     await client.query("COMMIT");
     return {
