@@ -41,11 +41,11 @@ describe.skipIf(!databaseUrl)("0035 biometric control plane migration", () => {
     const appendOnlyTrigger = await pool.query<{ triggerName: string }>(
       `SELECT tgname AS "triggerName"
        FROM pg_trigger
-       WHERE tgname = 'attendance_biometric_audit_events_append_only'
+       WHERE tgname = 'attendance_biometric_audit_immutable'
          AND NOT tgisinternal`,
     );
     expect(appendOnlyTrigger.rows).toEqual([
-      { triggerName: "attendance_biometric_audit_events_append_only" },
+      { triggerName: "attendance_biometric_audit_immutable" },
     ]);
   });
 });
