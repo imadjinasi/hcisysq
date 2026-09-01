@@ -103,7 +103,16 @@ export async function registerAdmsBiometricControlPlaneRoutes(
       });
     }
 
-    const result = await listBiometricControlPlaneCredentials(pool, query.data);
+    const result = await listBiometricControlPlaneCredentials(pool, {
+      page: query.data.page,
+      pageSize: query.data.pageSize,
+      ...(query.data.employeeId ? { employeeId: query.data.employeeId } : {}),
+      ...(query.data.originDeviceId ? { originDeviceId: query.data.originDeviceId } : {}),
+      ...(query.data.modality ? { modality: query.data.modality } : {}),
+      ...(query.data.lifecycleReviewOnly !== undefined
+        ? { lifecycleReviewOnly: query.data.lifecycleReviewOnly }
+        : {}),
+    });
     reply.header("Cache-Control", "no-store");
     return reply.send(result);
   });
@@ -131,7 +140,7 @@ export async function registerAdmsBiometricControlPlaneRoutes(
       const result = await reencryptBiometricCredentialBatch(pool, config, {
         actorAccountId: principal.id,
         limit: body.data.limit,
-        credentialIds: body.data.credentialIds,
+        ...(body.data.credentialIds ? { credentialIds: body.data.credentialIds } : {}),
       });
       reply.header("Cache-Control", "no-store");
       return reply.send(result);
