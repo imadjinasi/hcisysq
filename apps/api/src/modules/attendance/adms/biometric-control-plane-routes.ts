@@ -31,6 +31,7 @@ const credentialsQuerySchema = z.object({
 const reencryptSchema = z.object({
   confirmation: z.literal("REENCRYPT_VAULT"),
   limit: z.number().int().min(1).max(100).default(25),
+  credentialIds: z.array(z.string().uuid()).min(1).max(100).optional(),
 });
 
 async function authenticate(
@@ -114,7 +115,7 @@ export async function registerAdmsBiometricControlPlaneRoutes(
     if (!body.success) {
       return reply.status(400).send({
         code: "INVALID_BIOMETRIC_REENCRYPT_REQUEST",
-        message: "Konfirmasi atau batas rotasi envelope tidak valid.",
+        message: "Konfirmasi, credential, atau batas rotasi envelope tidak valid.",
       });
     }
 
@@ -130,6 +131,7 @@ export async function registerAdmsBiometricControlPlaneRoutes(
       const result = await reencryptBiometricCredentialBatch(pool, config, {
         actorAccountId: principal.id,
         limit: body.data.limit,
+        credentialIds: body.data.credentialIds,
       });
       reply.header("Cache-Control", "no-store");
       return reply.send(result);
