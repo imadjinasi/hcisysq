@@ -180,7 +180,7 @@ describe.skipIf(!databaseUrl)("ATT-005 biometric control plane", () => {
       `SELECT action, safe_metadata AS "safeMetadata"
        FROM attendance_biometric_audit_events
        WHERE credential_id = $1
-       ORDER BY occurred_at`,
+       ORDER BY created_at, id`,
       [imported.credentialId],
     );
     expect(audit.rows.map((item) => item.action)).toEqual([
