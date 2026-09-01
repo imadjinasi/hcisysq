@@ -118,9 +118,13 @@ describe.skipIf(!databaseUrl)("ATT-005 biometric control plane", () => {
     const rotation = await reencryptBiometricCredentialBatch(pool, maintenanceConfig(), {
       actorAccountId: accountId,
       limit: 25,
+      credentialIds: [imported.credentialId],
     });
-    expect(rotation.rawPayloadExposed).toBe(false);
-    expect(rotation.processedCount).toBeGreaterThanOrEqual(1);
+    expect(rotation).toEqual({
+      rawPayloadExposed: false,
+      processedCount: 1,
+      remainingCount: 0,
+    });
 
     const stored = await pool.query<{
       employeeId: string;
