@@ -6,8 +6,8 @@ DECLARE
   op attendance_adms_physical_operations%ROWTYPE;
   next_command_id uuid;
   terminal_status text;
-  work_code_id uuid;
-  message_id uuid;
+  target_work_code_id uuid;
+  target_message_id uuid;
 BEGIN
   IF NEW.physical_operation_id IS NULL OR OLD.status IS NOT DISTINCT FROM NEW.status THEN
     RETURN NEW;
@@ -62,18 +62,20 @@ BEGIN
     END IF;
 
     IF op.capability_key = 'work_code_delivery' THEN
-      work_code_id := NULLIF(op.safe_metadata ->> 'workCodeId', '')::uuid;
-      IF work_code_id IS NOT NULL THEN
-        UPDATE attendance_adms_work_code_targets
+      target_work_code_id := NULLIF(op.safe_metadata ->> 'workCodeId', '')::uuid;
+      IF target_work_code_id IS NOT NULL THEN
+        UPDATE attendance_adms_work_code_targets AS target
         SET delivery_state = 'succeeded', updated_at = NEW.updated_at
-        WHERE work_code_id = work_code_id AND device_id = op.device_id;
+        WHERE target.work_code_id = target_work_code_id
+          AND target.device_id = op.device_id;
       END IF;
     ELSIF op.capability_key = 'message_delivery' THEN
-      message_id := NULLIF(op.safe_metadata ->> 'messageId', '')::uuid;
-      IF message_id IS NOT NULL THEN
-        UPDATE attendance_adms_device_message_targets
+      target_message_id := NULLIF(op.safe_metadata ->> 'messageId', '')::uuid;
+      IF target_message_id IS NOT NULL THEN
+        UPDATE attendance_adms_device_message_targets AS target
         SET delivery_state = 'succeeded', updated_at = NEW.updated_at
-        WHERE message_id = message_id AND device_id = op.device_id;
+        WHERE target.message_id = target_message_id
+          AND target.device_id = op.device_id;
       END IF;
     ELSIF op.capability_key = 'biometric_restore' AND NEW.biometric_credential_id IS NOT NULL THEN
       INSERT INTO attendance_biometric_device_states (
@@ -90,11 +92,11 @@ BEGIN
       INSERT INTO attendance_biometric_device_states (
         credential_id, device_id, state, observed_at, last_error_code, safe_metadata, updated_at
       ) VALUES (
-        NEW.biometric_credential_id, op.device_id, 'absent', NEW.updated_at, NULL,
+        NEW.biometric_credential_id, op.device_id, 'missing', NEW.updated_at, NULL,
         jsonb_build_object('source', 'physical_delete_command'), NEW.updated_at
       )
       ON CONFLICT (credential_id, device_id) DO UPDATE
-      SET state = 'absent', observed_at = EXCLUDED.observed_at, last_error_code = NULL,
+      SET state = 'missing', observed_at = EXCLUDED.observed_at, last_error_code = NULL,
           safe_metadata = attendance_biometric_device_states.safe_metadata || EXCLUDED.safe_metadata,
           updated_at = EXCLUDED.updated_at;
     END IF;
@@ -137,18 +139,20 @@ BEGIN
     END IF;
 
     IF op.capability_key = 'work_code_delivery' THEN
-      work_code_id := NULLIF(op.safe_metadata ->> 'workCodeId', '')::uuid;
-      IF work_code_id IS NOT NULL THEN
-        UPDATE attendance_adms_work_code_targets
+      target_work_code_id := NULLIF(op.safe_metadata ->> 'workCodeId', '')::uuid;
+      IF target_work_code_id IS NOT NULL THEN
+        UPDATE attendance_adms_work_code_targets AS target
         SET delivery_state = 'failed', updated_at = NEW.updated_at
-        WHERE work_code_id = work_code_id AND device_id = op.device_id;
+        WHERE target.work_code_id = target_work_code_id
+          AND target.device_id = op.device_id;
       END IF;
     ELSIF op.capability_key = 'message_delivery' THEN
-      message_id := NULLIF(op.safe_metadata ->> 'messageId', '')::uuid;
-      IF message_id IS NOT NULL THEN
-        UPDATE attendance_adms_device_message_targets
+      target_message_id := NULLIF(op.safe_metadata ->> 'messageId', '')::uuid;
+      IF target_message_id IS NOT NULL THEN
+        UPDATE attendance_adms_device_message_targets AS target
         SET delivery_state = 'failed', updated_at = NEW.updated_at
-        WHERE message_id = message_id AND device_id = op.device_id;
+        WHERE target.message_id = target_message_id
+          AND target.device_id = op.device_id;
       END IF;
     END IF;
   END IF;
