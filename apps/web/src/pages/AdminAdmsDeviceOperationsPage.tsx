@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { PaginationBar } from "@/components/PaginationBar";
 import { useDeviceAdmin } from "@/components/attendance/device-admin/DeviceAdminContext";
+import { listEmployees, type AdminEmployeeListItem } from "@/lib/adminEmployees";
 import {
   admsTransactionExportUrl,
   clearAdmsPendingCommands,
@@ -33,7 +34,6 @@ import {
   type AdmsOperationsSummary,
   type AdmsWorkCodeItem,
 } from "@/lib/admsOperations";
-import { listEmployees, type AdminEmployeeListItem } from "@/lib/adminEmployees";
 
 const PAGE_SIZE = 8;
 
@@ -137,6 +137,7 @@ export function AdminAdmsDeviceOperationsPage() {
       setWorkCode("");
       setWorkCodeName("");
       setNotice("Work Code tersimpan di katalog HCIS. Belum ada command yang dikirim ke mesin.");
+      setError(null);
       await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Work Code tidak dapat disimpan.");
@@ -150,6 +151,7 @@ export function AdminAdmsDeviceOperationsPage() {
     try {
       await setAdmsWorkCodeTarget(deviceId, item.id, desiredState);
       setNotice(`Desired state ${item.code} diperbarui. Distribusi fisik tetap belum terverifikasi.`);
+      setError(null);
       await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Target Work Code tidak dapat diperbarui.");
@@ -164,6 +166,7 @@ export function AdminAdmsDeviceOperationsPage() {
     try {
       const result = await listEmployees({ q: employeeQuery.trim(), status: "active", page: 1, pageSize: 10 });
       setEmployeeResults(result.items);
+      setError(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Pegawai tidak dapat dicari.");
     } finally {
@@ -191,6 +194,7 @@ export function AdminAdmsDeviceOperationsPage() {
       setEmployeeQuery("");
       setEmployeeResults([]);
       setNotice("Pesan tersimpan di HCIS. Tidak ada command pesan yang dikirim ke mesin.");
+      setError(null);
       await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Pesan tidak dapat disimpan.");
@@ -204,6 +208,7 @@ export function AdminAdmsDeviceOperationsPage() {
     try {
       await setAdmsDeviceMessageTarget(deviceId, item.id, desiredState);
       setNotice(`Desired state pesan "${item.title}" diperbarui. Delivery fisik tetap belum terverifikasi.`);
+      setError(null);
       await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Target pesan tidak dapat diperbarui.");
@@ -218,6 +223,7 @@ export function AdminAdmsDeviceOperationsPage() {
     try {
       const result = await clearAdmsPendingCommands(deviceId);
       setNotice(`${result.cancelledCount} command pending dibatalkan. Command delivered/acknowledged tetap utuh.`);
+      setError(null);
       await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Command pending tidak dapat dibersihkan.");
@@ -234,6 +240,7 @@ export function AdminAdmsDeviceOperationsPage() {
       const result = await importAdmsOfflineAttlog(deviceId, offlineFile);
       setNotice(`Import selesai: ${result.item.insertedEventCount} fakta baru, ${result.item.duplicateEventCount} duplikat, ${result.item.quarantineCount} quarantine. Device command: 0.`);
       setOfflineFile(null);
+      setError(null);
       await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "ATTLOG offline tidak dapat diimport.");
@@ -253,7 +260,10 @@ export function AdminAdmsDeviceOperationsPage() {
       <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2"><Wrench className="h-5 w-5 text-brand-primary" /><h2 className="text-base font-bold text-brand-heading">Operasional WDMS</h2></div>
+            <div className="flex items-center gap-2">
+              <Wrench className="h-5 w-5 text-brand-primary" />
+              <h2 className="text-base font-bold text-brand-heading">Operasional WDMS</h2>
+            </div>
             <p className="mt-1 max-w-4xl text-xs leading-5 text-muted-foreground">
               Operasi HCIS-side tersedia tanpa arbitrary command. Fitur hardware yang wire protocol-nya belum dibuktikan tetap fail-closed dan tidak mempunyai tombol eksekusi.
             </p>
@@ -293,7 +303,7 @@ export function AdminAdmsDeviceOperationsPage() {
             ))}
             {workCodes.length === 0 ? <div className="rounded-xl border border-dashed border-border p-4 text-xs text-muted-foreground">Belum ada Work Code HCIS.</div> : null}
           </div>
-          {workCodes.length > PAGE_SIZE ? <PaginationBar page={workPage} totalPages={workTotalPages} onPageChange={setWorkPage} /> : null}
+          {workCodes.length > PAGE_SIZE ? <PaginationBar page={workPage} pageSize={PAGE_SIZE} total={workCodes.length} onPageChange={setWorkPage} /> : null}
         </section>
 
         <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
@@ -327,22 +337,16 @@ export function AdminAdmsDeviceOperationsPage() {
             ))}
             {messages.length === 0 ? <div className="rounded-xl border border-dashed border-border p-4 text-xs text-muted-foreground">Belum ada pesan perangkat.</div> : null}
           </div>
-          {messages.length > PAGE_SIZE ? <PaginationBar page={messagePage} totalPages={messageTotalPages} onPageChange={setMessagePage} /> : null}
+          {messages.length > PAGE_SIZE ? <PaginationBar page={messagePage} pageSize={PAGE_SIZE} total={messages.length} onPageChange={setMessagePage} /> : null}
         </section>
       </div>
 
       <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
         <h3 className="text-sm font-bold text-brand-heading">Transfer data & maintenance aman</h3>
         <div className="mt-4 grid gap-3 lg:grid-cols-3">
-          <div className="rounded-xl border border-border/70 p-4">
-            <Download className="h-4 w-4 text-brand-primary" /><div className="mt-2 text-xs font-bold text-brand-heading">Export transaksi CSV</div><p className="mt-1 text-[11px] leading-5 text-muted-foreground">Mengekspor fakta raw durable. Tidak menghitung terlambat, jam kerja, overtime, atau payroll.</p><a href={admsTransactionExportUrl(deviceId)} className="mt-3 inline-flex h-8 items-center rounded-lg border border-border px-3 text-xs font-semibold">Download CSV</a>
-          </div>
-          <div className="rounded-xl border border-border/70 p-4">
-            <FileUp className="h-4 w-4 text-brand-primary" /><div className="mt-2 text-xs font-bold text-brand-heading">Import ATTLOG offline</div><p className="mt-1 text-[11px] leading-5 text-muted-foreground">Fallback file ≤512 KiB. Parser, dedupe, quarantine, provenance, dan manual-attendance protection tetap sama. Device command = 0.</p><input type="file" accept=".txt,.dat,.log,text/plain" onChange={(event) => setOfflineFile(event.target.files?.[0] ?? null)} className="mt-3 block w-full text-xs" /><button type="button" onClick={() => void importOffline()} disabled={!offlineFile || busy !== null} className="mt-2 h-8 rounded-lg bg-brand-primary px-3 text-xs font-semibold text-white disabled:opacity-50">Import file</button>
-          </div>
-          <div className="rounded-xl border border-border/70 p-4">
-            <Trash2 className="h-4 w-4 text-brand-primary" /><div className="mt-2 text-xs font-bold text-brand-heading">Bersihkan queue pending</div><p className="mt-1 text-[11px] leading-5 text-muted-foreground">Hanya command berstatus pending yang belum pernah delivered. Delivered/acknowledged tidak disentuh.</p><button type="button" onClick={() => void clearPending()} disabled={busy !== null || (summary?.pendingCommandCount ?? 0) === 0} className="mt-3 h-8 rounded-lg border border-border px-3 text-xs font-semibold disabled:opacity-50">Batalkan {summary?.pendingCommandCount ?? 0} pending</button>
-          </div>
+          <div className="rounded-xl border border-border/70 p-4"><Download className="h-4 w-4 text-brand-primary" /><div className="mt-2 text-xs font-bold text-brand-heading">Export transaksi CSV</div><p className="mt-1 text-[11px] leading-5 text-muted-foreground">Mengekspor fakta raw durable. Tidak menghitung terlambat, jam kerja, overtime, atau payroll.</p><a href={admsTransactionExportUrl(deviceId)} className="mt-3 inline-flex h-8 items-center rounded-lg border border-border px-3 text-xs font-semibold">Download CSV</a></div>
+          <div className="rounded-xl border border-border/70 p-4"><FileUp className="h-4 w-4 text-brand-primary" /><div className="mt-2 text-xs font-bold text-brand-heading">Import ATTLOG offline</div><p className="mt-1 text-[11px] leading-5 text-muted-foreground">Fallback file ≤512 KiB. Parser, dedupe, quarantine, provenance, dan manual-attendance protection tetap sama. Device command = 0.</p><input type="file" accept=".txt,.dat,.log,text/plain" onChange={(event) => setOfflineFile(event.target.files?.[0] ?? null)} className="mt-3 block w-full text-xs" /><button type="button" onClick={() => void importOffline()} disabled={!offlineFile || busy !== null} className="mt-2 h-8 rounded-lg bg-brand-primary px-3 text-xs font-semibold text-white disabled:opacity-50">Import file</button></div>
+          <div className="rounded-xl border border-border/70 p-4"><Trash2 className="h-4 w-4 text-brand-primary" /><div className="mt-2 text-xs font-bold text-brand-heading">Bersihkan queue pending</div><p className="mt-1 text-[11px] leading-5 text-muted-foreground">Hanya command berstatus pending yang belum pernah delivered. Delivered/acknowledged tidak disentuh.</p><button type="button" onClick={() => void clearPending()} disabled={busy !== null || (summary?.pendingCommandCount ?? 0) === 0} className="mt-3 h-8 rounded-lg border border-border px-3 text-xs font-semibold disabled:opacity-50">Batalkan {summary?.pendingCommandCount ?? 0} pending</button></div>
         </div>
         {imports.length ? <div className="mt-4"><div className="text-xs font-bold text-brand-heading">Import terakhir</div><div className="mt-2 overflow-x-auto"><table className="w-full min-w-[640px] text-left text-xs"><thead className="bg-surface text-[10px] uppercase text-muted-foreground"><tr><th className="px-3 py-2">File</th><th className="px-3 py-2">Waktu</th><th className="px-3 py-2">Baru</th><th className="px-3 py-2">Duplikat</th><th className="px-3 py-2">Quarantine</th></tr></thead><tbody className="divide-y divide-border/60">{imports.slice(0, 8).map((item) => <tr key={item.id}><td className="px-3 py-2 font-medium">{item.sourceFilename}</td><td className="px-3 py-2">{fmt(item.createdAt)}</td><td className="px-3 py-2">{item.insertedEventCount}</td><td className="px-3 py-2">{item.duplicateEventCount}</td><td className="px-3 py-2">{item.quarantineCount}</td></tr>)}</tbody></table></div></div> : null}
       </section>
