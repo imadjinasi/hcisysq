@@ -199,6 +199,8 @@ const attlogRangeCommandPattern = new RegExp(
 );
 const userInfoNameUpdateCommandPattern = /^DATA UPDATE USERINFO PIN=\d{1,128}\tName=[^\t\r\n]{1,160}$/u;
 const fingerprintRestoreCommandPattern = /^DATA UPDATE FINGERTMP PIN=\d{1,128}\tFID=\d{1,2}\tSize=\d{1,6}\tValid=[13]\tTMP=[A-Za-z0-9+/=]{4,524288}$/u;
+const faceRestoreCommandPattern = /^DATA UPDATE FACE PIN=\d{1,128}\tFID=\d{1,3}\tSize=\d{1,8}\tValid=1\tTMP=[A-Za-z0-9+/=]{4,5242880}$/u;
+const unifiedBiometricRestoreCommandPattern = /^DATA UPDATE BIODATA Pin=\d{1,128}\tNo=\d{1,3}\tIndex=\d{1,5}\tValid=1\tDuress=0\tType=(1|2|6|8|9|10)\tMajorVer=\d{1,5}\tMinorVer=\d{1,5}\tFormat=\d{1,5}\tTmp=[A-Za-z0-9+/=]{4,5242880}$/u;
 
 export function attlogRangeWireCommand(startTime: string, endTime: string) {
   const command = `DATA QUERY ATTLOG StartTime=${startTime}\tEndTime=${endTime}`;
@@ -226,7 +228,9 @@ export function deviceCommandWireBody(commandNumber: string | number, wireComman
     !attlogRangeCommandPattern.test(wireCommand) &&
     !userInfoNameUpdateCommandPattern.test(wireCommand) &&
     !isNonSensitivePhysicalWireCommand(wireCommand) &&
-    !fingerprintRestoreCommandPattern.test(wireCommand)
+    !fingerprintRestoreCommandPattern.test(wireCommand) &&
+    !faceRestoreCommandPattern.test(wireCommand) &&
+    !unifiedBiometricRestoreCommandPattern.test(wireCommand)
   ) {
     throw new Error("Unsupported ADMS wire command");
   }
@@ -259,7 +263,7 @@ export function optionsAllHandshakeBody(url: URL, serial: string | null, attlogS
     "Delay=10",
     "TransTimes=00:00;14:05",
     "TransInterval=1",
-    "TransFlag=TransData\tAttLog\tOpLog\tAttPhoto",
+    "TransFlag=TransData\tAttLog",
     "TimeZone=7",
     "Realtime=1",
     "Encrypt=None",
