@@ -27,6 +27,11 @@ export function AdminAdmsDeviceCommandsRoutePage() {
   return <AdminAdmsDevicePage deviceId={deviceId} section="commands" />;
 }
 
+export function AdminAdmsDeviceOperationsRoutePage() {
+  const { deviceId } = useParams({ from: "/admin/attendance/devices/$deviceId/operations" });
+  return <AdminAdmsDevicePage deviceId={deviceId} section="operations" />;
+}
+
 export function AdminAdmsDeviceSettingsRoutePage() {
   const { deviceId } = useParams({ from: "/admin/attendance/devices/$deviceId/settings" });
   return <AdminAdmsDevicePage deviceId={deviceId} section="settings" />;
