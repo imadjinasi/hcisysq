@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const databaseUrl = process.env.DATABASE_URL;
 
-describe.skipIf(!databaseUrl)("0036 Wave 3 operations migration", () => {
+describe.skipIf(!databaseUrl)("0036+ WDMS operations migration safety", () => {
   let pool: Pool;
 
   beforeAll(() => {
@@ -14,7 +14,7 @@ describe.skipIf(!databaseUrl)("0036 Wave 3 operations migration", () => {
     await pool.end();
   });
 
-  it("adds HCIS-side operations tables without widening the device command allowlist", async () => {
+  it("keeps Wave 3 HCIS tables and constrains later physical parity to typed operations", async () => {
     const tables = await pool.query<{ tableName: string }>(
       `SELECT table_name AS "tableName"
        FROM information_schema.tables
@@ -53,19 +53,40 @@ describe.skipIf(!databaseUrl)("0036 Wave 3 operations migration", () => {
        FROM pg_constraint
        WHERE conname = 'attendance_adms_commands_wire_command_check'`,
     );
-    const definition = wireConstraint.rows[0]?.definition ?? "";
-    expect(definition).toContain("LOG");
-    expect(definition).toContain("INFO");
-    expect(definition).toContain("DATA QUERY ATTLOG");
-    // Historical schema still recognizes the separately allowlisted same-PIN name write.
-    // Active USERINFO reads are retired by the dedicated 0033 INSERT trigger, not by
-    // rewriting migration history or deleting historical command rows.
-    expect(definition).toContain("DATA UPDATE USERINFO");
-    expect(definition).not.toContain("REBOOT");
-    expect(definition).not.toContain("FIRMWARE");
-    expect(definition).not.toContain("WORKCODE");
-    expect(definition).not.toContain("MESSAGE");
-    expect(definition).not.toContain("CLEAR ALL");
+    const wireDefinition = wireConstraint.rows[0]?.definition ?? "";
+    expect(wireDefinition).toContain("LOG");
+    expect(wireDefinition).toContain("INFO");
+    expect(wireDefinition).toContain("DATA QUERY ATTLOG");
+    // Historical same-PIN name write remains separately allowlisted. Active USERINFO
+    // reads remain rejected by the dedicated 0033 INSERT trigger below.
+    expect(wireDefinition).toContain("DATA UPDATE USERINFO");
+    // Full physical parity intentionally widens the *typed* allowlist. The safety
+    // invariant is no arbitrary escape hatch and mandatory physical-operation linkage.
+    expect(wireDefinition).toContain("REBOOT");
+    expect(wireDefinition).toContain("WORKCODE");
+    expect(wireDefinition).toContain("CLEAR DATA");
+    expect(wireDefinition).toContain("UPGRADE type=1");
+
+    const physicalShape = await pool.query<{ definition: string }>(
+      `SELECT pg_get_constraintdef(oid) AS definition
+       FROM pg_constraint
+       WHERE conname = 'attendance_adms_commands_physical_shape_check'`,
+    );
+    const physicalShapeDefinition = physicalShape.rows[0]?.definition ?? "";
+    expect(physicalShapeDefinition).toContain("physical_operation_id");
+    expect(physicalShapeDefinition).toContain("physical_sequence");
+    expect(physicalShapeDefinition).toContain("physical_capability_key");
+
+    const commandShape = await pool.query<{ definition: string }>(
+      `SELECT pg_get_constraintdef(oid) AS definition
+       FROM pg_constraint
+       WHERE conname = 'attendance_adms_commands_command_shape_check'`,
+    );
+    const commandShapeDefinition = commandShape.rows[0]?.definition ?? "";
+    expect(commandShapeDefinition).toContain("admin_physical_operation");
+    expect(commandShapeDefinition).toContain("physical_operation_id");
+    expect(commandShapeDefinition).toContain("firmware_ticket_id");
+    expect(commandShapeDefinition).not.toContain("arbitrary");
 
     const retiredUserInfoTrigger = await pool.query<{ triggerName: string }>(
       `SELECT tgname AS "triggerName"
@@ -84,5 +105,7 @@ describe.skipIf(!databaseUrl)("0036 Wave 3 operations migration", () => {
     );
     expect(auditConstraint.rows[0]?.definition).toContain("offline_attlog_imported");
     expect(auditConstraint.rows[0]?.definition).toContain("pending_commands_cleared");
+    expect(auditConstraint.rows[0]?.definition).toContain("physical_operation_requested");
+    expect(auditConstraint.rows[0]?.definition).toContain("physical_capability_updated");
   });
 });
