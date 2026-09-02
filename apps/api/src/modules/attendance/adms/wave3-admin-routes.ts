@@ -70,7 +70,7 @@ const exportQuerySchema = z.object({
   pin: z.string().regex(/^\d{1,128}$/).optional(),
 });
 const offlineImportSchema = z.object({
-  filename: z.string().trim().min(1).max(255).regex(/^[^\u0000-\u001f\u007f]+$/),
+  filename: z.string().trim().min(1).max(255),
   content: z.string().min(1),
 });
 
