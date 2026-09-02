@@ -10,8 +10,17 @@ import {
   type PassiveBiometricCandidate,
 } from "./biometric-ingress.js";
 import {
+  importMappedUnifiedBiometrics,
+  parseAttendancePhotoBody,
+  parseUnifiedBiometricCandidates,
+  persistEncryptedAttendancePhoto,
+  type ParsedAttendancePhoto,
+  type UnifiedBiometricCandidate,
+} from "./physical-parity-ingress.js";
+import {
   ADMS_MAX_BODY_BYTES,
   attlogAcknowledgementBody,
+  deviceTimeResponseBody,
   extractAttlogStamp,
   extractSerialCandidate,
   getRequestIdleAcknowledgementBody,
@@ -93,6 +102,37 @@ function asCapturedBody(value: unknown): CapturedBody {
   };
 }
 
+async function pushFlags(pool: Pool, config: ApiConfig, serialNumber: string | null) {
+  if (!serialNumber) return { attendancePhoto: false, biometric: false };
+  const result = await pool.query<{
+    collectionEnabled: boolean;
+    attendancePhotoState: string | null;
+  }>(
+    `SELECT
+       d.biometric_collection_enabled AS "collectionEnabled",
+       c.state AS "attendancePhotoState"
+     FROM attendance_adms_devices d
+     LEFT JOIN attendance_adms_physical_capabilities c
+       ON c.device_id = d.id AND c.capability_key = 'attendance_photo'
+     WHERE d.serial_number = $1 AND d.lifecycle = 'active'
+     LIMIT 1`,
+    [serialNumber],
+  );
+  const row = result.rows[0];
+  return {
+    attendancePhoto: Boolean(row && ["canary_pending", "verified"].includes(row.attendancePhotoState ?? "")),
+    biometric: Boolean(row?.collectionEnabled && config.BIOMETRIC_COLLECTION_ENABLED === "1"),
+  };
+}
+
+function handshakeWithPushFlags(base: string | null, flags: { attendancePhoto: boolean; biometric: boolean }) {
+  if (!base) return null;
+  const transFlags = ["TransData", "AttLog"];
+  if (flags.biometric) transFlags.push("OpLog");
+  if (flags.attendancePhoto) transFlags.push("AttPhoto");
+  return base.replace(/^TransFlag=.*$/m, `TransFlag=${transFlags.join("\t")}`);
+}
+
 export async function registerAdmsIngressRoutes(
   app: FastifyInstance,
   pool: Pool,
@@ -143,7 +183,7 @@ export async function registerAdmsIngressRoutes(
       if (accept) safeMetadata.accept = accept;
       if (contentEncoding) safeMetadata.contentEncoding = contentEncoding;
       if (protocolTable) safeMetadata.protocolTable = protocolTable;
-      for (const key of ["pushver", "PushVersion", "language"]) {
+      for (const key of ["pushver", "PushVersion", "language", "cmdid", "packcnt", "packidx"]) {
         const value = url.searchParams.get(key);
         if (value && value.length <= 128) safeMetadata[key] = value;
       }
@@ -154,16 +194,29 @@ export async function registerAdmsIngressRoutes(
       let decodedDeviceText: string | null = null;
       let observedRosterRecords: SafeDeviceRosterRecord[] = [];
       let passiveBiometricCandidates: PassiveBiometricCandidate[] = [];
+      let unifiedBiometricCandidates: UnifiedBiometricCandidate[] = [];
+      let attendancePhoto: ParsedAttendancePhoto | null = null;
       let redactJournalBody = false;
       let classification = "protocol_discovery";
-      if (capture.body && capture.body.length > 0) {
+
+      const isAttendancePhoto =
+        request.method === "POST" &&
+        url.pathname === "/iclock/cdata" &&
+        protocolTable === "ATTPHOTO";
+      if (capture.body && capture.body.length > 0 && isAttendancePhoto) {
+        redactJournalBody = true;
+        attendancePhoto = parseAttendancePhotoBody(capture.body);
+        classification = attendancePhoto ? "attendance_photo" : "attendance_photo_rejected";
+        safeMetadata.bodyRedaction = "sensitive_device_data_redacted";
+        safeMetadata.attendancePhotoParsed = attendancePhoto ? "true" : "false";
+      } else if (capture.body && capture.body.length > 0) {
         if (!acceptsUtf8(contentType, contentEncoding)) {
           classification = "unsupported_encoding";
-          const nonAttendanceCdata =
+          const nonAttendanceData =
             request.method === "POST" &&
-            url.pathname === "/iclock/cdata" &&
+            ["/iclock/cdata", "/iclock/querydata"].includes(url.pathname) &&
             protocolTable !== "ATTLOG";
-          if (nonAttendanceCdata) {
+          if (nonAttendanceData) {
             redactJournalBody = true;
             safeMetadata.bodyRedaction = isSensitiveProtocolTable(protocolTable)
               ? "sensitive_device_data_redacted"
@@ -186,6 +239,20 @@ export async function registerAdmsIngressRoutes(
             ) {
               classification = "attlog";
               attlogText = text;
+            } else if (
+              request.method === "POST" &&
+              (
+                (url.pathname === "/iclock/querydata" && protocolTable === "BIODATA") ||
+                (url.pathname === "/iclock/cdata" && url.searchParams.get("type")?.toLowerCase() === "biodata")
+              )
+            ) {
+              redactJournalBody = true;
+              classification = "sensitive_device_data_redacted";
+              safeMetadata.bodyRedaction = classification;
+              const parsed = parseUnifiedBiometricCandidates(text);
+              unifiedBiometricCandidates = parsed.records;
+              safeMetadata.biometricRecordCount = String(parsed.records.length);
+              safeMetadata.biometricRejectedRecordCount = String(parsed.rejectedRecords);
             } else if (
               shouldRedactDeviceDataBody({
                 method: request.method,
@@ -218,11 +285,11 @@ export async function registerAdmsIngressRoutes(
             }
           } catch {
             classification = "unsupported_encoding";
-            const nonAttendanceCdata =
+            const nonAttendanceData =
               request.method === "POST" &&
-              url.pathname === "/iclock/cdata" &&
+              ["/iclock/cdata", "/iclock/querydata"].includes(url.pathname) &&
               protocolTable !== "ATTLOG";
-            if (nonAttendanceCdata) {
+            if (nonAttendanceData) {
               redactJournalBody = true;
               safeMetadata.bodyRedaction = isSensitiveProtocolTable(protocolTable)
                 ? "sensitive_device_data_redacted"
@@ -237,7 +304,7 @@ export async function registerAdmsIngressRoutes(
         !capture.bodyCaptured &&
         capture.bodyByteLength > 0 &&
         request.method === "POST" &&
-        url.pathname === "/iclock/cdata"
+        ["/iclock/cdata", "/iclock/querydata"].includes(url.pathname)
       ) {
         safeMetadata.bodyCapture = "hash_only_oversize";
         if (protocolTable === "ATTLOG") {
@@ -264,19 +331,27 @@ export async function registerAdmsIngressRoutes(
       const configuredAttlogStamp = serialCandidate
         ? await getAdmsAttlogTransferStamp(pool, serialCandidate)
         : null;
+      const flags = await pushFlags(pool, config, serialCandidate);
+      const baseHandshake = optionsAllHandshakeBody(url, serialCandidate, configuredAttlogStamp ?? "None");
+      const timeBody = deviceTimeResponseBody(url, receivedAt);
+      const queryDataAck =
+        request.method === "POST" && url.pathname === "/iclock/querydata" && protocolTable === "BIODATA"
+          ? `biophoto=${unifiedBiometricCandidates.length}`
+          : null;
       const successResponseBody =
         request.method === "GET"
-          ? optionsAllHandshakeBody(url, serialCandidate, configuredAttlogStamp ?? "None") ??
-            getRequestIdleAcknowledgementBody(url)
+          ? timeBody ?? handshakeWithPushFlags(baseHandshake, flags) ?? getRequestIdleAcknowledgementBody(url)
           : url.pathname === "/iclock/devicecmd"
             ? "OK"
-            : attlogText
+            : queryDataAck ?? (attlogText
               ? attlogAcknowledgementBody(attlogText)
               : redactJournalBody
                 ? decodedDeviceText !== null
                   ? deviceDataAcknowledgementBody(decodedDeviceText)
                   : "OK"
-                : null;
+                : null);
+
+      if (timeBody) classification = "time_sync";
 
       const result = await persistAdmsIngress(pool, {
         receivedAt,
@@ -297,7 +372,7 @@ export async function registerAdmsIngressRoutes(
         commandResults,
         quarantines,
         successResponseBody,
-      });
+      }, config);
 
       if (result.accepted && result.deviceId && observedRosterRecords.length > 0) {
         try {
@@ -320,14 +395,36 @@ export async function registerAdmsIngressRoutes(
       }
 
       if (result.accepted && result.deviceId && passiveBiometricCandidates.length > 0) {
-        // Do not swallow vault failures when collection is enabled and a mapped candidate is eligible.
-        // Returning a server error lets the device retry while the already-durable journal remains redacted.
         await importMappedPassiveBiometrics(pool, config, {
           deviceId: result.deviceId,
           sourceRequestId: result.requestId,
           observedAt: receivedAt,
           records: passiveBiometricCandidates,
         });
+      }
+
+      if (result.accepted && result.deviceId && unifiedBiometricCandidates.length > 0) {
+        await importMappedUnifiedBiometrics(pool, config, {
+          deviceId: result.deviceId,
+          sourceRequestId: result.requestId,
+          observedAt: receivedAt,
+          records: unifiedBiometricCandidates,
+        });
+      }
+
+      if (result.accepted && result.deviceId && attendancePhoto) {
+        const stored = await persistEncryptedAttendancePhoto(pool, config, {
+          deviceId: result.deviceId,
+          sourceRequestId: result.requestId,
+          receivedAt,
+          photo: attendancePhoto,
+        });
+        if (!stored.stored) {
+          request.log.info(
+            { deviceId: result.deviceId, requestId: result.requestId, reason: stored.reason },
+            "ADMS attendance photo remained redacted because encrypted storage gate is not ready",
+          );
+        }
       }
 
       const projectionRequestIds = new Set(result.recoveredRequestIds);
