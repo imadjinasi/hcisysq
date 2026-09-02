@@ -21,6 +21,7 @@ export default tseslint.config(
     files: [
       "src/modules/attendance/adms/physical-parity-protocol.ts",
       "src/modules/attendance/adms/physical-parity-service.ts",
+      "src/modules/attendance/adms/physical-parity-user-config-protocol.ts",
     ],
     rules: {
       "no-control-regex": "off",
