@@ -35,7 +35,9 @@ Untuk ATT-005 fingerprint/WDMS, baca juga:
 - `domain/attendance-wdms-implementation-plan.md` untuk delivery wave ATT-005;
 - `domain/attendance-wdms-package1-non-biometric-completion.md` untuk non-biometric operations package;
 - `domain/attendance-wdms-package2-biometric-control-plane.md` untuk encrypted-vault readiness, lifecycle review, key rotation procedure, dan fixed biometric hardware boundary;
-- `api/attendance-adms-biometric-control-plane.openapi.yaml` untuk kontrak API metadata-only Package 2.
+- `domain/attendance-wdms-package3-operations-closure.md` untuk Work Code/message planning, export, offline ATTLOG import, saved filters, safe queue maintenance, capability matrix, dan final Package 3 closure semantics;
+- `api/attendance-adms-biometric-control-plane.openapi.yaml` untuk kontrak API metadata-only Package 2;
+- `api/attendance-adms-wave3.openapi.yaml` untuk kontrak API operasi Package 3 yang tetap fail-closed terhadap hardware yang belum terverifikasi.
 
 ## Status dokumen
 
