@@ -22,6 +22,13 @@ export type BiometricPayloadContext = {
   vendorFormat: string;
 };
 
+export type RestrictedDevicePayloadContext = {
+  recordId: string;
+  deviceId: string;
+  domain: "attendance_photo";
+  sourceRequestId: string;
+};
+
 export type EncryptedBiometricPayload = {
   ciphertext: Buffer;
   iv: Buffer;
@@ -51,6 +58,19 @@ function associatedData(context: BiometricPayloadContext) {
       context.modality,
       context.slotIndex,
       context.vendorFormat,
+    ]),
+    "utf8",
+  );
+}
+
+function restrictedAssociatedData(context: RestrictedDevicePayloadContext) {
+  return Buffer.from(
+    JSON.stringify([
+      "HCIS_RESTRICTED_DEVICE_PAYLOAD_V1",
+      context.domain,
+      context.recordId,
+      context.deviceId,
+      context.sourceRequestId,
     ]),
     "utf8",
   );
@@ -90,7 +110,7 @@ function parseConfiguredKeyring(config: ApiConfig): BiometricKeyring {
 
 function encryptWithConfiguredKeyring(
   payload: Buffer,
-  context: BiometricPayloadContext,
+  aad: Buffer,
   config: ApiConfig,
 ): EncryptedBiometricPayload {
   if (payload.length === 0 || payload.length > MAX_BIOMETRIC_PAYLOAD_BYTES) {
@@ -100,7 +120,7 @@ function encryptWithConfiguredKeyring(
   const key = keyring.keys.get(keyring.activeKeyId)!;
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", key, iv);
-  cipher.setAAD(associatedData(context));
+  cipher.setAAD(aad);
   const ciphertext = Buffer.concat([cipher.update(payload), cipher.final()]);
   return {
     ciphertext,
@@ -110,6 +130,33 @@ function encryptWithConfiguredKeyring(
     sha256: createHash("sha256").update(payload).digest("hex"),
     byteLength: payload.length,
   };
+}
+
+function decryptWithConfiguredKeyring(
+  encrypted: EncryptedBiometricPayload,
+  aad: Buffer,
+  config: ApiConfig,
+): Buffer {
+  const keyring = parseConfiguredKeyring(config);
+  const key = keyring.keys.get(encrypted.keyId);
+  if (!key) throw new Error("Biometric encryption key is unavailable");
+  if (encrypted.iv.length !== 12 || encrypted.authTag.length !== 16) {
+    throw new Error("Encrypted biometric payload envelope is invalid");
+  }
+
+  const decipher = createDecipheriv("aes-256-gcm", key, encrypted.iv);
+  decipher.setAAD(aad);
+  decipher.setAuthTag(encrypted.authTag);
+  const plaintext = Buffer.concat([decipher.update(encrypted.ciphertext), decipher.final()]);
+  const actualHash = createHash("sha256").update(plaintext).digest();
+  const expectedHash = Buffer.from(encrypted.sha256, "hex");
+  if (expectedHash.length !== actualHash.length || !timingSafeEqual(actualHash, expectedHash)) {
+    throw new Error("Biometric payload integrity check failed");
+  }
+  if (plaintext.length !== encrypted.byteLength) {
+    throw new Error("Biometric payload length check failed");
+  }
+  return plaintext;
 }
 
 export function biometricCollectionEnabled(config: ApiConfig) {
@@ -144,7 +191,7 @@ export function encryptBiometricPayload(
   if (!biometricCollectionEnabled(config)) {
     throw new Error("Biometric collection is disabled");
   }
-  return encryptWithConfiguredKeyring(payload, context, config);
+  return encryptWithConfiguredKeyring(payload, associatedData(context), config);
 }
 
 export function encryptBiometricPayloadForMaintenance(
@@ -152,7 +199,7 @@ export function encryptBiometricPayloadForMaintenance(
   context: BiometricPayloadContext,
   config: ApiConfig,
 ): EncryptedBiometricPayload {
-  return encryptWithConfiguredKeyring(payload, context, config);
+  return encryptWithConfiguredKeyring(payload, associatedData(context), config);
 }
 
 export function decryptBiometricPayload(
@@ -160,26 +207,23 @@ export function decryptBiometricPayload(
   context: BiometricPayloadContext,
   config: ApiConfig,
 ): Buffer {
-  const keyring = parseConfiguredKeyring(config);
-  const key = keyring.keys.get(encrypted.keyId);
-  if (!key) throw new Error("Biometric encryption key is unavailable");
-  if (encrypted.iv.length !== 12 || encrypted.authTag.length !== 16) {
-    throw new Error("Encrypted biometric payload envelope is invalid");
-  }
+  return decryptWithConfiguredKeyring(encrypted, associatedData(context), config);
+}
 
-  const decipher = createDecipheriv("aes-256-gcm", key, encrypted.iv);
-  decipher.setAAD(associatedData(context));
-  decipher.setAuthTag(encrypted.authTag);
-  const plaintext = Buffer.concat([decipher.update(encrypted.ciphertext), decipher.final()]);
-  const actualHash = createHash("sha256").update(plaintext).digest();
-  const expectedHash = Buffer.from(encrypted.sha256, "hex");
-  if (expectedHash.length !== actualHash.length || !timingSafeEqual(actualHash, expectedHash)) {
-    throw new Error("Biometric payload integrity check failed");
-  }
-  if (plaintext.length !== encrypted.byteLength) {
-    throw new Error("Biometric payload length check failed");
-  }
-  return plaintext;
+export function encryptRestrictedDevicePayload(
+  payload: Buffer,
+  context: RestrictedDevicePayloadContext,
+  config: ApiConfig,
+): EncryptedBiometricPayload {
+  return encryptWithConfiguredKeyring(payload, restrictedAssociatedData(context), config);
+}
+
+export function decryptRestrictedDevicePayload(
+  encrypted: EncryptedBiometricPayload,
+  context: RestrictedDevicePayloadContext,
+  config: ApiConfig,
+) {
+  return decryptWithConfiguredKeyring(encrypted, restrictedAssociatedData(context), config);
 }
 
 export function reencryptBiometricPayload(
