@@ -47,9 +47,25 @@ describe.skipIf(!databaseUrl)("0036 Wave 3 operations migration", () => {
     expect(definition).toContain("LOG");
     expect(definition).toContain("INFO");
     expect(definition).toContain("DATA QUERY ATTLOG");
-    expect(definition).not.toContain("USERINFO");
+    // Historical schema still recognizes the separately allowlisted same-PIN name write.
+    // Active USERINFO reads are retired by the dedicated 0033 INSERT trigger, not by
+    // rewriting migration history or deleting historical command rows.
+    expect(definition).toContain("DATA UPDATE USERINFO");
     expect(definition).not.toContain("REBOOT");
     expect(definition).not.toContain("FIRMWARE");
+    expect(definition).not.toContain("WORKCODE");
+    expect(definition).not.toContain("MESSAGE");
+    expect(definition).not.toContain("CLEAR ALL");
+
+    const retiredUserInfoTrigger = await pool.query<{ triggerName: string }>(
+      `SELECT tgname AS "triggerName"
+       FROM pg_trigger
+       WHERE tgname = 'attendance_adms_reject_retired_userinfo_reads'
+         AND NOT tgisinternal`,
+    );
+    expect(retiredUserInfoTrigger.rows).toEqual([
+      { triggerName: "attendance_adms_reject_retired_userinfo_reads" },
+    ]);
 
     const auditConstraint = await pool.query<{ definition: string }>(
       `SELECT pg_get_constraintdef(oid) AS definition
