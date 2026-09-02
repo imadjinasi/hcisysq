@@ -1,0 +1,509 @@
+openapi: 3.1.0
+info:
+  title: HCIS Attendance ADMS Wave 3 Operations
+  version: 1.0.0
+  description: >-
+    SUPER_ADMIN contract for ATT-005 Package 3. HCIS-owned operations are executable;
+    unverified physical WDMS capabilities remain fail-closed and have no raw-command escape hatch.
+servers:
+  - url: /api
+security:
+  - cookieAuth: []
+paths:
+  /admin/attendance/adms/devices/{deviceId}/operations:
+    get:
+      summary: Read the fail-closed operations capability matrix for one device
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: Metadata-only operations summary
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [item]
+                properties:
+                  item:
+                    $ref: '#/components/schemas/OperationsSummary'
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/attendance/adms/devices/{deviceId}/work-codes:
+    get:
+      summary: List HCIS Work Codes and desired state for one device
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: Work Code catalog; physical delivery remains not verified
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deliveryCapability, note, items]
+                properties:
+                  deliveryCapability:
+                    const: not_verified
+                  note: { type: string }
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/WorkCode' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/attendance/adms/work-codes:
+    post:
+      summary: Create or update an HCIS Work Code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, name]
+              properties:
+                code:
+                  type: string
+                  pattern: '^[0-9A-Za-z._-]{1,32}$'
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 120
+                active:
+                  type: boolean
+                  default: true
+      responses:
+        '200': { description: Existing Work Code updated }
+        '201': { description: Work Code created }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/attendance/adms/devices/{deviceId}/work-codes/{workCodeId}:
+    put:
+      summary: Set desired device state for a Work Code without sending a device command
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+        - name: workCodeId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DesiredState'
+      responses:
+        '200':
+          description: Desired state saved; commandCreated is always false
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [item, commandCreated]
+                properties:
+                  item:
+                    type: object
+                    required: [desiredState, deliveryState]
+                    properties:
+                      desiredState: { enum: [present, absent] }
+                      deliveryState: { const: not_verified }
+                  commandCreated: { const: false }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/attendance/adms/devices/{deviceId}/messages:
+    get:
+      summary: List HCIS device-message plans for one device
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: Message catalog; physical delivery remains not verified
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deliveryCapability, note, items]
+                properties:
+                  deliveryCapability: { const: not_verified }
+                  note: { type: string }
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/DeviceMessage' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/attendance/adms/messages:
+    post:
+      summary: Create an HCIS public/private message plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [audience, title, messageText]
+              properties:
+                audience: { enum: [public, private] }
+                employeeId:
+                  type: [string, 'null']
+                  format: uuid
+                  description: Required only for private messages.
+                title: { type: string, minLength: 1, maxLength: 120 }
+                messageText: { type: string, minLength: 1, maxLength: 500 }
+                startsAt: { type: [string, 'null'], format: date-time }
+                endsAt: { type: [string, 'null'], format: date-time }
+      responses:
+        '201': { description: HCIS message created; no device command is created }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/attendance/adms/messages/{messageId}:
+    patch:
+      summary: Update one HCIS message plan
+      parameters:
+        - name: messageId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                active: { type: boolean }
+                title: { type: string, minLength: 1, maxLength: 120 }
+                messageText: { type: string, minLength: 1, maxLength: 500 }
+                startsAt: { type: [string, 'null'], format: date-time }
+                endsAt: { type: [string, 'null'], format: date-time }
+      responses:
+        '200': { description: HCIS message updated }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/attendance/adms/devices/{deviceId}/messages/{messageId}:
+    put:
+      summary: Set desired device state for a message without sending a device command
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+        - name: messageId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DesiredState' }
+      responses:
+        '200':
+          description: Desired state saved; commandCreated is always false
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [item, commandCreated]
+                properties:
+                  item:
+                    type: object
+                    required: [desiredState, deliveryState]
+                    properties:
+                      desiredState: { enum: [present, absent] }
+                      deliveryState: { const: not_verified }
+                  commandCreated: { const: false }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/attendance/adms/saved-filters:
+    get:
+      summary: List SUPER_ADMIN-owned saved operational filters
+      parameters:
+        - name: deviceId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: viewKey
+          in: query
+          schema: { enum: [transactions, commands, logs] }
+      responses:
+        '200':
+          description: Saved filters owned by the current account
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/SavedFilter' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      summary: Create or update a SUPER_ADMIN-owned saved filter
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [viewKey, name, criteria]
+              properties:
+                deviceId: { type: [string, 'null'], format: uuid }
+                viewKey: { enum: [transactions, commands, logs] }
+                name: { type: string, minLength: 1, maxLength: 80 }
+                criteria: { type: object, additionalProperties: true }
+      responses:
+        '200': { description: Filter saved }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/attendance/adms/saved-filters/{filterId}:
+    delete:
+      summary: Delete a saved filter owned by the current SUPER_ADMIN
+      parameters:
+        - name: filterId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Filter deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/attendance/adms/devices/{deviceId}/commands/clear-pending:
+    post:
+      summary: Cancel only never-delivered pending HCIS commands
+      description: >-
+        Does not create a device command. Delivered, acknowledged, completed, queued,
+        expired and already-cancelled commands remain untouched.
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: Pending HCIS queue cleanup result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [cancelledCount, deliveredOrAcknowledgedCommandsUntouched]
+                properties:
+                  cancelledCount: { type: integer, minimum: 0 }
+                  deliveredOrAcknowledgedCommandsUntouched: { const: true }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/attendance/adms/devices/{deviceId}/transactions/export.csv:
+    get:
+      summary: Export durable raw attendance facts as CSV
+      description: Does not derive lateness, absence, work hours, overtime, payroll or leave outcomes.
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+        - name: startAt
+          in: query
+          schema: { type: string, format: date-time }
+        - name: endAt
+          in: query
+          schema: { type: string, format: date-time }
+        - name: pin
+          in: query
+          schema: { type: string, pattern: '^\d{1,128}$' }
+      responses:
+        '200':
+          description: CSV file with raw/provenance fields
+          content:
+            text/csv:
+              schema: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/attendance/adms/devices/{deviceId}/offline-attlog-imports:
+    get:
+      summary: List recent offline ATTLOG imports for one device
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: Safe import summary metadata only
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/OfflineImport' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      summary: Import an offline ATTLOG text file without requesting a device command
+      description: >-
+        Uses the canonical ATTLOG parser, exact event identity, quarantine, provenance and
+        neutral attendance projection. Identical file hashes for the same device are rejected.
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [filename, content]
+              properties:
+                filename: { type: string, minLength: 1, maxLength: 255 }
+                content:
+                  type: string
+                  description: UTF-8 ATTLOG text; maximum encoded size 512 KiB.
+      responses:
+        '201':
+          description: Import completed with zero device commands
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [item, projection, deviceCommandsRequested]
+                properties:
+                  item: { $ref: '#/components/schemas/OfflineImport' }
+                  projection:
+                    type: array
+                    items: { type: object, additionalProperties: true }
+                  deviceCommandsRequested: { const: 0 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409':
+          description: Device inactive or identical file was already imported
+        '413':
+          description: File exceeds the 512 KiB import boundary
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: hcis_session
+  parameters:
+    DeviceId:
+      name: deviceId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  schemas:
+    DesiredState:
+      type: object
+      required: [desiredState]
+      properties:
+        desiredState: { enum: [present, absent] }
+    OperationsSummary:
+      type: object
+      required:
+        - device
+        - pendingCommandCount
+        - rawPayloadExposed
+        - arbitraryCommandEnabled
+        - userInfoReadsRetired
+        - destructiveExecutionEnabled
+        - operationalRetention
+        - capabilities
+      properties:
+        device:
+          type: object
+          required: [id, serialNumber, lifecycle, timezone]
+          properties:
+            id: { type: string, format: uuid }
+            serialNumber: { type: string }
+            displayName: { type: [string, 'null'] }
+            lifecycle: { enum: [active, disabled, quarantined] }
+            timezone: { type: string }
+            model: { type: [string, 'null'] }
+            firmwareVersion: { type: [string, 'null'] }
+            lastSuccessfulRequestAt: { type: [string, 'null'], format: date-time }
+        pendingCommandCount: { type: integer, minimum: 0 }
+        rawPayloadExposed: { const: false }
+        arbitraryCommandEnabled: { const: false }
+        userInfoReadsRetired: { const: true }
+        destructiveExecutionEnabled: { const: false }
+        operationalRetention:
+          type: object
+          required: [deletionEnabled, state, note]
+          properties:
+            deletionEnabled: { const: false }
+            state: { const: policy_required }
+            note: { type: string }
+        capabilities:
+          type: array
+          items:
+            type: object
+            required: [key, label, state, execution, reason]
+            properties:
+              key: { type: string }
+              label: { type: string }
+              state: { enum: [available, not_verified, blocked] }
+              execution: { enum: [device, hcis_only, blocked] }
+              reason: { type: string }
+    WorkCode:
+      type: object
+      required: [id, code, name, active, deliveryState]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        active: { type: boolean }
+        desiredState: { type: [string, 'null'], enum: [present, absent, null] }
+        deliveryState: { enum: [not_verified, pending, succeeded, failed] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    DeviceMessage:
+      type: object
+      required: [id, audience, title, messageText, active, deliveryState]
+      properties:
+        id: { type: string, format: uuid }
+        audience: { enum: [public, private] }
+        employeeId: { type: [string, 'null'], format: uuid }
+        employeeNumber: { type: [string, 'null'] }
+        employeeName: { type: [string, 'null'] }
+        title: { type: string }
+        messageText: { type: string }
+        startsAt: { type: [string, 'null'], format: date-time }
+        endsAt: { type: [string, 'null'], format: date-time }
+        active: { type: boolean }
+        desiredState: { type: [string, 'null'], enum: [present, absent, null] }
+        deliveryState: { enum: [not_verified, pending, succeeded, failed] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    SavedFilter:
+      type: object
+      required: [id, viewKey, name, criteria, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        deviceId: { type: [string, 'null'], format: uuid }
+        viewKey: { enum: [transactions, commands, logs] }
+        name: { type: string }
+        criteria: { type: object, additionalProperties: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    OfflineImport:
+      type: object
+      required: [id, sourceFilename, parsedEventCount, insertedEventCount, duplicateEventCount, quarantineCount]
+      properties:
+        id: { type: string, format: uuid }
+        sourceFilename: { type: string }
+        parsedEventCount: { type: integer, minimum: 0 }
+        insertedEventCount: { type: integer, minimum: 0 }
+        duplicateEventCount: { type: integer, minimum: 0 }
+        quarantineCount: { type: integer, minimum: 0 }
+        createdAt: { type: string, format: date-time }
+  responses:
+    BadRequest:
+      description: Invalid request
+    Forbidden:
+      description: SUPER_ADMIN is required
+    NotFound:
+      description: Requested HCIS resource was not found
