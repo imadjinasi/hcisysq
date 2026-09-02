@@ -39,7 +39,7 @@ export type PhysicalCapabilityKey =
   | "firmware_upgrade"
   | "attendance_photo";
 
-export const PHYSICAL_CAPABILITY_KEYS: readonly PhysicalCapabilityKey[] = [
+export const PHYSICAL_CAPABILITY_KEYS = [
   "work_code_delivery",
   "message_delivery",
   "time_sync",
@@ -54,7 +54,7 @@ export const PHYSICAL_CAPABILITY_KEYS: readonly PhysicalCapabilityKey[] = [
   "clear_all_data",
   "firmware_upgrade",
   "attendance_photo",
-] as const;
+] as const satisfies readonly PhysicalCapabilityKey[];
 
 export function workCodeUpsertWireCommand(code: string, name: string) {
   return `DATA UPDATE WORKCODE CODE=${numericCode(code)}\tName=${bounded(name, 120, "Work Code name")}`;
