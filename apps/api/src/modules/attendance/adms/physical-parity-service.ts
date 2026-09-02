@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 
 import type { Pool, PoolClient } from "pg";
 
@@ -9,7 +9,12 @@ import {
   type BiometricModality,
   type BiometricPayloadContext,
 } from "./biometric-crypto.js";
-import { fingerprintRestoreWireCommand, type PhysicalCapabilityKey } from "./physical-parity-protocol.js";
+import {
+  activeTimeSyncWireCommand,
+  fingerprintRestoreWireCommand,
+  firmwareUpgradeWireCommand,
+  type PhysicalCapabilityKey,
+} from "./physical-parity-protocol.js";
 
 type PhysicalCommandSpec = {
   commandType:
@@ -25,6 +30,7 @@ type PhysicalCommandSpec = {
     | "firmware_upgrade";
   wireCommand: string;
   biometricCredentialId?: string | null;
+  firmwareTicketId?: string | null;
 };
 
 export type QueuePhysicalOperationInput = {
@@ -116,11 +122,11 @@ export async function queuePhysicalOperation(
       `INSERT INTO attendance_adms_commands (
          id, device_id, command_type, wire_command, reason, status, expires_at,
          physical_operation_id, physical_sequence, physical_capability_key,
-         biometric_credential_id
+         biometric_credential_id, firmware_ticket_id
        ) VALUES (
          $1, $2, $3, $4, 'admin_physical_operation', $5,
          now() + ($6::text || ' hours')::interval,
-         $7, $8, $9, $10
+         $7, $8, $9, $10, $11
        )`,
       [
         commandId,
@@ -133,6 +139,7 @@ export async function queuePhysicalOperation(
         index + 1,
         input.capabilityKey,
         command.biometricCredentialId ?? null,
+        command.firmwareTicketId ?? null,
       ],
     );
     await client.query(
@@ -160,32 +167,15 @@ export async function createTimeSyncCanary(
   client: PoolClient,
   input: { deviceId: string; requestedByAccountId: string },
 ) {
-  const device = await client.query<{ lifecycle: string }>(
-    `SELECT lifecycle FROM attendance_adms_devices WHERE id = $1 FOR UPDATE`,
-    [input.deviceId],
-  );
-  if (!device.rows[0]) throw new Error("ADMS device not found");
-  if (device.rows[0].lifecycle !== "active") throw new Error("ADMS device is not active");
-
-  const operationId = randomUUID();
-  await client.query(
-    `INSERT INTO attendance_adms_physical_operations (
-       id, device_id, capability_key, operation_key, mode, status, destructive,
-       requested_by_account_id, safe_metadata
-     ) VALUES ($1, $2, 'time_sync', 'time_sync_request_response', 'canary', 'running', false, $3, $4::jsonb)`,
-    [operationId, input.deviceId, input.requestedByAccountId, JSON.stringify({ expectsDeviceTypeTimeRequest: true })],
-  );
-  await client.query(
-    `INSERT INTO attendance_adms_physical_capabilities (
-       device_id, capability_key, state, last_operation_id, safe_metadata, updated_at
-     ) VALUES ($1, 'time_sync', 'canary_pending', $2, $3::jsonb, now())
-     ON CONFLICT (device_id, capability_key) DO UPDATE
-     SET state = 'canary_pending', last_operation_id = EXCLUDED.last_operation_id,
-         safe_metadata = attendance_adms_physical_capabilities.safe_metadata || EXCLUDED.safe_metadata,
-         updated_at = now()`,
-    [input.deviceId, operationId, JSON.stringify({ protocol: "GET /iclock/cdata?type=time" })],
-  );
-  return { operationId };
+  return queuePhysicalOperation(client, {
+    deviceId: input.deviceId,
+    capabilityKey: "time_sync",
+    operationKey: "set_options_datetime",
+    mode: "canary",
+    requestedByAccountId: input.requestedByAccountId,
+    commands: [{ commandType: "device_option", wireCommand: "TIME_SYNC" }],
+    safeMetadata: { materializedAtDelivery: true, timezoneSource: "device_registry" },
+  });
 }
 
 export async function completeTimeSyncCanaryIfPending(
@@ -208,27 +198,34 @@ export async function completeTimeSyncCanaryIfPending(
   const row = operation.rows[0];
   if (!row) return false;
 
-  await client.query(
-    `UPDATE attendance_adms_physical_operations
-     SET status = 'succeeded', completed_at = $2, updated_at = $2
-     WHERE id = $1`,
-    [row.id, receivedAt],
+  const command = await client.query<{ id: string; status: string }>(
+    `SELECT id, status FROM attendance_adms_commands
+     WHERE physical_operation_id = $1
+     ORDER BY physical_sequence
+     LIMIT 1
+     FOR UPDATE`,
+    [row.id],
   );
-  await client.query(
-    `UPDATE attendance_adms_physical_capabilities
-     SET state = 'verified', last_result_code = 0,
-         verified_at = $3, verified_by_account_id = $2,
-         safe_metadata = safe_metadata || $4::jsonb,
-         updated_at = $3
-     WHERE device_id = $1 AND capability_key = 'time_sync'`,
-    [deviceId, row.requestedByAccountId, receivedAt, JSON.stringify({ lastVerifiedBy: "type_time_request" })],
-  );
-  return true;
+  if (command.rows[0] && !["succeeded", "failed", "expired", "cancelled"].includes(command.rows[0].status)) {
+    await client.query(
+      `UPDATE attendance_adms_commands
+       SET status = 'succeeded', acknowledged_at = COALESCE(acknowledged_at, $2),
+           completed_at = $2, return_code = 0, result_command = 'TIME_SYNC_EVIDENCE',
+           result_raw = NULL, updated_at = $2
+       WHERE id = $1`,
+      [command.rows[0].id, receivedAt],
+    );
+    return true;
+  }
+  return false;
 }
 
 type MaterializedCommandRow = {
   wireCommand: string;
+  deviceTimezone: string;
+  deviceModel: string | null;
   biometricCredentialId: string | null;
+  firmwareTicketId: string | null;
   targetPin: string | null;
   employeeId: string | null;
   modality: BiometricModality | null;
@@ -243,6 +240,9 @@ type MaterializedCommandRow = {
   payloadAuthTag: Buffer | null;
   lifecycle: string | null;
   safeMetadata: Record<string, unknown> | null;
+  firmwareTargetModel: string | null;
+  firmwareMd5: string | null;
+  firmwareByteLength: number | null;
 };
 
 function unifiedType(modality: BiometricModality, safeMetadata: Record<string, unknown> | null) {
@@ -292,7 +292,10 @@ export async function materializePhysicalWireCommand(
   const result = await client.query<MaterializedCommandRow>(
     `SELECT
        c.wire_command AS "wireCommand",
+       d.timezone AS "deviceTimezone",
+       d.model AS "deviceModel",
        c.biometric_credential_id AS "biometricCredentialId",
+       c.firmware_ticket_id AS "firmwareTicketId",
        o.safe_metadata ->> 'targetPin' AS "targetPin",
        b.employee_id AS "employeeId",
        b.modality,
@@ -306,16 +309,49 @@ export async function materializePhysicalWireCommand(
        b.payload_iv AS "payloadIv",
        b.payload_auth_tag AS "payloadAuthTag",
        b.lifecycle,
-       b.safe_metadata AS "safeMetadata"
+       b.safe_metadata AS "safeMetadata",
+       fp.target_model AS "firmwareTargetModel",
+       fp.md5 AS "firmwareMd5",
+       fp.byte_length AS "firmwareByteLength"
      FROM attendance_adms_commands c
+     JOIN attendance_adms_devices d ON d.id = c.device_id
      LEFT JOIN attendance_adms_physical_operations o ON o.id = c.physical_operation_id
      LEFT JOIN attendance_biometric_credentials b ON b.id = c.biometric_credential_id
+     LEFT JOIN attendance_adms_firmware_download_tickets ft ON ft.id = c.firmware_ticket_id
+     LEFT JOIN attendance_adms_firmware_packages fp ON fp.id = ft.package_id
      WHERE c.id = $1
      FOR UPDATE OF c`,
     [commandId],
   );
   const row = result.rows[0];
   if (!row) throw new Error("ADMS command not found");
+
+  if (row.wireCommand === "TIME_SYNC") {
+    return activeTimeSyncWireCommand(new Date(), row.deviceTimezone);
+  }
+
+  if (row.wireCommand === "FIRMWARE_UPGRADE") {
+    if (
+      !row.firmwareTicketId || !row.firmwareTargetModel || !row.firmwareMd5 ||
+      row.firmwareByteLength === null || !row.deviceModel || row.deviceModel !== row.firmwareTargetModel
+    ) {
+      throw new Error("Firmware package no longer matches the target device");
+    }
+    const token = randomBytes(32).toString("base64url");
+    const tokenHash = createHash("sha256").update(token, "utf8").digest("hex");
+    await client.query(
+      `UPDATE attendance_adms_firmware_download_tickets
+       SET token_sha256 = $2, expires_at = now() + interval '15 minutes'
+       WHERE id = $1`,
+      [row.firmwareTicketId, tokenHash],
+    );
+    return firmwareUpgradeWireCommand({
+      checksumMd5: row.firmwareMd5,
+      byteLength: row.firmwareByteLength,
+      urlPath: `/iclock/file?token=${token}`,
+    });
+  }
+
   if (row.wireCommand !== "BIOMETRIC_RESTORE") return row.wireCommand;
   if (!biometricKeyringReadiness(config).ready) throw new Error("Biometric keyring is not ready");
   if (
@@ -383,6 +419,40 @@ export async function materializePhysicalWireCommand(
     });
   }
   throw new Error("Biometric vendor format is not physically restorable");
+}
+
+export async function resolveFirmwareDownload(
+  pool: Pool,
+  token: string,
+) {
+  if (!/^[A-Za-z0-9_-]{32,128}$/.test(token)) return null;
+  const tokenHash = createHash("sha256").update(token, "utf8").digest("hex");
+  const result = await pool.query<{
+    ticketId: string;
+    deviceId: string;
+    serialNumber: string;
+    targetModel: string;
+    deviceModel: string | null;
+    filename: string;
+    payload: Buffer;
+    sha256: string;
+  }>(
+    `SELECT
+       ft.id AS "ticketId", ft.device_id AS "deviceId", d.serial_number AS "serialNumber",
+       fp.target_model AS "targetModel", d.model AS "deviceModel", fp.filename,
+       fp.payload, fp.sha256
+     FROM attendance_adms_firmware_download_tickets ft
+     JOIN attendance_adms_firmware_packages fp ON fp.id = ft.package_id
+     JOIN attendance_adms_devices d ON d.id = ft.device_id
+     WHERE ft.token_sha256 = $1
+       AND ft.expires_at > now()
+       AND d.lifecycle = 'active'
+     LIMIT 1`,
+    [tokenHash],
+  );
+  const row = result.rows[0];
+  if (!row || !row.deviceModel || row.deviceModel !== row.targetModel) return null;
+  return row;
 }
 
 export async function listPhysicalCapabilities(pool: Pool, deviceId: string) {
