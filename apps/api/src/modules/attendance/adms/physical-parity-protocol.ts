@@ -1,3 +1,5 @@
+import { isUserConfigWireCommand } from "./physical-parity-user-config-protocol.js";
+
 const CONTROL_PATTERN = /[\u0000-\u001f\u007f]/u;
 const PIN_PATTERN = /^\d{1,128}$/;
 const CODE_PATTERN = /^\d{1,10}$/;
@@ -37,7 +39,11 @@ export type PhysicalCapabilityKey =
   | "clear_photo_cache"
   | "clear_all_data"
   | "firmware_upgrade"
-  | "attendance_photo";
+  | "attendance_photo"
+  | "user_profile_upsert"
+  | "user_enable_disable"
+  | "server_config"
+  | "ntp_config";
 
 export const PHYSICAL_CAPABILITY_KEYS = [
   "work_code_delivery",
@@ -54,6 +60,10 @@ export const PHYSICAL_CAPABILITY_KEYS = [
   "clear_all_data",
   "firmware_upgrade",
   "attendance_photo",
+  "user_profile_upsert",
+  "user_enable_disable",
+  "server_config",
+  "ntp_config",
 ] as const satisfies readonly PhysicalCapabilityKey[];
 
 export function workCodeUpsertWireCommand(code: string, name: string) {
@@ -146,7 +156,6 @@ function localParts(date: Date, timezone: string) {
   };
 }
 
-/** ZKTeco PUSH DateTime integer encoding documented by the vendor protocol. */
 export function zktecoEncodedDateTime(date: Date, timezone: string) {
   if (Number.isNaN(date.getTime())) throw new Error("Device synchronization timestamp is invalid");
   const value = localParts(date, timezone);
@@ -279,6 +288,7 @@ export function firmwareUpgradeWireCommand(input: {
 
 export function isNonSensitivePhysicalWireCommand(value: string) {
   return (
+    isUserConfigWireCommand(value) ||
     /^DATA UPDATE WORKCODE CODE=\d{1,10}\tName=[^\t\r\n]{1,120}$/.test(value) ||
     /^DATA DELETE WORKCODE CODE=\d{1,10}$/.test(value) ||
     /^DATA UPDATE SMS MSG=[^\t\r\n]{1,500}\tTAG=(253|254)\tUID=\d{1,10}\tMIN=\d{1,6}\tStartTime=\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value) ||
