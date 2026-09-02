@@ -1,7 +1,7 @@
 version: 1
 status: VERIFIED
 source_system: legacy-hcis
-updated_at: 2026-08-28
+updated_at: 2026-09-02
 verification_checkpoint: docs/product/mvp-release-checkpoint.md
 
 status_values:
@@ -170,14 +170,17 @@ features:
     module: attendance
     name: WDMS-compatible fingerprint device operations
     legacy_evidence: SQ fingerprint devices use ZKTeco PUSH/ADMS transport; ZKBio WDMS is the accepted operational parity reference for device management
-    target_status: implementing
+    target_status: implemented
     priority: core
     risk: critical
-    planning_note: Implement all WDMS device-management capabilities that fit internal HCIS, adapting employee/organization/auth concepts to HCIS sources of truth. HCIS includes an encrypted biometric credential vault for backup, restore, enrollment and compatible cross-device synchronization. Delivery uses three large integrated waves with parallel engineering lanes rather than mandatory tiny feature slices; unrelated MTD health screening remains excluded.
+    planning_note: Three integrated repository delivery packages now implement the HCIS-owned WDMS operations plane, encrypted biometric control-plane metadata, passive mapping/roster administration, transaction recovery/export/offline import, saved filters, Work Code/message planning, and explicit capability gating. Physical capabilities whose firmware-safe wire behavior has not been proven remain not_verified or blocked with no executable endpoint. Active USERINFO reads remain retired and biometric collection remains OFF. Move ATT-005 to verified only after production deployment, verify-vps.sh, and passive UAT close the implemented HCIS scope.
     docs:
       - docs/domain/attendance-wdms-device-parity.md
       - docs/domain/attendance-wdms-implementation-plan.md
       - docs/domain/attendance-wdms-wave1-implementation.md
+      - docs/domain/attendance-wdms-package1-non-biometric-completion.md
+      - docs/domain/attendance-wdms-package2-biometric-control-plane.md
+      - docs/domain/attendance-wdms-package3-operations-closure.md
       - docs/domain/attendance-adms-ingress.md
       - docs/domain/attendance-adms-projection.md
       - docs/domain/attendance-adms-admin.md
