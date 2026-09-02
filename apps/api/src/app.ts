@@ -5,6 +5,7 @@ import type { ApiConfig } from "./config/env.js";
 import { createPool } from "./db/pool.js";
 import { registerAdmsAdminRoutes } from "./modules/attendance/adms/admin-routes.js";
 import { registerAdmsBiometricControlPlaneRoutes } from "./modules/attendance/adms/biometric-control-plane-routes.js";
+import { registerAdmsPhysicalParityDeviceRoutes } from "./modules/attendance/adms/physical-parity-device-routes.js";
 import { registerAdmsPhysicalParityExtendedRoutes } from "./modules/attendance/adms/physical-parity-extended-routes.js";
 import { registerAdmsPhysicalParityRoutes } from "./modules/attendance/adms/physical-parity-routes.js";
 import { registerAdmsIngressRoutes } from "./modules/attendance/adms/routes.js";
@@ -52,6 +53,7 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   );
 
   await registerSystemRoutes(app, pool);
+  await registerAdmsPhysicalParityDeviceRoutes(app, pool, config);
   await registerAdmsIngressRoutes(app, pool, config);
   await registerAuthRoutes(app, pool, config);
   await registerAccountActivationRoutes(app, pool);
