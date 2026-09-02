@@ -21,6 +21,8 @@ function numericCode(value: string) {
   return value;
 }
 
+export type UnifiedBiometricType = 1 | 2 | 6 | 8 | 9 | 10;
+
 export type PhysicalCapabilityKey =
   | "work_code_delivery"
   | "message_delivery"
@@ -131,7 +133,7 @@ export function fingerprintQueryWireCommand(pinValue: string, slotIndex: number)
 }
 
 export function unifiedBiometricQueryWireCommand(input: {
-  type: 1 | 2 | 6 | 8 | 9 | 10;
+  type: UnifiedBiometricType;
   pin: string;
   slotIndex: number;
 }) {
@@ -154,7 +156,7 @@ export function fingerprintEnrollWireCommand(input: {
 }
 
 export function unifiedEnrollWireCommand(input: {
-  type: 1 | 2 | 6 | 8 | 9 | 10;
+  type: UnifiedBiometricType;
   pin: string;
   slotIndex: number;
   retry?: number;
@@ -185,6 +187,21 @@ export function fingerprintRestoreWireCommand(input: {
 export function fingerprintDeleteWireCommand(pinValue: string, slotIndex: number) {
   if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex > 9) throw new Error("Fingerprint slot is invalid");
   return `DATA DELETE FINGERTMP PIN=${pin(pinValue)}\tFID=${slotIndex}`;
+}
+
+export function faceDeleteWireCommand(pinValue: string) {
+  return `DATA DELETE FACE PIN=${pin(pinValue)}`;
+}
+
+export function unifiedBiometricDeleteWireCommand(input: {
+  type: UnifiedBiometricType;
+  pin: string;
+  slotIndex: number;
+}) {
+  if (!Number.isInteger(input.slotIndex) || input.slotIndex < 0 || input.slotIndex > 255) {
+    throw new Error("Biometric slot is invalid");
+  }
+  return `DATA DELETE BIODATA Pin=${pin(input.pin)}\tType=${input.type}\tNo=${input.slotIndex}`;
 }
 
 export function clearAttendanceWireCommand() {
@@ -231,6 +248,8 @@ export function isNonSensitivePhysicalWireCommand(value: string) {
     /^ENROLL_FP PIN=\d{1,128}\tFID=\d{1,2}\tRETRY=\d{1,2}\tOVERWRITE=[01]$/.test(value) ||
     /^ENROLL_BIO TYPE=(1|2|6|8|9|10)\tNO=\d{1,3}\tPIN=\d{1,128}\tRETRY=\d{1,2}\tOVERWRITE=[01]\tMODE=1$/.test(value) ||
     /^DATA DELETE FINGERTMP PIN=\d{1,128}\tFID=\d{1,2}$/.test(value) ||
+    /^DATA DELETE FACE PIN=\d{1,128}$/.test(value) ||
+    /^DATA DELETE BIODATA Pin=\d{1,128}\tType=(1|2|6|8|9|10)\tNo=\d{1,3}$/.test(value) ||
     value === "CLEAR LOG" ||
     value === "CLEAR PHOTO" ||
     value === "CLEAR DATA" ||
