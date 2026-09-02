@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS attendance_adms_saved_filters (
   criteria jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (owner_account_id, device_id, view_key, name)
+  UNIQUE NULLS NOT DISTINCT (owner_account_id, device_id, view_key, name)
 );
 
 CREATE TABLE IF NOT EXISTS attendance_adms_offline_imports (
