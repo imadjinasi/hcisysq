@@ -3,6 +3,11 @@ import { TextDecoder } from "node:util";
 
 import type { Pool, PoolClient } from "pg";
 
+import type { ApiConfig } from "../../../config/env.js";
+import {
+  completeTimeSyncCanaryIfPending,
+  materializePhysicalWireCommand,
+} from "./physical-parity-service.js";
 import {
   ADMS_MAX_BODY_BYTES,
   attlogEventIdentity,
@@ -561,6 +566,7 @@ async function applyCommandResult(
 export async function persistAdmsIngress(
   db: Pool,
   input: AdmsIngressInput,
+  config?: ApiConfig,
 ): Promise<AdmsIngressResult> {
   const client = await db.connect();
   try {
@@ -580,6 +586,7 @@ export async function persistAdmsIngress(
     const requestId = randomUUID();
     let deliveredCommand: CommandRow | null = null;
     let responseBody = responseStatus === 200 ? input.successResponseBody : null;
+    let journalResponseBody = responseBody;
     if (
       responseStatus === 200 &&
       device?.lifecycle === "active" &&
@@ -590,10 +597,15 @@ export async function persistAdmsIngress(
       await queueScheduledReconciliationIfDue(client, device, input.receivedAt);
       deliveredCommand = await takePendingCommand(client, device.id, input.receivedAt);
       if (deliveredCommand) {
-        responseBody = deviceCommandWireBody(
-          deliveredCommand.commandNumber,
-          deliveredCommand.wireCommand,
-        );
+        const wireCommand = deliveredCommand.wireCommand === "BIOMETRIC_RESTORE"
+          ? config
+            ? await materializePhysicalWireCommand(client, config, deliveredCommand.id)
+            : (() => { throw new Error("ApiConfig is required for biometric restore delivery"); })()
+          : deliveredCommand.wireCommand;
+        responseBody = deviceCommandWireBody(deliveredCommand.commandNumber, wireCommand);
+        journalResponseBody = deliveredCommand.wireCommand === "BIOMETRIC_RESTORE"
+          ? `C:${deliveredCommand.commandNumber}:BIOMETRIC_RESTORE_REDACTED\n`
+          : responseBody;
       }
     }
 
@@ -625,7 +637,7 @@ export async function persistAdmsIngress(
         input.bodyCaptured,
         input.classification,
         responseStatus,
-        responseBody,
+        journalResponseBody,
         input.receivedAt,
       ],
     );
@@ -639,7 +651,10 @@ export async function persistAdmsIngress(
           randomUUID(),
           deliveredCommand.id,
           requestId,
-          JSON.stringify({ attemptCount: deliveredCommand.attemptCount }),
+          JSON.stringify({
+            attemptCount: deliveredCommand.attemptCount,
+            sensitiveWireRedacted: deliveredCommand.wireCommand === "BIOMETRIC_RESTORE",
+          }),
         ],
       );
     }
@@ -658,6 +673,9 @@ export async function persistAdmsIngress(
          WHERE id = $1`,
         [device.id, input.receivedAt, input.sourceIp, input.bodyCaptured],
       );
+      if (input.classification === "time_sync" && device.lifecycle === "active") {
+        await completeTimeSyncCanaryIfPending(client, device.id, input.receivedAt);
+      }
     }
 
     const parsed =
