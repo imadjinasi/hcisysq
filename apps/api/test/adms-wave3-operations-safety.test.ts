@@ -32,12 +32,19 @@ describe("ATT-005 Wave 3 operations safety", () => {
 
   it("keeps offline import on the canonical raw parser/dedupe/projection path", async () => {
     const wave3 = await source("../src/modules/attendance/adms/wave3-admin-routes.ts");
-    expect(wave3).toContain("parseAttlogText");
-    expect(wave3).toContain("attlogEventIdentity");
-    expect(wave3).toContain("attendance_adms_request_journal");
-    expect(wave3).toContain("attendance_adms_events");
-    expect(wave3).toContain("DUPLICATE_EXACT");
-    expect(wave3).toContain("projectAdmsAttendanceDay");
-    expect(wave3).not.toMatch(/late|absence|overtime|payroll/i);
+    const start = wave3.indexOf('app.post("/admin/attendance/adms/devices/:deviceId/offline-attlog-imports"');
+    const end = wave3.indexOf('app.get("/admin/attendance/adms/devices/:deviceId/offline-attlog-imports"', start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const offlineImport = wave3.slice(start, end);
+
+    expect(offlineImport).toContain("parseAttlogText");
+    expect(offlineImport).toContain("attlogEventIdentity");
+    expect(offlineImport).toContain("attendance_adms_request_journal");
+    expect(offlineImport).toContain("attendance_adms_events");
+    expect(offlineImport).toContain("DUPLICATE_EXACT");
+    expect(offlineImport).toContain("projectAdmsAttendanceDay");
+    expect(offlineImport).toContain("deviceCommandsRequested: 0");
+    expect(offlineImport).not.toMatch(/\b(late|absence|overtime|payroll)\b/i);
   });
 });
