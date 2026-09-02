@@ -161,6 +161,58 @@ if [[ "$BIO_ENVELOPE_COLUMNS" != "3" ]]; then
 fi
 
 echo
+echo "=== WAVE 3 OPERATIONS SAFETY ==="
+WAVE3_TABLE_COUNT=$("${COMPOSE[@]}" exec -T postgres sh -lc '
+  psql -X -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "
+    SELECT count(*)
+    FROM information_schema.tables
+    WHERE table_schema = '\''public'\''
+      AND table_name IN (
+        '\''attendance_adms_work_codes'\'',
+        '\''attendance_adms_work_code_targets'\'',
+        '\''attendance_adms_device_messages'\'',
+        '\''attendance_adms_device_message_targets'\'',
+        '\''attendance_adms_saved_filters'\'',
+        '\''attendance_adms_offline_imports'\''
+      )
+  "
+')
+WAVE3_COUNTS=$("${COMPOSE[@]}" exec -T postgres sh -lc '
+  psql -X -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "
+    SELECT
+      (SELECT count(*) FROM attendance_adms_work_codes)::int || '\''|'\'' ||
+      (SELECT count(*) FROM attendance_adms_device_messages)::int || '\''|'\'' ||
+      (SELECT count(*) FROM attendance_adms_offline_imports)::int || '\''|'\'' ||
+      (SELECT count(*) FROM attendance_adms_commands WHERE status = '\''pending'\'')::int
+  "
+')
+WIRE_CONSTRAINT=$("${COMPOSE[@]}" exec -T postgres sh -lc '
+  psql -X -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "
+    SELECT pg_get_constraintdef(oid)
+    FROM pg_constraint
+    WHERE conname = '\''attendance_adms_commands_wire_command_check'\''
+  "
+')
+echo "wave3_operations_table_count=$WAVE3_TABLE_COUNT"
+echo "wave3_counts_workcodes_messages_offlineimports_pendingcommands=$WAVE3_COUNTS"
+if [[ "$WAVE3_TABLE_COUNT" != "6" ]]; then
+  echo "FAIL: tabel Wave 3 tidak lengkap" >&2
+  exit 1
+fi
+for forbidden in "REBOOT" "FIRMWARE" "WORKCODE" "CLEAR ALL"; do
+  if printf '%s\n' "$WIRE_CONSTRAINT" | grep -Fqi "$forbidden"; then
+    echo "FAIL: command allowlist melebar ke capability Wave 3 yang belum terverifikasi: $forbidden" >&2
+    exit 1
+  fi
+done
+if ! "${COMPOSE[@]}" exec -T web sh -lc "grep -R -F -q -- 'Operasional WDMS' /usr/share/nginx/html"; then
+  echo "FAIL: workspace Operasional WDMS tidak ditemukan di build web" >&2
+  exit 1
+fi
+echo "wave3_unverified_hardware_commands=absent"
+echo "wave3_operations_ui=present"
+
+echo
 echo "=== SPA CACHE POLICY ==="
 INDEX_HEADERS=$(curl -fsSI http://127.0.0.1:18080/index.html)
 printf '%s\n' "$INDEX_HEADERS" | grep -Ei 'HTTP/|cache-control|pragma|expires'
