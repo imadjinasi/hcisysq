@@ -123,6 +123,50 @@ export function reloadOptionsWireCommand() {
   return "RELOAD OPTIONS";
 }
 
+function localParts(date: Date, timezone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    calendar: "iso8601",
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const value = (type: string) => Number(parts.find((part) => part.type === type)?.value ?? "0");
+  return {
+    year: value("year"),
+    month: value("month"),
+    day: value("day"),
+    hour: value("hour"),
+    minute: value("minute"),
+    second: value("second"),
+  };
+}
+
+/** ZKTeco PUSH DateTime integer encoding documented by the vendor protocol. */
+export function zktecoEncodedDateTime(date: Date, timezone: string) {
+  if (Number.isNaN(date.getTime())) throw new Error("Device synchronization timestamp is invalid");
+  const value = localParts(date, timezone);
+  if (
+    value.year < 2000 || value.year > 2099 || value.month < 1 || value.month > 12 ||
+    value.day < 1 || value.day > 31 || value.hour < 0 || value.hour > 23 ||
+    value.minute < 0 || value.minute > 59 || value.second < 0 || value.second > 59
+  ) {
+    throw new Error("Device synchronization timestamp is outside the supported range");
+  }
+  return (
+    (((value.year - 2000) * 12 * 31 + (value.month - 1) * 31 + (value.day - 1)) * 24 * 60 * 60) +
+    ((value.hour * 60 + value.minute) * 60 + value.second)
+  );
+}
+
+export function activeTimeSyncWireCommand(date: Date, timezone: string) {
+  return `SET OPTIONS DateTime=${zktecoEncodedDateTime(date, timezone)}`;
+}
+
 export function rebootWireCommand() {
   return "REBOOT";
 }
@@ -241,6 +285,7 @@ export function isNonSensitivePhysicalWireCommand(value: string) {
     /^DATA UPDATE USER_SMS PIN=\d{1,128}\tUID=\d{1,10}$/.test(value) ||
     /^DATA DELETE SMS UID=\d{1,10}$/.test(value) ||
     /^SET OPTION AlarmReRec=\d{1,5}$/.test(value) ||
+    /^SET OPTIONS DateTime=\d{1,12}$/.test(value) ||
     value === "RELOAD OPTIONS" ||
     value === "REBOOT" ||
     /^DATA QUERY FINGERTMP PIN=\d{1,128}\tFID=\d{1,2}$/.test(value) ||
