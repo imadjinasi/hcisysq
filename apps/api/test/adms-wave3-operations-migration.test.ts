@@ -38,6 +38,16 @@ describe.skipIf(!databaseUrl)("0036 Wave 3 operations migration", () => {
       "attendance_adms_work_codes",
     ]);
 
+    const savedFilterUnique = await pool.query<{ definition: string }>(
+      `SELECT pg_get_constraintdef(c.oid) AS definition
+       FROM pg_constraint c
+       JOIN pg_class t ON t.oid = c.conrelid
+       WHERE t.relname = 'attendance_adms_saved_filters'
+         AND c.contype = 'u'`,
+    );
+    expect(savedFilterUnique.rows).toHaveLength(1);
+    expect(savedFilterUnique.rows[0]?.definition).toContain("NULLS NOT DISTINCT");
+
     const wireConstraint = await pool.query<{ definition: string }>(
       `SELECT pg_get_constraintdef(oid) AS definition
        FROM pg_constraint
