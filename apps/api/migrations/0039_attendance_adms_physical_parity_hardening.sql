@@ -10,7 +10,7 @@ ALTER TABLE attendance_adms_commands
       (
         command_type = 'firmware_upgrade'
         AND reason = 'admin_physical_operation'
-        AND wire_command = 'FIRMWARE_UPGRADE'
+        AND wire_command ~ '^UPGRADE type=1,checksum=[0-9a-f]{32},size=[0-9]{1,9},url=/iclock/file\?token=[A-Za-z0-9_-]{32,128}$'
         AND firmware_ticket_id IS NOT NULL
       )
       OR (
