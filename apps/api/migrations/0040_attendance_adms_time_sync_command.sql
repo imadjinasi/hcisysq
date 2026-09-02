@@ -101,14 +101,19 @@ ALTER TABLE attendance_adms_commands
           (command_type = 'physical_work_code' AND physical_capability_key = 'work_code_delivery')
           OR (command_type = 'physical_message' AND physical_capability_key = 'message_delivery')
           OR (command_type = 'device_option' AND physical_capability_key = 'duplicate_punch_period')
-          OR (command_type = 'device_option' AND physical_capability_key = 'time_sync' AND wire_command = 'TIME_SYNC')
+          OR (command_type = 'device_option' AND physical_capability_key = 'time_sync' AND wire_command ~ '^SET OPTIONS DateTime=[0-9]{1,12}$')
           OR (command_type = 'reboot' AND physical_capability_key = 'reboot' AND wire_command = 'REBOOT')
           OR (command_type = 'biometric_query' AND physical_capability_key = 'biometric_query')
           OR (command_type = 'biometric_restore' AND physical_capability_key = 'biometric_restore' AND wire_command = 'BIOMETRIC_RESTORE' AND biometric_credential_id IS NOT NULL)
           OR (command_type = 'biometric_enroll' AND physical_capability_key = 'biometric_enrollment')
           OR (command_type = 'biometric_delete' AND physical_capability_key = 'biometric_delete')
           OR (command_type = 'device_clear' AND physical_capability_key IN ('clear_attendance', 'clear_photo_cache', 'clear_all_data'))
-          OR (command_type = 'firmware_upgrade' AND physical_capability_key = 'firmware_upgrade' AND wire_command = 'FIRMWARE_UPGRADE' AND firmware_ticket_id IS NOT NULL)
+          OR (
+            command_type = 'firmware_upgrade'
+            AND physical_capability_key = 'firmware_upgrade'
+            AND wire_command ~ '^UPGRADE type=1,checksum=[0-9a-f]{32},size=[0-9]{1,9},url=/iclock/file\?token=[A-Za-z0-9_-]{32,128}$'
+            AND firmware_ticket_id IS NOT NULL
+          )
         )
       )
     );
