@@ -1,0 +1,38 @@
+import { readFile } from "node:fs/promises";
+
+import { describe, expect, it } from "vitest";
+
+async function source(path: string) {
+  return readFile(new URL(path, import.meta.url), "utf8");
+}
+
+describe("ATT-005 Wave 3 web safety", () => {
+  it("renders an integrated operations workspace without hidden hardware execution", async () => {
+    const page = await source("./pages/AdminAdmsDeviceOperationsPage.tsx");
+    const client = await source("./lib/admsOperations.ts");
+    const combined = `${page}\n${client}`;
+
+    expect(page).toContain("Operasional WDMS");
+    expect(page).toContain("Capability matrix");
+    expect(page).toContain("Import ATTLOG offline");
+    expect(page).toContain("Work Code");
+    expect(page).toContain("Pesan perangkat");
+    expect(page).toContain("Device command = 0");
+    expect(page).toContain("<PaginationBar");
+    expect(combined).not.toContain("DATA QUERY USERINFO");
+    expect(combined).not.toContain("DATA DELETE USERINFO");
+    expect(combined).not.toMatch(/fetch\([^\n]*(reboot|firmware|clear-all|clear-attendance|biometric-delete|time-sync)/i);
+  });
+
+  it("supports saved filters on transaction and command workspaces", async () => {
+    const transactions = await source("./pages/AdminAdmsDeviceTransactionsPage.tsx");
+    const commands = await source("./pages/AdminAdmsDeviceCommandsPage.tsx");
+    const filters = await source("./components/attendance/device-admin/SavedFilterBar.tsx");
+
+    expect(transactions).toContain('viewKey="transactions"');
+    expect(commands).toContain('viewKey="commands"');
+    expect(filters).toContain("listAdmsSavedFilters");
+    expect(filters).toContain("saveAdmsFilter");
+    expect(filters).toContain("deleteAdmsFilter");
+  });
+});
