@@ -13,6 +13,7 @@ export type DeviceAdminSection =
   | "biometrics"
   | "transactions"
   | "commands"
+  | "operations"
   | "settings"
   | "diagnostics";
 
@@ -22,6 +23,7 @@ const tabs: Array<{ key: Exclude<DeviceAdminSection, "diagnostics">; label: stri
   { key: "biometrics", label: "Biometrik", suffix: "/biometrics" },
   { key: "transactions", label: "Transaksi", suffix: "/transactions" },
   { key: "commands", label: "Perintah", suffix: "/commands" },
+  { key: "operations", label: "Operasional", suffix: "/operations" },
   { key: "settings", label: "Pengaturan", suffix: "/settings" },
 ];
 
