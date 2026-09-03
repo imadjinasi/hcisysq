@@ -7,6 +7,7 @@ import { AdminAdmsDeviceCommandsPage } from "@/pages/AdminAdmsDeviceCommandsPage
 import { AdminAdmsDeviceDiagnosticsPage } from "@/pages/AdminAdmsDeviceDiagnosticsPage";
 import { AdminAdmsDeviceOperationsPage } from "@/pages/AdminAdmsDeviceOperationsPage";
 import { AdminAdmsDeviceOverviewPage } from "@/pages/AdminAdmsDeviceOverviewPage";
+import { AdminAdmsDevicePhysicalDeliveryPanel } from "@/pages/AdminAdmsDevicePhysicalDeliveryPanel";
 import { AdminAdmsDevicePhysicalParityPage } from "@/pages/AdminAdmsDevicePhysicalParityPage";
 import { AdminAdmsDeviceSettingsPage } from "@/pages/AdminAdmsDeviceSettingsPage";
 import { AdminAdmsDeviceTransactionsPage } from "@/pages/AdminAdmsDeviceTransactionsPage";
@@ -39,6 +40,7 @@ function sectionContent(section: DeviceAdminSection) {
       <>
         <AdminAdmsDeviceOperationsPage />
         <AdminAdmsDevicePhysicalParityPage />
+        <AdminAdmsDevicePhysicalDeliveryPanel />
       </>
     );
   }
