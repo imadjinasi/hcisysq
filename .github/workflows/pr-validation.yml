@@ -68,6 +68,9 @@ jobs:
       - name: Run clean migration
         run: npm run migrate:api
 
+      - name: Rehearse pre-ORG-004 to ORG-004 migration
+        run: node apps/api/scripts/rehearse-org004-upgrade.mjs
+
       - name: Rehearse Wave 1 to Wave 2 migration
         run: node apps/api/scripts/rehearse-wave2-upgrade.mjs
 
