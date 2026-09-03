@@ -11,7 +11,7 @@ const deployPath = join(root, "scripts/deploy-vps.sh");
 const verifyPath = join(root, "scripts/verify-vps.sh");
 
 describe("VPS deployment scripts", () => {
-  it("have valid Bash syntax", () => {
+  it.skipIf(process.platform === "win32")("have valid Bash syntax", () => {
     expect(() => execFileSync("bash", ["-n", deployPath], { stdio: "pipe" })).not.toThrow();
     expect(() => execFileSync("bash", ["-n", verifyPath], { stdio: "pipe" })).not.toThrow();
   });
