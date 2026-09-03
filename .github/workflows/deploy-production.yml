@@ -11,6 +11,11 @@ on:
         description: "Type DEPLOY_PRODUCTION to continue"
         required: true
         type: string
+  workflow_run:
+    workflows:
+      - Publish HCIS Staging Images
+    types:
+      - completed
 
 permissions:
   contents: read
@@ -23,12 +28,18 @@ concurrency:
 jobs:
   deploy:
     name: Deploy exact SHA to production VPS
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: production
     env:
-      TARGET_SHA: ${{ inputs.target_sha }}
-      CONFIRMATION: ${{ inputs.confirmation }}
+      TARGET_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.target_sha }}
+      CONFIRMATION: ${{ github.event_name == 'workflow_run' && 'DEPLOY_PRODUCTION' || inputs.confirmation }}
       PROD_HOST: ${{ secrets.HCIS_PROD_HOST }}
       PROD_USER: ${{ secrets.HCIS_PROD_USER }}
       PROD_REPO_PATH: ${{ secrets.HCIS_PROD_REPO_PATH }}
