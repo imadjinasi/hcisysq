@@ -188,27 +188,26 @@ export function AdminAdmsDeviceCommandsPage() {
           </div>
         )}
         <PaginationBar page={page} pageSize={pageSize} total={filtered.length} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />
-        <div className="border-t border-border/70 bg-surface/30 px-4 py-3 text-[11px] leading-5 text-muted-foreground">Sumber API tetap membatasi 100 perintah terbaru. Istilah protokol dan wire command disembunyikan dari tabel utama dan hanya tersedia di detail teknis.</div>
+        <div className="border-t border-border/70 bg-surface/30 px-4 py-3 text-[11px] leading-5 text-muted-foreground">Sumber API membatasi 100 perintah terbaru. Payload protokol mentah tidak diekspos ke browser; halaman ini hanya menampilkan metadata operasional yang aman.</div>
       </section>
 
       {selected ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4" role="dialog" aria-modal="true" aria-labelledby="command-detail-title">
           <div className="max-h-[88vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-5 shadow-xl">
-            <div className="flex items-start justify-between gap-4"><div><div className="text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Detail teknis</div><h3 id="command-detail-title" className="mt-1 text-base font-bold text-brand-heading">C:{selected.commandNumber} · {commandActionLabel(selected)}</h3></div><button type="button" onClick={() => setSelected(null)} className="rounded-lg p-2 hover:bg-surface" aria-label="Tutup"><X className="h-4 w-4" /></button></div>
+            <div className="flex items-start justify-between gap-4"><div><div className="text-[11px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Detail operasional</div><h3 id="command-detail-title" className="mt-1 text-base font-bold text-brand-heading">C:{selected.commandNumber} · {commandActionLabel(selected)}</h3></div><button type="button" onClick={() => setSelected(null)} className="rounded-lg p-2 hover:bg-surface" aria-label="Tutup"><X className="h-4 w-4" /></button></div>
             <dl className="mt-5 grid grid-cols-[9rem_minmax(0,1fr)] gap-x-3 gap-y-3 text-xs">
               <dt className="text-muted-foreground">Status</dt><dd className="font-semibold text-brand-heading">{commandStatusLabel(selected.status)}</dd>
               <dt className="text-muted-foreground">Command type</dt><dd className="font-mono text-brand-heading">{selected.commandType}</dd>
               <dt className="text-muted-foreground">Reason</dt><dd className="font-mono text-brand-heading">{selected.reason}</dd>
               <dt className="text-muted-foreground">Attempt</dt><dd className="text-brand-heading">{selected.attemptCount}</dd>
               <dt className="text-muted-foreground">Return code</dt><dd className="font-mono text-brand-heading">{selected.returnCode ?? "—"}</dd>
-              <dt className="text-muted-foreground">Result command</dt><dd className="font-mono text-brand-heading">{selected.resultCommand ?? "—"}</dd>
+              {selected.requestedRangeStart && selected.requestedRangeEnd ? <><dt className="text-muted-foreground">Requested range</dt><dd className="text-brand-heading">{fmt(selected.requestedRangeStart)} – {fmt(selected.requestedRangeEnd)}</dd></> : null}
               <dt className="text-muted-foreground">Dibuat</dt><dd className="text-brand-heading">{fmt(selected.createdAt)}</dd>
               <dt className="text-muted-foreground">Dikirim</dt><dd className="text-brand-heading">{fmt(selected.deliveredAt)}</dd>
               <dt className="text-muted-foreground">Diakui</dt><dd className="text-brand-heading">{fmt(selected.acknowledgedAt)}</dd>
               <dt className="text-muted-foreground">Selesai</dt><dd className="text-brand-heading">{fmt(selected.completedAt)}</dd>
               <dt className="text-muted-foreground">Kedaluwarsa</dt><dd className="text-brand-heading">{fmt(selected.expiresAt)}</dd>
             </dl>
-            <div className="mt-5"><div className="text-xs font-semibold text-muted-foreground">Wire command</div><pre className="mt-1 overflow-x-auto rounded-xl border border-border bg-surface p-3 text-[11px] leading-5 text-brand-heading">{selected.wireCommand}</pre></div>
           </div>
         </div>
       ) : null}
