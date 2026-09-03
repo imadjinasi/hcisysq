@@ -376,6 +376,10 @@ function capabilityLabel(key: PhysicalCapabilityKey) {
     clear_all_data: "Hapus seluruh data mesin",
     firmware_upgrade: "Upgrade firmware",
     attendance_photo: "Attendance photo",
+    user_profile_upsert: "Push profil user",
+    user_enable_disable: "Enable/disable user",
+    server_config: "Konfigurasi server ADMS",
+    ntp_config: "Konfigurasi NTP",
   };
   return labels[key];
 }
