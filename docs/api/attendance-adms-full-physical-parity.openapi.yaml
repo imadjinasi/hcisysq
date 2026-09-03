@@ -1,0 +1,154 @@
+openapi: 3.1.0
+info:
+  title: HCIS Attendance ADMS Full Physical Parity
+  version: 1.0.0
+  description: >-
+    SUPER_ADMIN contract for ATT-005 full WDMS physical parity. All device operations are typed,
+    allowlisted, audited and capability-gated. Active USERINFO reads remain retired. Biometric
+    payloads and firmware download tokens are never returned by routine admin APIs.
+servers:
+  - url: /api
+security:
+  - cookieAuth: []
+paths:
+  /admin/attendance/adms/devices/{deviceId}/physical-capabilities:
+    get:
+      summary: Read per-device physical capability matrix and safe gate state
+      parameters: [{ $ref: '#/components/parameters/DeviceId' }]
+      responses:
+        '200': { description: Safe capability matrix; no raw wire commands or biometric secrets }
+  /admin/attendance/adms/devices/{deviceId}/wdms-evidence:
+    get:
+      summary: Read passive registration, heartbeat, PUSH protocol and transfer-profile evidence
+      parameters: [{ $ref: '#/components/parameters/DeviceId' }]
+      responses:
+        '200': { description: Passive evidence derived from ingress journal and device profile }
+  /admin/attendance/adms/devices/{deviceId}/physical/operations:
+    get:
+      summary: Read physical operation history without raw wire commands
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
+      responses:
+        '200': { description: Operation and return-code history with safe metadata only }
+  /admin/attendance/adms/devices/{deviceId}/physical/time-sync:
+    post:
+      summary: Queue typed active time synchronization
+      parameters: [{ $ref: '#/components/parameters/DeviceId' }]
+      requestBody: { $ref: '#/components/requestBodies/ConfirmedMode' }
+      responses: { '202': { $ref: '#/components/responses/Queued' } }
+  /admin/attendance/adms/devices/{deviceId}/physical/duplicate-punch:
+    post:
+      summary: Queue typed duplicate-punch period configuration
+      parameters: [{ $ref: '#/components/parameters/DeviceId' }]
+      responses: { '202': { $ref: '#/components/responses/Queued' } }
+  /admin/attendance/adms/devices/{deviceId}/physical/user-profile:
+    post:
+      summary: Push one HCIS employee profile through the explicit employee.id to PIN mapping
+      parameters: [{ $ref: '#/components/parameters/DeviceId' }]
+      responses: { '202': { description: Queued; leading-zero PIN is preserved } }
+  /admin/attendance/adms/devices/{deviceId}/physical/user-enabled:
+    post:
+      summary: Enable or disable one user non-destructively without deleting identity or biometrics
+      parameters: [{ $ref: '#/components/parameters/DeviceId' }]
+      responses: { '202': { description: Queued non-destructive user authorization change } }
+  /admin/attendance/adms/devices/{deviceId}/physical/ntp:
+    post:
+      summary: Queue typed NTP server configuration
+      parameters: [{ $ref: '#/components/parameters/DeviceId' }]
+      responses: { '202': { $ref: '#/components/responses/Queued' } }
+  /admin/attendance/adms/devices/{deviceId}/physical/server-config:
+    post:
+      summary: Queue typed ADMS server configuration; canary must preserve production ingress
+      parameters: [{ $ref: '#/components/parameters/DeviceId' }]
+      responses: { '202': { $ref: '#/components/responses/Queued' } }
+  /admin/attendance/adms/devices/{deviceId}/physical/reboot:
+    post:
+      summary: Queue typed reboot
+      parameters: [{ $ref: '#/components/parameters/DeviceId' }]
+      requestBody: { $ref: '#/components/requestBodies/ConfirmedMode' }
+      responses: { '202': { $ref: '#/components/responses/Queued' } }
+  /admin/attendance/adms/devices/{deviceId}/physical/biometric-query:
+    post:
+      summary: Queue legacy fingerprint or unified BIODATA template query behind biometric gates
+      parameters: [{ $ref: '#/components/parameters/DeviceId' }]
+      responses: { '202': { description: Queued; raw template is not returned } }
+  /admin/attendance/adms/devices/{deviceId}/physical/biometric-enroll:
+    post:
+      summary: Queue typed remote biometric enrollment behind biometric gates
+      parameters: [{ $ref: '#/components/parameters/DeviceId' }]
+      responses: { '202': { description: Queued; no biometric secret is returned } }
+  /admin/attendance/adms/devices/{deviceId}/physical/biometric-restore:
+    post:
+      summary: Restore or distribute one encrypted-vault credential to an explicit device
+      parameters: [{ $ref: '#/components/parameters/DeviceId' }]
+      responses: { '202': { description: Queued; plaintext materializes only at device polling } }
+  /admin/attendance/adms/devices/{deviceId}/physical/biometric-delete:
+    post:
+      summary: Delete one selected biometric while preserving the HCIS master credential
+      parameters: [{ $ref: '#/components/parameters/DeviceId' }]
+      responses: { '202': { description: Queued selected delete } }
+  /admin/attendance/adms/devices/{deviceId}/physical/firmware:
+    post:
+      summary: Queue an explicit-device firmware canary after model compatibility validation
+      parameters: [{ $ref: '#/components/parameters/DeviceId' }]
+      responses: { '202': { description: Queued with a short-lived download ticket } }
+  /admin/attendance/adms/devices/{deviceId}/physical/clear-attendance:
+    post:
+      summary: Break-glass clear attendance logs on the target device
+      parameters: [{ $ref: '#/components/parameters/DeviceId' }]
+      responses: { '202': { $ref: '#/components/responses/Queued' } }
+  /admin/attendance/adms/devices/{deviceId}/physical/clear-photo:
+    post:
+      summary: Break-glass clear device photo/cache data
+      parameters: [{ $ref: '#/components/parameters/DeviceId' }]
+      responses: { '202': { $ref: '#/components/responses/Queued' } }
+  /admin/attendance/adms/devices/{deviceId}/physical/clear-all:
+    post:
+      summary: Break-glass clear all device data; highest-risk operation
+      parameters: [{ $ref: '#/components/parameters/DeviceId' }]
+      responses: { '202': { $ref: '#/components/responses/Queued' } }
+  /admin/attendance/adms/devices/{deviceId}/physical/capability-state:
+    post:
+      summary: Record physically evidenced unsupported or blocked outcome
+      parameters: [{ $ref: '#/components/parameters/DeviceId' }]
+      responses: { '200': { description: Capability outcome saved with evidence note } }
+  /admin/attendance/adms/devices/export.csv:
+    get: { summary: Export safe ADMS device inventory, responses: { '200': { description: CSV } } }
+  /admin/attendance/adms/devices/{deviceId}/mappings/export.csv:
+    get: { summary: Export explicit/effective-dated user mappings, responses: { '200': { description: CSV } } }
+  /admin/attendance/adms/devices/{deviceId}/work-codes/export.csv:
+    get: { summary: Export Work Code desired/delivery state, responses: { '200': { description: CSV } } }
+  /admin/attendance/adms/devices/{deviceId}/physical/operations/export.csv:
+    get: { summary: Export safe physical operation history, responses: { '200': { description: CSV } } }
+  /admin/attendance/adms/devices/{deviceId}/physical/audit/export.csv:
+    get: { summary: Export safe physical-operation audit events, responses: { '200': { description: CSV } } }
+  /admin/attendance/adms/devices/{deviceId}/attendance/export.csv:
+    get: { summary: Export raw policy-neutral attendance facts, responses: { '200': { description: CSV } } }
+components:
+  securitySchemes:
+    cookieAuth: { type: apiKey, in: cookie, name: hcis_session }
+  parameters:
+    DeviceId: { name: deviceId, in: path, required: true, schema: { type: string, format: uuid } }
+  requestBodies:
+    ConfirmedMode:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [confirmation]
+            properties:
+              mode: { enum: [canary, execute], default: canary }
+              confirmation: { type: string }
+  responses:
+    Queued:
+      description: Typed physical operation queued
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [operationId, commandCount]
+            properties:
+              operationId: { type: string, format: uuid }
+              commandCount: { type: integer, minimum: 0 }
