@@ -6,7 +6,9 @@ Repository ini adalah **source of truth canonical** untuk dokumentasi dan implem
 
 ## Status
 
-**MVP foundation / implementation.** Belum ada rilis production dari repository ini.
+**Active implementation and controlled production delivery.** Production releases dari repository ini menggunakan reviewed `main` SHA, exact-SHA GHCR images, `scripts/deploy-vps.sh`, dan `scripts/verify-vps.sh`; release image tidak dibangun sebagai langkah normal di VPS.
+
+Repository saat ini berada di `imadjinasi/hcisysq` dan sedang disiapkan untuk transfer manual ke organisasi dengan canonical target `sabilulquran/hcisysq`. Transfer harus mempertahankan nama `hcisysq` dan visibility **PUBLIC**. Lihat [`docs/development/github-org-transfer-readiness.md`](docs/development/github-org-transfer-readiness.md) untuk boundary GHCR dan deployment freeze setelah transfer.
 
 Implementasi HCIS sebelumnya diperlakukan sebagai referensi perilaku dan sumber discovery. Repository UI awal `imadjinasi/hcis-ysq-foundation` sekarang juga diperlakukan sebagai reference/archive; selected UI sudah dikonsolidasikan ke `apps/web`.
 
@@ -95,8 +97,10 @@ Lockfile harus diperbarui dan seluruh gate diverifikasi dari environment lokal/C
 - [`docs/api/openapi.yaml`](docs/api/openapi.yaml) — kontrak HTTP; import employee belum diekspos via HTTP sampai authorization foundation tersedia.
 - [`docs/security/security-baseline.md`](docs/security/security-baseline.md) — baseline keamanan.
 - [`docs/testing/`](docs/testing/) — strategi test dan definition of done.
+- [`docs/development/vps-deployment.md`](docs/development/vps-deployment.md) — active exact-SHA GHCR deployment/verification runbook.
+- [`docs/development/github-org-transfer-readiness.md`](docs/development/github-org-transfer-readiness.md) — GitHub organization transfer readiness, GHCR boundary, dan post-transfer freeze/checklist.
 - [`docs/development/ai-assisted-workflow.md`](docs/development/ai-assisted-workflow.md) — implementation + Codex Local verification workflow.
 
 ## Catatan keamanan
 
-Repository saat ini bersifat publik. Jangan pernah memasukkan credential, `.env`, database dump, master spreadsheet pegawai, foto absensi, dokumen pegawai, slip gaji production, data payroll production, atau contoh yang dapat mengidentifikasi individu.
+Repository saat ini bersifat publik dan harus tetap PUBLIC selama transfer organisasi. Jangan pernah memasukkan credential, `.env`, database dump, master spreadsheet pegawai, foto absensi, dokumen pegawai, slip gaji production, data payroll production, atau contoh yang dapat mengidentifikasi individu.

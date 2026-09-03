@@ -26,10 +26,10 @@ jobs:
         include:
           - name: api
             dockerfile: apps/api/Dockerfile
-            image: ghcr.io/imadjinasi/hcisysq-api
+            image: ghcr.io/${{ github.repository_owner }}/hcisysq-api
           - name: web
             dockerfile: apps/web/Dockerfile
-            image: ghcr.io/imadjinasi/hcisysq-web
+            image: ghcr.io/${{ github.repository_owner }}/hcisysq-web
 
     steps:
       - uses: actions/checkout@v4
@@ -53,5 +53,7 @@ jobs:
           tags: |
             ${{ matrix.image }}:staging
             ${{ matrix.image }}:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
           cache-from: type=gha,scope=hcis-${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=hcis-${{ matrix.name }}

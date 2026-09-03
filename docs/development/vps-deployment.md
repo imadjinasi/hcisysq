@@ -1,14 +1,14 @@
 # HCIS VPS Deployment Workflow
 
 **Status:** ACTIVE RUNBOOK  
-**Production path:** human-approved VPS cutover only
+**Production path:** human-approved exact-SHA VPS cutover only
 
 ## Standard release flow
 
 Normal HCIS production delivery follows one repeatable cycle:
 
 ```text
-CODE -> PR/MERGE -> CI GREEN -> 1x DEPLOY VPS -> 1x VERIFY -> UAT if required -> DONE
+CODE -> PR/MERGE -> CI GREEN -> PUBLISH EXACT-SHA IMAGE -> 1x DEPLOY VPS -> 1x VERIFY -> UAT if required -> DONE
 ```
 
 Do not turn ordinary releases into a sequence of ad-hoc container commands. The repository scripts are the default operational path.
@@ -19,6 +19,7 @@ Before production cutover:
 
 - the target commit is merged to `origin/main`;
 - required GitHub Actions validation is green for that exact PR head;
+- the exact-SHA API and Web images required by the runtime have been published successfully;
 - the operator has explicitly approved the production deployment;
 - the VPS working tree is clean and still points at the currently deployed application SHA;
 - production environment secrets remain only on the VPS;
@@ -29,26 +30,26 @@ Never use `docker compose down -v`.
 
 Do not pull the target commit manually before running the deploy script. The script intentionally captures the current local HEAD as the application rollback baseline before it fast-forwards to the target SHA.
 
-## First adoption bootstrap
+## Image source and repository-transfer boundary
 
-ATT-005 Package 1 is the release that first introduces the repository deploy script. Because the currently deployed baseline does not yet contain `scripts/deploy-vps.sh`, fetch the target and execute the script from a temporary file **without changing the working-tree HEAD first**:
+The normal deploy mode is `HCIS_DEPLOY_IMAGE_MODE=ghcr`. In this mode the VPS **does not build release images**. It pulls immutable exact-SHA API and Web images before cutover.
 
-```bash
-cd /var/www/hcis
-git fetch origin main
-git show origin/main:scripts/deploy-vps.sh > /tmp/hcis-deploy-vps.sh
-chmod 700 /tmp/hcis-deploy-vps.sh
-/tmp/hcis-deploy-vps.sh <EXPECTED_MAIN_SHA>
-rm -f /tmp/hcis-deploy-vps.sh
+The deploy script currently defaults to the already-proven personal GHCR packages:
+
+```text
+ghcr.io/imadjinasi/hcisysq-api:sha-<SHA>
+ghcr.io/imadjinasi/hcisysq-web:sha-<SHA>
 ```
 
-This preserves the real pre-deploy SHA for the application rollback guard. The script itself verifies that `origin/main` exactly equals the expected SHA before backup or cutover.
+Those runtime defaults intentionally remain unchanged during the planned GitHub repository transfer. Repository ownership and GHCR package ownership are separate concerns. Do not point production or staging at the organization GHCR namespace until organization-owned package publishing has been proven separately.
 
-After Package 1 has been deployed successfully, later releases can call the checked-in script directly from the still-current production baseline.
+See [`github-org-transfer-readiness.md`](github-org-transfer-readiness.md) for the transfer freeze and post-transfer verification sequence.
+
+`HCIS_DEPLOY_IMAGE_MODE=local` remains an explicit fallback supported by the script, but it is not the normal release path and must not be used merely to bypass a missing/failed GHCR publication.
 
 ## Deploy
 
-For normal releases after first adoption, from the production repository working tree:
+From the production repository working tree:
 
 ```bash
 ./scripts/deploy-vps.sh <EXPECTED_MAIN_SHA>
@@ -56,7 +57,7 @@ For normal releases after first adoption, from the production repository working
 
 The script refuses to run if local HEAD already equals the target SHA, because that would lose the previous application baseline needed for a meaningful rollback guard. If source was manually moved to the target before the runtime was cut over, restore the repository to the actual deployed SHA and follow the runbook rather than bypassing this guard.
 
-The deploy script:
+In the normal GHCR path the deploy script:
 
 1. verifies a clean working tree and preserves its current HEAD as the application rollback baseline;
 2. refuses to continue if biometric collection is not OFF;
@@ -64,8 +65,8 @@ The deploy script:
 4. creates a timestamped PostgreSQL custom-format backup before application migration/cutover;
 5. records backup checksum and deployment metadata under ignored `backups/deploy/`;
 6. fast-forwards local `main` only;
-7. builds target API and Web images before replacing running services;
-8. recreates API and lets the existing API-start migration runner apply additive migrations;
+7. resolves API and Web to exact `sha-<SHA>` GHCR tags and pulls both images;
+8. recreates API and lets the API-start migration runner apply additive migrations;
 9. waits for API health/readiness;
 10. recreates Web and waits for Web health;
 11. runs local proxy health smoke checks;
@@ -78,11 +79,9 @@ PostgreSQL is not intentionally restarted by the normal application cutover.
 
 The script differentiates application rollback from database rollback.
 
-If target application health fails after the target images have been built, the default guard attempts to rebuild/recreate API and Web from the previous application SHA.
+If target application health fails after target preparation, the default guard attempts to restore API and Web to the previous application SHA. In normal GHCR mode it resolves and pulls the previous exact-SHA images.
 
 The database is **never automatically rolled back**. Migrations may have committed before application health failed. A release that contains a non-backward-compatible or destructive schema migration requires its own reviewed recovery procedure and must not rely on generic application rollback.
-
-ATT-005 Package 1 migration `0034_attendance_adms_long_range_recovery.sql` is additive. It does not rewrite or delete raw attendance evidence.
 
 Set `AUTO_ROLLBACK_APP=0` only when a release-specific recovery procedure explicitly requires manual application rollback.
 
@@ -94,19 +93,22 @@ After a successful deploy, run exactly once:
 ./scripts/verify-vps.sh <EXPECTED_MAIN_SHA>
 ```
 
-The verification script checks:
+The verification script checks, among other release-specific guards:
 
 - deployed repository SHA;
+- runtime API/Web image tags match the exact expected SHA in the normal GHCR path;
 - PostgreSQL/API/Web container health;
 - `/healthz`, `/api/health`, and `/api/ready`;
 - latest repository migration equals latest applied migration;
 - retired USERINFO database trigger exists exactly once;
 - retired USERINFO controls are absent from the built Web bundle;
 - app-shell no-store and hashed-asset immutable cache policy;
-- read-only ADMS mapping lifecycle summary SQL;
+- passive ADMS/device SQL smoke checks;
 - biometric collection environment gate remains OFF.
 
-The verification script requests **zero device commands**.
+The verification script requests **zero device commands** and fails if its verification window changes the command count.
+
+Do not set `HCIS_VERIFY_ALLOW_LOCAL_IMAGES=1` for a normal GHCR production verification.
 
 ## UAT policy
 
@@ -128,6 +130,7 @@ For browser verification after Web releases, use a fresh browser session when st
 Deployment evidence may record:
 
 - target/previous commit SHA;
+- exact runtime image references;
 - timestamps;
 - container health;
 - migration names/timestamps;

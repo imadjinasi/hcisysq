@@ -39,6 +39,12 @@ Untuk ATT-005 fingerprint/WDMS, baca juga:
 - `api/attendance-adms-biometric-control-plane.openapi.yaml` untuk kontrak API metadata-only Package 2;
 - `api/attendance-adms-wave3.openapi.yaml` untuk kontrak API operasi Package 3 yang tetap fail-closed terhadap hardware yang belum terverifikasi.
 
+## Deployment dan repository operations
+
+- `development/vps-deployment.md` — active production runbook untuk exact-SHA GHCR cutover + verification; release image tidak dibangun sebagai langkah normal di VPS.
+- `development/github-org-transfer-readiness.md` — readiness dan post-transfer checklist untuk canonical target `sabilulquran/hcisysq`, termasuk PUBLIC visibility invariant, GHCR ownership boundary, deployment freeze, GitHub App/Actions verification, dan exact-SHA organization package proof.
+- `development/vps-dev-deployment.md` — superseded early VPS bootstrap guide; jangan gunakan build-on-VPS atau feature-branch deployment dari dokumen lama sebagai release procedure.
+
 ## Status dokumen
 
 - `DRAFT` — isi awal, belum disetujui.
