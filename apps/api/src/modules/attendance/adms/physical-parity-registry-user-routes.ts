@@ -242,7 +242,7 @@ async function queue(
     mode: input.mode,
     requestedByAccountId: input.actorId,
     commands: input.wires.map((wireCommand) => ({ commandType: "device_option" as const, wireCommand })),
-    safeMetadata: input.safeMetadata,
+    ...(input.safeMetadata === undefined ? {} : { safeMetadata: input.safeMetadata }),
   });
   await audit(client, {
     actorId: input.actorId,
