@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 
+import { isNonSensitivePhysicalWireCommand } from "./physical-parity-protocol.js";
+
 export const ADMS_MAX_BODY_BYTES = 512 * 1024;
 export const ADMS_FUTURE_TOLERANCE_MS = 24 * 60 * 60 * 1000;
 
@@ -50,6 +52,12 @@ const SAFE_INFO_OPTION_KEYS = new Set([
   "MaxAttLogCount",
   "MaxFingerCount",
   "MaxFaceCount",
+  "AlarmReRec",
+  "PhotoFunOn",
+  "FingerFunOn",
+  "FaceFunOn",
+  "FPVersion",
+  "FaceVersion",
 ]);
 
 function sha256(value: string | Uint8Array) {
@@ -142,7 +150,7 @@ export function parseDeviceCommandResultText(
     if (!rawLine) continue;
     const params = new URLSearchParams(rawLine);
     const commandNumber = params.get("ID") ?? "";
-    const returnRaw = params.get("Return") ?? "";
+    const returnRaw = params.get("Return") ?? params.get("return") ?? "";
     const command = (params.get("CMD") ?? "").trim();
     const returnCode = Number(returnRaw);
     const valid =
@@ -190,6 +198,9 @@ const attlogRangeCommandPattern = new RegExp(
   `^DATA QUERY ATTLOG StartTime=${deviceTimestampPattern}\\tEndTime=${deviceTimestampPattern}$`,
 );
 const userInfoNameUpdateCommandPattern = /^DATA UPDATE USERINFO PIN=\d{1,128}\tName=[^\t\r\n]{1,160}$/u;
+const fingerprintRestoreCommandPattern = /^DATA UPDATE FINGERTMP PIN=\d{1,128}\tFID=\d{1,2}\tSize=\d{1,6}\tValid=[13]\tTMP=[A-Za-z0-9+/=]{4,524288}$/u;
+const faceRestoreCommandPattern = /^DATA UPDATE FACE PIN=\d{1,128}\tFID=\d{1,3}\tSize=\d{1,8}\tValid=1\tTMP=[A-Za-z0-9+/=]{4,5242880}$/u;
+const unifiedBiometricRestoreCommandPattern = /^DATA UPDATE BIODATA Pin=\d{1,128}\tNo=\d{1,3}\tIndex=\d{1,5}\tValid=1\tDuress=0\tType=(1|2|6|8|9|10)\tMajorVer=\d{1,5}\tMinorVer=\d{1,5}\tFormat=\d{1,5}\tTmp=[A-Za-z0-9+/=]{4,5242880}$/u;
 
 export function attlogRangeWireCommand(startTime: string, endTime: string) {
   const command = `DATA QUERY ATTLOG StartTime=${startTime}\tEndTime=${endTime}`;
@@ -215,7 +226,11 @@ export function deviceCommandWireBody(commandNumber: string | number, wireComman
     wireCommand !== "LOG" &&
     wireCommand !== "INFO" &&
     !attlogRangeCommandPattern.test(wireCommand) &&
-    !userInfoNameUpdateCommandPattern.test(wireCommand)
+    !userInfoNameUpdateCommandPattern.test(wireCommand) &&
+    !isNonSensitivePhysicalWireCommand(wireCommand) &&
+    !fingerprintRestoreCommandPattern.test(wireCommand) &&
+    !faceRestoreCommandPattern.test(wireCommand) &&
+    !unifiedBiometricRestoreCommandPattern.test(wireCommand)
   ) {
     throw new Error("Unsupported ADMS wire command");
   }
@@ -265,6 +280,22 @@ export function optionsAllHandshakeBody(url: URL, serial: string | null, attlogS
  */
 export function getRequestIdleAcknowledgementBody(url: URL): string | null {
   return url.pathname === "/iclock/getrequest" ? "OK" : null;
+}
+
+export function deviceTimeResponseBody(url: URL, now = new Date()) {
+  if (url.pathname !== "/iclock/cdata" || url.searchParams.get("type")?.toLowerCase() !== "time") return null;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jakarta",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "00";
+  return `Time=${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}:${get("second")}+07:00`;
 }
 
 export function extractAttlogStamp(url: URL): string | null {

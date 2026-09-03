@@ -5,6 +5,11 @@ import type { ApiConfig } from "./config/env.js";
 import { createPool } from "./db/pool.js";
 import { registerAdmsAdminRoutes } from "./modules/attendance/adms/admin-routes.js";
 import { registerAdmsBiometricControlPlaneRoutes } from "./modules/attendance/adms/biometric-control-plane-routes.js";
+import { registerAdmsPhysicalParityDeviceRoutes } from "./modules/attendance/adms/physical-parity-device-routes.js";
+import { registerAdmsPhysicalParityExtendedRoutes } from "./modules/attendance/adms/physical-parity-extended-routes.js";
+import { registerAdmsPhysicalParityObservabilityRoutes } from "./modules/attendance/adms/physical-parity-observability-routes.js";
+import { registerAdmsPhysicalParityRegistryUserRoutes } from "./modules/attendance/adms/physical-parity-registry-user-routes.js";
+import { registerAdmsPhysicalParityRoutes } from "./modules/attendance/adms/physical-parity-routes.js";
 import { registerAdmsIngressRoutes } from "./modules/attendance/adms/routes.js";
 import { registerAdmsWave1AdminRoutes } from "./modules/attendance/adms/wave1-admin-routes.js";
 import { registerAdmsWave1OpsRoutes } from "./modules/attendance/adms/wave1-ops-routes.js";
@@ -50,6 +55,7 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   );
 
   await registerSystemRoutes(app, pool);
+  await registerAdmsPhysicalParityDeviceRoutes(app, pool, config);
   await registerAdmsIngressRoutes(app, pool, config);
   await registerAuthRoutes(app, pool, config);
   await registerAccountActivationRoutes(app, pool);
@@ -69,6 +75,10 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerAdmsWave2MappingAssistantRoutes(app, pool, config);
   await registerAdmsWave2UserCorrectionRoutes(app, pool, config);
   await registerAdmsWave3AdminRoutes(app, pool, config);
+  await registerAdmsPhysicalParityRoutes(app, pool, config);
+  await registerAdmsPhysicalParityExtendedRoutes(app, pool, config);
+  await registerAdmsPhysicalParityRegistryUserRoutes(app, pool, config);
+  await registerAdmsPhysicalParityObservabilityRoutes(app, pool, config);
   await registerLeaveAdminRoutes(app, pool, config);
   await registerLeaveCalendarAdminRoutes(app, pool, config);
   await registerEmployeeLeaveRoutes(app, pool, config);

@@ -18,6 +18,9 @@ ENV_FILE=${HCIS_VPS_ENV_FILE:-infra/.env.vps}
 COMPOSE_FILE=${HCIS_VPS_COMPOSE_FILE:-infra/docker-compose.vps.yml}
 BACKUP_ROOT=${HCIS_BACKUP_ROOT:-backups/deploy}
 AUTO_ROLLBACK_APP=${AUTO_ROLLBACK_APP:-1}
+DEPLOY_IMAGE_MODE=${HCIS_DEPLOY_IMAGE_MODE:-ghcr}
+GHCR_API_REPO=${HCIS_GHCR_API_REPO:-ghcr.io/imadjinasi/hcisysq-api}
+GHCR_WEB_REPO=${HCIS_GHCR_WEB_REPO:-ghcr.io/imadjinasi/hcisysq-web}
 
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "STOP: env file tidak ditemukan: $ENV_FILE" >&2
@@ -70,6 +73,31 @@ wait_service_healthy() {
   return 1
 }
 
+set_target_images() {
+  local sha=$1
+  export HCIS_API_IMAGE="$GHCR_API_REPO:sha-$sha"
+  export HCIS_WEB_IMAGE="$GHCR_WEB_REPO:sha-$sha"
+}
+
+prepare_application_images() {
+  local sha=$1
+  if [[ "$DEPLOY_IMAGE_MODE" == "ghcr" ]]; then
+    set_target_images "$sha"
+    echo "api_image=$HCIS_API_IMAGE"
+    echo "web_image=$HCIS_WEB_IMAGE"
+    "${COMPOSE[@]}" pull api web
+  elif [[ "$DEPLOY_IMAGE_MODE" == "local" ]]; then
+    unset HCIS_API_IMAGE HCIS_WEB_IMAGE
+    export COMPOSE_PARALLEL_LIMIT=1
+    echo "WARN: HCIS_DEPLOY_IMAGE_MODE=local; building sequentially on VPS"
+    "${COMPOSE[@]}" build api
+    "${COMPOSE[@]}" build web
+  else
+    echo "STOP: HCIS_DEPLOY_IMAGE_MODE harus ghcr atau local" >&2
+    return 1
+  fi
+}
+
 rollback_app() {
   if [[ "$ROLLBACK_NEEDED" -ne 1 || "$AUTO_ROLLBACK_APP" != "1" ]]; then
     return 0
@@ -80,7 +108,15 @@ rollback_app() {
   echo "Target gagal sehat. Database TIDAK di-rollback otomatis."
   echo "Mengembalikan application image ke commit sebelumnya: $PREVIOUS_SHA"
   git checkout --detach "$PREVIOUS_SHA"
-  "${COMPOSE[@]}" build api web
+  if [[ "$DEPLOY_IMAGE_MODE" == "ghcr" ]]; then
+    set_target_images "$PREVIOUS_SHA"
+    "${COMPOSE[@]}" pull api web || true
+  else
+    unset HCIS_API_IMAGE HCIS_WEB_IMAGE
+    export COMPOSE_PARALLEL_LIMIT=1
+    "${COMPOSE[@]}" build api || true
+    "${COMPOSE[@]}" build web || true
+  fi
   "${COMPOSE[@]}" up -d --no-deps api
   wait_service_healthy api 120 || true
   "${COMPOSE[@]}" up -d --no-deps web
@@ -105,12 +141,14 @@ trap 'exit 143' TERM
 echo "=== HCIS VPS DEPLOY ==="
 echo "previous_sha=$PREVIOUS_SHA"
 echo "expected_sha=$EXPECTED_SHA"
+echo "image_mode=$DEPLOY_IMAGE_MODE"
 echo "timestamp_utc=$TIMESTAMP"
 echo "backup_dir=$BACKUP_DIR"
 
 printf '%s\n' \
   "previous_sha=$PREVIOUS_SHA" \
   "expected_sha=$EXPECTED_SHA" \
+  "image_mode=$DEPLOY_IMAGE_MODE" \
   "timestamp_utc=$TIMESTAMP" \
   "auto_rollback_app=$AUTO_ROLLBACK_APP" \
   > "$BACKUP_DIR/metadata.txt"
@@ -140,14 +178,14 @@ sha256sum "$BACKUP_DIR/postgres-before.dump" > "$BACKUP_DIR/postgres-before.dump
 ls -lh "$BACKUP_DIR/postgres-before.dump"
 
 echo
-echo "=== BUILD TARGET ==="
+echo "=== PREPARE TARGET ==="
 git switch main
 git pull --ff-only origin main
 if [[ "$(git rev-parse HEAD)" != "$EXPECTED_SHA" ]]; then
   echo "STOP: local main tidak berada di expected SHA" >&2
   exit 1
 fi
-"${COMPOSE[@]}" build api web
+prepare_application_images "$EXPECTED_SHA"
 ROLLBACK_NEEDED=1
 
 echo
@@ -203,6 +241,9 @@ fi
 
 "${COMPOSE[@]}" ps | tee "$BACKUP_DIR/compose-after.txt"
 printf '%s\n' "deployed_sha=$(git rev-parse HEAD)" >> "$BACKUP_DIR/metadata.txt"
+if [[ "$DEPLOY_IMAGE_MODE" == "ghcr" ]]; then
+  printf '%s\n' "api_image=$HCIS_API_IMAGE" "web_image=$HCIS_WEB_IMAGE" >> "$BACKUP_DIR/metadata.txt"
+fi
 ROLLBACK_NEEDED=0
 trap - EXIT INT TERM
 

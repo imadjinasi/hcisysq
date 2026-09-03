@@ -16,6 +16,11 @@ const SAFE_METADATA_KEYS = new Set([
   "protocolTable",
   "source",
   "algorithmVersion",
+  "biometricType",
+  "index",
+  "majorVersion",
+  "minorVersion",
+  "format",
 ]);
 
 function sanitizeSafeMetadata(input: Record<string, unknown> | undefined) {

@@ -2,9 +2,12 @@ const sensitiveProtocolTables = new Set([
   "OPERLOG",
   "USERINFO",
   "FINGERTMP",
+  "FACE",
   "BIODATA",
   "BIODATAINFO",
+  "TEMPLATEV10",
   "ATTPHOTO",
+  "BIOPHOTO",
   "BIOMEDATA",
 ]);
 
@@ -32,7 +35,7 @@ function safeValue(value: string | undefined, max: number) {
 }
 
 export function extractProtocolTable(url: URL): string | null {
-  for (const key of ["table", "Table", "TABLE"]) {
+  for (const key of ["table", "Table", "TABLE", "tablename", "TableName", "TABLENAME"]) {
     const raw = url.searchParams.get(key);
     if (!raw) continue;
     const normalized = raw.trim().toUpperCase();
@@ -113,10 +116,8 @@ export function isAttlogDeviceData(input: { table: string | null; text: string }
 
 /**
  * Request-journal payloads are useful forensic evidence for attendance, but roster credentials,
- * passwords and biometric template data must never be retained there in plaintext. A POST to
- * /iclock/cdata is therefore considered routine-journal-safe only when it is explicitly ATTLOG,
- * or when no table was supplied and the payload structurally matches the eleven-field ATTLOG
- * contract. An explicit non-ATTLOG table always wins over shape-based fallback.
+ * passwords and biometric template data must never be retained there in plaintext. POST payloads
+ * outside the exact ATTLOG contract are therefore redacted for both /iclock/cdata and /iclock/querydata.
  */
 export function shouldRedactDeviceDataBody(input: {
   method: string;
@@ -124,6 +125,8 @@ export function shouldRedactDeviceDataBody(input: {
   table: string | null;
   text: string;
 }) {
-  if (input.method !== "POST" || input.path !== "/iclock/cdata" || input.text.length === 0) return false;
+  if (input.method !== "POST" || input.text.length === 0) return false;
+  if (input.path === "/iclock/querydata") return true;
+  if (input.path !== "/iclock/cdata") return false;
   return !isAttlogDeviceData({ table: input.table, text: input.text });
 }

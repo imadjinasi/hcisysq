@@ -170,10 +170,10 @@ features:
     module: attendance
     name: WDMS-compatible fingerprint device operations
     legacy_evidence: SQ fingerprint devices use ZKTeco PUSH/ADMS transport; ZKBio WDMS is the accepted operational parity reference for device management
-    target_status: implemented
+    target_status: implementing
     priority: core
     risk: critical
-    planning_note: Three integrated repository delivery packages now implement the HCIS-owned WDMS operations plane, encrypted biometric control-plane metadata, passive mapping/roster administration, transaction recovery/export/offline import, saved filters, Work Code/message planning, and explicit capability gating. Physical capabilities whose firmware-safe wire behavior has not been proven remain not_verified or blocked with no executable endpoint. Active USERINFO reads remain retired and biometric collection remains OFF. Move ATT-005 to verified only after production deployment, verify-vps.sh, and passive UAT close the implemented HCIS scope.
+    planning_note: Packages 1-3 established and production-verified the HCIS device plane, recovery, Admin operations, encrypted biometric control plane, and safe HCIS-side catalogs. ATT-005 remains implementing because the accepted parity contract also requires physical Work Code/message delivery, supported configuration/time sync/reboot, guarded maintenance, attendance-photo handling, and biometric query/backup/restore/distribution/enrollment/delete where the device protocol supports them. Full parity must use typed documented commands plus physical canary evidence; active USERINFO reads stay retired and no arbitrary command escape hatch is permitted.
     docs:
       - docs/domain/attendance-wdms-device-parity.md
       - docs/domain/attendance-wdms-implementation-plan.md
