@@ -2,6 +2,11 @@ name: Publish HCIS Staging Images
 
 on:
   workflow_dispatch:
+    inputs:
+      target_sha:
+        description: "Optional 40-character commit SHA to backfill. Leave blank to publish current ref and staging tag."
+        required: false
+        type: string
   push:
     branches:
       - main
@@ -33,6 +38,52 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve publish target
+        id: target
+        shell: bash
+        env:
+          REQUESTED_SHA: ${{ inputs.target_sha }}
+        run: |
+          set -euo pipefail
+          requested="${REQUESTED_SHA:-}"
+          if [[ -n "$requested" ]]; then
+            if [[ ! "$requested" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "target_sha must be a full 40-character lowercase commit SHA" >&2
+              exit 1
+            fi
+            git fetch origin main
+            if ! git merge-base --is-ancestor "$requested" origin/main; then
+              echo "target_sha is not an ancestor of origin/main" >&2
+              exit 1
+            fi
+            target="$requested"
+            include_staging=0
+          else
+            target="$(git rev-parse HEAD)"
+            include_staging=1
+          fi
+          echo "sha=$target" >> "$GITHUB_OUTPUT"
+          echo "include_staging=$include_staging" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout publish target
+        run: git checkout --detach "${{ steps.target.outputs.sha }}"
+
+      - name: Resolve image tags
+        id: tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo 'value<<EOF'
+            echo '${{ matrix.image }}:sha-${{ steps.target.outputs.sha }}'
+            if [[ '${{ steps.target.outputs.include_staging }}' == '1' ]]; then
+              echo '${{ matrix.image }}:staging'
+            fi
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -50,10 +101,9 @@ jobs:
           context: .
           file: ${{ matrix.dockerfile }}
           push: true
-          tags: |
-            ${{ matrix.image }}:staging
-            ${{ matrix.image }}:sha-${{ github.sha }}
+          tags: ${{ steps.tags.outputs.value }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.target.outputs.sha }}
           cache-from: type=gha,scope=hcis-${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=hcis-${{ matrix.name }}
