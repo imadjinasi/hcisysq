@@ -7,7 +7,6 @@ function command(input: Partial<AdmsCommandItem>): AdmsCommandItem {
     id: "command-id",
     commandNumber: "8",
     commandType: "data_query",
-    wireCommand: "LOG",
     reason: "admin_sync_new",
     status: "pending",
     attemptCount: 0,
@@ -18,7 +17,6 @@ function command(input: Partial<AdmsCommandItem>): AdmsCommandItem {
     acknowledgedAt: null,
     completedAt: null,
     returnCode: null,
-    resultCommand: null,
     createdAt: "2026-08-30T14:00:00.000Z",
     updatedAt: "2026-08-30T14:00:00.000Z",
     ...input,
@@ -29,22 +27,12 @@ describe("device admin command copy", () => {
   it("translates operational command reasons into admin-facing language", () => {
     expect(commandActionLabel(command({ reason: "admin_sync_new" }))).toBe("Minta transaksi terbaru");
     expect(commandActionLabel(command({ reason: "admin_range_recovery" }))).toBe("Ambil ulang transaksi");
-    expect(commandActionLabel(command({ reason: "admin_read_information" }))).toBe("Baca informasi mesin");
+    expect(commandActionLabel(command({ reason: "admin_read_information", commandType: "read_info" }))).toBe("Baca informasi mesin");
   });
 
-  it("includes the exact PIN for safe single-user operations", () => {
-    expect(commandActionLabel(command({
-      reason: "admin_query_user_info",
-      wireCommand: "DATA QUERY USERINFO PIN=205291319",
-    }))).toBe("Baca data pengguna 205291319");
-    expect(commandActionLabel(command({
-      reason: "admin_update_user_info",
-      wireCommand: "DATA UPDATE USERINFO PIN=205291319\tName=Muhammad Kamal Faza",
-    }))).toBe("Sinkronkan nama pengguna 205291319");
-    expect(commandActionLabel(command({
-      reason: "admin_update_user_info",
-      wireCommand: "DATA UPDATE USERINFO PIN=0205291319\tName=Leading Zero",
-    }))).toBe("Sinkronkan nama pengguna 0205291319");
+  it("labels retired legacy user-info history without parsing protocol payloads", () => {
+    expect(commandActionLabel(command({ reason: "admin_query_user_info" }))).toBe("Baca data pengguna (riwayat lama)");
+    expect(commandActionLabel(command({ reason: "admin_update_user_info" }))).toBe("Sinkronkan nama pengguna");
   });
 
   it("translates lifecycle states without protocol jargon", () => {
