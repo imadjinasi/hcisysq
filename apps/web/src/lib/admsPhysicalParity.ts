@@ -135,6 +135,14 @@ export async function listPhysicalOperationHistory(deviceId: string, limit = 100
   ));
 }
 
+export async function syncPhysicalWorkCode(deviceId: string, workCodeId: string, desiredState: "present" | "absent", mode: PhysicalMode = "canary") {
+  return post<{ operationId: string; commandCount: number }>(`/api/admin/attendance/adms/devices/${deviceId}/physical/work-code`, { workCodeId, desiredState, mode });
+}
+
+export async function syncPhysicalMessage(deviceId: string, messageId: string, desiredState: "present" | "absent", mode: PhysicalMode = "canary") {
+  return post<{ operationId: string; commandCount: number }>(`/api/admin/attendance/adms/devices/${deviceId}/physical/message`, { messageId, desiredState, mode });
+}
+
 export async function activeTimeSync(deviceId: string, confirmation: string, mode: PhysicalMode = "canary") {
   return post<{ operationId: string; commandCount: number }>(`/api/admin/attendance/adms/devices/${deviceId}/physical/time-sync`, { confirmation, mode });
 }
@@ -163,6 +171,10 @@ export async function setServer(deviceId: string, host: string, port: number, co
   return post<{ operationId: string; commandCount: number }>(`/api/admin/attendance/adms/devices/${deviceId}/physical/server-config`, { host, port, confirmation, mode });
 }
 
+export async function enableAttendancePhotoCanary(deviceId: string, confirmation: string) {
+  return post<{ operationId: string; commandCount: 0; rawPhotoStored: false }>(`/api/admin/attendance/adms/devices/${deviceId}/physical/attendance-photo-canary`, { confirmation });
+}
+
 export async function queryBiometric(deviceId: string, input: { employeeId: string; protocol: "legacy_fingerprint" | "unified"; biometricType: number; slotIndex: number; mode?: PhysicalMode }) {
   return post<{ operationId: string; commandCount: number }>(`/api/admin/attendance/adms/devices/${deviceId}/physical/biometric-query`, { ...input, mode: input.mode ?? "canary" });
 }
@@ -187,6 +199,20 @@ export async function listFirmwarePackages() {
   return readJson<{ items: FirmwarePackageItem[] }>(await fetch("/api/admin/attendance/adms/firmware-packages", {
     credentials: "include",
     headers: { Accept: "application/json" },
+  }));
+}
+
+export async function uploadFirmwarePackage(input: { file: File; targetModel: string; targetVersion: string }) {
+  const query = new URLSearchParams({
+    targetModel: input.targetModel,
+    targetVersion: input.targetVersion,
+    filename: input.file.name,
+  });
+  return readJson<{ item: FirmwarePackageItem }>(await fetch(`/api/admin/attendance/adms/firmware-packages?${query}`, {
+    method: "POST",
+    credentials: "include",
+    headers: { Accept: "application/json", "Content-Type": "application/octet-stream" },
+    body: input.file,
   }));
 }
 
