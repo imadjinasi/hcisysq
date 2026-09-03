@@ -25,10 +25,11 @@ describe("ATT-005 Wave 3 web safety", () => {
     expect(combined).not.toMatch(/fetch\([^\n]*(reboot|firmware|clear-all|clear-attendance|biometric-delete|time-sync)/i);
   });
 
-  it("keeps raw ADMS command protocol payloads out of the browser command surface", async () => {
+  it("keeps raw ADMS command protocol payloads out of browser admin surfaces", async () => {
     const commands = await source("./pages/AdminAdmsDeviceCommandsPage.tsx");
+    const users = await source("./pages/AdminAdmsDeviceUsersPage.tsx");
     const client = await source("./lib/admsAdmin.ts");
-    const combined = `${commands}\n${client}`;
+    const combined = `${commands}\n${users}\n${client}`;
 
     expect(combined).not.toContain("wireCommand");
     expect(combined).not.toContain("resultCommand");
