@@ -8,6 +8,7 @@ import { registerAdmsBiometricControlPlaneRoutes } from "./modules/attendance/ad
 import { registerAdmsPhysicalParityDeviceRoutes } from "./modules/attendance/adms/physical-parity-device-routes.js";
 import { registerAdmsPhysicalParityExtendedRoutes } from "./modules/attendance/adms/physical-parity-extended-routes.js";
 import { registerAdmsPhysicalParityObservabilityRoutes } from "./modules/attendance/adms/physical-parity-observability-routes.js";
+import { registerAdmsPhysicalParityRegistryUserRoutes } from "./modules/attendance/adms/physical-parity-registry-user-routes.js";
 import { registerAdmsPhysicalParityRoutes } from "./modules/attendance/adms/physical-parity-routes.js";
 import { registerAdmsIngressRoutes } from "./modules/attendance/adms/routes.js";
 import { registerAdmsWave1AdminRoutes } from "./modules/attendance/adms/wave1-admin-routes.js";
@@ -76,6 +77,7 @@ export async function createApp(config: ApiConfig, injectedPool?: Pool) {
   await registerAdmsWave3AdminRoutes(app, pool, config);
   await registerAdmsPhysicalParityRoutes(app, pool, config);
   await registerAdmsPhysicalParityExtendedRoutes(app, pool, config);
+  await registerAdmsPhysicalParityRegistryUserRoutes(app, pool, config);
   await registerAdmsPhysicalParityObservabilityRoutes(app, pool, config);
   await registerLeaveAdminRoutes(app, pool, config);
   await registerLeaveCalendarAdminRoutes(app, pool, config);
