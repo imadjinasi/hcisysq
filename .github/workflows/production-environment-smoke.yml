@@ -1,0 +1,73 @@
+name: Production Environment Smoke Test
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/production-environment-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Verify production environment and SSH wiring
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    env:
+      PROD_HOST: ${{ secrets.HCIS_PROD_HOST }}
+      PROD_USER: ${{ secrets.HCIS_PROD_USER }}
+      PROD_REPO_PATH: ${{ secrets.HCIS_PROD_REPO_PATH }}
+      SSH_PRIVATE_KEY: ${{ secrets.HCIS_PROD_SSH_PRIVATE_KEY }}
+      SSH_KNOWN_HOSTS: ${{ secrets.HCIS_PROD_SSH_KNOWN_HOSTS }}
+
+    steps:
+      - name: Validate production environment values
+        shell: bash
+        run: |
+          set -euo pipefail
+          for value in "$PROD_HOST" "$PROD_USER" "$PROD_REPO_PATH" "$SSH_PRIVATE_KEY" "$SSH_KNOWN_HOSTS"; do
+            if [[ -z "$value" ]]; then
+              echo "FAIL: one or more required production environment secrets are empty" >&2
+              exit 1
+            fi
+          done
+          [[ "$PROD_HOST" == "103.89.5.4" ]] || { echo "FAIL: HCIS_PROD_HOST is not the expected production host" >&2; exit 1; }
+          [[ "$PROD_USER" == "sipayaops" ]] || { echo "FAIL: HCIS_PROD_USER is not sipayaops" >&2; exit 1; }
+          [[ "$PROD_REPO_PATH" == "/var/www/hcis" ]] || { echo "FAIL: HCIS_PROD_REPO_PATH is not /var/www/hcis" >&2; exit 1; }
+          echo "environment_values=PASS"
+
+      - name: Configure pinned SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Read-only VPS smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -o ConnectTimeout=10 \
+            "$PROD_USER@$PROD_HOST" bash -s -- "$PROD_REPO_PATH" <<'REMOTE'
+          set -euo pipefail
+          repo_path=$1
+          [[ "$(whoami)" == "sipayaops" ]] || { echo "FAIL: unexpected SSH user" >&2; exit 1; }
+          cd "$repo_path"
+          [[ -d .git ]] || { echo "FAIL: production repo path is not a git worktree" >&2; exit 1; }
+          [[ -z "$(git status --porcelain)" ]] || { echo "FAIL: production worktree is dirty" >&2; exit 1; }
+          grep -Eq '^BIOMETRIC_COLLECTION_ENABLED=0[[:space:]]*$' infra/.env.vps || { echo "FAIL: biometric collection safety flag is not OFF" >&2; exit 1; }
+          docker info >/dev/null
+          echo "ssh_user=PASS"
+          echo "repo_path=PASS"
+          echo "worktree_clean=PASS"
+          echo "docker_access=PASS"
+          echo "biometric_collection=OFF"
+          echo "current_head=$(git rev-parse HEAD)"
+          echo "PRODUCTION_ENV_SMOKE_PASS"
+          REMOTE
