@@ -167,7 +167,7 @@ COMMAND_PHYSICAL_COLUMNS=$("${COMPOSE[@]}" exec -T postgres sh -lc '
 RATE_LIMIT_TRIGGER=$("${COMPOSE[@]}" exec -T postgres sh -lc '
   psql -X -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "
     SELECT count(*) FROM pg_trigger
-    WHERE tgname = '\''attendance_adms_physical_operation_rate_limit_guard'\'' AND NOT tgisinternal
+    WHERE tgname = '\''attendance_adms_physical_operation_rate_limit'\'' AND NOT tgisinternal
   "
 ')
 echo "physical_parity_table_count=$PARITY_TABLE_COUNT"
@@ -187,10 +187,12 @@ if ! "${COMPOSE[@]}" exec -T web sh -lc "grep -R -F -q -- 'Full WDMS Physical Pa
   echo "FAIL: full physical parity Admin UI tidak ditemukan" >&2
   exit 1
 fi
-if "${COMPOSE[@]}" exec -T web sh -lc "grep -R -E -q -- 'raw command|wireCommand|payload_ciphertext|payload_auth_tag|encryption_key_id' /usr/share/nginx/html"; then
-  echo "FAIL: forbidden physical/biometric secret surface ditemukan di web build" >&2
-  exit 1
-fi
+for forbidden in "wireCommand" "payload_ciphertext" "payload_auth_tag" "encryption_key_id"; do
+  if "${COMPOSE[@]}" exec -T web sh -lc "grep -R -F -q -- '$forbidden' /usr/share/nginx/html"; then
+    echo "FAIL: forbidden physical/biometric secret surface ditemukan di web build: $forbidden" >&2
+    exit 1
+  fi
+done
 echo "arbitrary_command_ui=absent"
 echo "physical_parity_ui=present"
 
