@@ -5,8 +5,20 @@ import { describe, expect, it } from "vitest";
 const deployUrl = new URL("../../../scripts/deploy-vps.sh", import.meta.url);
 const verifyUrl = new URL("../../../scripts/verify-vps.sh", import.meta.url);
 const composeUrl = new URL("../../../infra/docker-compose.vps.yml", import.meta.url);
+const productionWorkflowUrl = new URL("../../../.github/workflows/deploy-production.yml", import.meta.url);
 
 describe("VPS full parity deployment safety", () => {
+  it("keeps production deployment behind an explicit human dispatch", async () => {
+    const source = await readFile(productionWorkflowUrl, "utf8");
+    expect(source).toContain("workflow_dispatch:");
+    expect(source).toContain("confirmation:");
+    expect(source).toContain('description: "Type DEPLOY_PRODUCTION to continue"');
+    expect(source).toContain("TARGET_SHA: ${{ inputs.target_sha }}");
+    expect(source).toContain("CONFIRMATION: ${{ inputs.confirmation }}");
+    expect(source).not.toContain("workflow_run:");
+    expect(source).not.toContain("github.event.workflow_run");
+  });
+
   it("prefers exact-SHA GHCR application images and never recreates postgres volume", async () => {
     const source = await readFile(deployUrl, "utf8");
     expect(source).toContain("ghcr.io/imadjinasi/hcisysq-api");
