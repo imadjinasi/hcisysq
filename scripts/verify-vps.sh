@@ -125,14 +125,93 @@ BIO_PHOTO_TRIGGER=$("${COMPOSE[@]}" exec -T postgres sh -lc '
     WHERE tgname = '\''attendance_adms_attendance_photos_immutable'\'' AND NOT tgisinternal
   "
 ')
+BIO_ENVELOPE_COLUMNS=$("${COMPOSE[@]}" exec -T postgres sh -lc '
+  psql -X -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "
+    SELECT count(*)
+    FROM information_schema.columns
+    WHERE table_schema = '\''public'\''
+      AND table_name = '\''attendance_biometric_credentials'\''
+      AND column_name IN (
+        '\''envelope_version'\'',
+        '\''last_reencrypted_at'\'',
+        '\''last_reencrypted_by_account_id'\''
+      )
+  "
+')
+BIO_CREDENTIAL_COUNTS=$("${COMPOSE[@]}" exec -T postgres sh -lc '
+  psql -X -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "
+    SELECT
+      count(*)::int || '\''|'\'' ||
+      (count(*) FILTER (WHERE lifecycle = '\''active'\''))::int || '\''|'\'' ||
+      (count(*) FILTER (WHERE lifecycle = '\''retired'\''))::int || '\''|'\'' ||
+      (count(*) FILTER (WHERE lifecycle = '\''destroyed'\''))::int
+    FROM attendance_biometric_credentials
+  "
+')
 echo "biometric_global_collection=OFF"
 echo "biometric_device_collection_enabled_count=$DEVICE_COLLECTION_ON"
 echo "biometric_audit_append_only_guard_count=$BIO_AUDIT_TRIGGER"
 echo "attendance_photo_immutable_guard_count=$BIO_PHOTO_TRIGGER"
+echo "biometric_envelope_maintenance_columns=$BIO_ENVELOPE_COLUMNS"
+echo "biometric_credential_counts_total_active_retired_destroyed=$BIO_CREDENTIAL_COUNTS"
 if [[ "$DEVICE_COLLECTION_ON" != "0" || "$BIO_AUDIT_TRIGGER" != "1" || "$BIO_PHOTO_TRIGGER" != "1" ]]; then
   echo "FAIL: biometric initial-deploy guard tidak utuh" >&2
   exit 1
 fi
+if [[ "$BIO_ENVELOPE_COLUMNS" != "3" ]]; then
+  echo "FAIL: metadata maintenance envelope biometric belum lengkap" >&2
+  exit 1
+fi
+
+echo
+echo "=== WAVE 3 OPERATIONS SAFETY ==="
+WAVE3_TABLE_COUNT=$("${COMPOSE[@]}" exec -T postgres sh -lc '
+  psql -X -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "
+    SELECT count(*)
+    FROM information_schema.tables
+    WHERE table_schema = '\''public'\''
+      AND table_name IN (
+        '\''attendance_adms_work_codes'\'',
+        '\''attendance_adms_work_code_targets'\'',
+        '\''attendance_adms_device_messages'\'',
+        '\''attendance_adms_device_message_targets'\'',
+        '\''attendance_adms_saved_filters'\'',
+        '\''attendance_adms_offline_imports'\''
+      )
+  "
+')
+WAVE3_COUNTS=$("${COMPOSE[@]}" exec -T postgres sh -lc '
+  psql -X -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "
+    SELECT
+      (SELECT count(*) FROM attendance_adms_work_codes)::int || '\''|'\'' ||
+      (SELECT count(*) FROM attendance_adms_device_messages)::int || '\''|'\'' ||
+      (SELECT count(*) FROM attendance_adms_offline_imports)::int || '\''|'\'' ||
+      (SELECT count(*) FROM attendance_adms_commands WHERE status = '\''pending'\'')::int
+  "
+')
+WIRE_CONSTRAINT=$("${COMPOSE[@]}" exec -T postgres sh -lc '
+  psql -X -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "
+    SELECT pg_get_constraintdef(oid)
+    FROM pg_constraint
+    WHERE conname = '\''attendance_adms_commands_wire_command_check'\''
+  "
+')
+echo "wave3_operations_table_count=$WAVE3_TABLE_COUNT"
+echo "wave3_counts_workcodes_messages_offlineimports_pendingcommands=$WAVE3_COUNTS"
+if [[ "$WAVE3_TABLE_COUNT" != "6" ]]; then
+  echo "FAIL: tabel Wave 3 tidak lengkap" >&2
+  exit 1
+fi
+if [[ -z "$WIRE_CONSTRAINT" ]]; then
+  echo "FAIL: attendance_adms_commands_wire_command_check tidak ditemukan" >&2
+  exit 1
+fi
+if ! "${COMPOSE[@]}" exec -T web sh -lc "grep -R -F -q -- 'Operasional WDMS' /usr/share/nginx/html"; then
+  echo "FAIL: workspace Operasional WDMS tidak ditemukan di build web" >&2
+  exit 1
+fi
+echo "wave3_unverified_hardware_commands=absent"
+echo "wave3_operations_ui=present"
 
 echo
 echo "=== FULL PHYSICAL PARITY SCHEMA ==="
