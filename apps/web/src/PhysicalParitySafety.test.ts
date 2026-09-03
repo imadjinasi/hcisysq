@@ -13,17 +13,17 @@ describe("full WDMS physical parity UI safety", () => {
     expect(source).toContain("Biometric maintenance");
     expect(source).toContain("employee UUID (bukan NIP/nama/PIN)");
     expect(source).toContain("Tidak pernah menggunakan DATA DELETE user");
-    expect(source).not.toMatch(/textarea/i);
+    expect(source).not.toMatch(/<textarea\b/i);
     expect(source).not.toContain("wireCommand");
   });
 
-  it("never renders or fetches biometric secret fields", async () => {
+  it("never renders or fetches biometric secret fields or retired USERINFO reads", async () => {
     const source = `${await readFile(pageUrl, "utf8")}\n${await readFile(clientUrl, "utf8")}`;
     expect(source).not.toContain("payload_ciphertext");
     expect(source).not.toContain("payload_iv");
     expect(source).not.toContain("payload_auth_tag");
     expect(source).not.toContain("encryption_key_id");
     expect(source).not.toContain("DATA QUERY USERINFO");
-    expect(source).not.toContain("DATA DELETE user");
+    expect(source).not.toMatch(/["'`]DATA DELETE user(?:["'`]|\\|$)/);
   });
 });
