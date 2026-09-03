@@ -146,7 +146,18 @@ jobs:
           export HCIS_GHCR_API_REPO="$api_repo"
           export HCIS_GHCR_WEB_REPO="$web_repo"
           ./scripts/deploy-vps.sh "$target_sha"
-          ./scripts/verify-vps.sh "$target_sha"
+          ./scripts/verify-vps.sh "$target_sha" | awk '
+            /^=== PASSIVE DEVICE SUMMARY SQL SMOKE ===$/ {
+              redact=1
+              print
+              print "device_summary=redacted_for_github_actions"
+              next
+            }
+            /^=== VERIFY PASS ===$/ {
+              redact=0
+            }
+            !redact { print }
+          '
           REMOTE
 
       - name: Logout VPS from GHCR
