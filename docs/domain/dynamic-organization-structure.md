@@ -7,7 +7,7 @@
 
 ## Implementation record
 
-ORG-004 is implemented on the `agent/dynamic-organization-foundation` branch as an additive successor to ORG-002. The implementation does not seed, infer, or activate a real YSQ hierarchy and does not modify existing employee reporting fields or submitted Leave approval snapshots.
+ORG-004 originated on `agent/dynamic-organization-foundation` and is present in the current canonical `main` history as an additive successor to ORG-002. Review and phased operational validation follow `docs/development/org004-operational-validation.md`. The implementation does not seed, infer, or activate a real YSQ hierarchy and does not modify existing employee reporting fields or submitted Leave approval snapshots.
 
 ### Physical persistence model
 

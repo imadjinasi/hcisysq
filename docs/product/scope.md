@@ -245,7 +245,7 @@ Before structure-driven approval is activated for real pilot users:
 - structure-derived authority remains constrained by backend RBAC;
 - selected real organization configuration is reviewed before activation.
 
-The ORG-004 branch now implements the data model, resolver, Organization Designer, draft/validate/impact/publish lifecycle, controlled rollout, Leave consumption, and post-approval oversight intent with synthetic automated coverage. It remains **not deployed** and **not production validated**. The real YSQ structure, SHADOW comparison evidence, selected-unit activation approval, and real-principal capability review remain operational prerequisites rather than completed claims.
+The canonical history now contains the ORG-004 data model, resolver, Organization Designer, draft/validate/impact/publish lifecycle, controlled rollout, Leave consumption, and post-approval oversight intent with synthetic automated coverage. The phased operational gate is documented in `docs/development/org004-operational-validation.md`. ORG-004 remains **not deployed** and **not production validated**. The real YSQ structure, SHADOW comparison evidence, selected-unit activation approval, and real-principal capability review remain operational prerequisites rather than completed claims.
 
 ## Pilot ready — PENDING
 
