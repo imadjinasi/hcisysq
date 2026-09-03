@@ -57,6 +57,30 @@ function createPool(
         rowCount: 1,
       };
     }
+    if (sql.includes("FROM attendance_adms_commands") && sql.includes("LIMIT 100")) {
+      return {
+        rows: [
+          {
+            id: "00000000-0000-4000-8000-000000000601",
+            commandNumber: "17",
+            commandType: "sync_new",
+            reason: "admin_sync_new",
+            status: "succeeded",
+            attemptCount: 1,
+            requestedRangeStart: null,
+            requestedRangeEnd: null,
+            expiresAt: new Date("2026-08-29T10:00:00.000Z"),
+            deliveredAt: new Date("2026-08-28T10:01:00.000Z"),
+            acknowledgedAt: new Date("2026-08-28T10:01:01.000Z"),
+            completedAt: new Date("2026-08-28T10:01:02.000Z"),
+            returnCode: 0,
+            createdAt: new Date("2026-08-28T10:00:00.000Z"),
+            updatedAt: new Date("2026-08-28T10:01:02.000Z"),
+          },
+        ],
+        rowCount: 1,
+      };
+    }
     if (sql.includes("SELECT timezone, lifecycle FROM attendance_adms_devices WHERE id = $1")) {
       return rangeTargetLifecycle === null
         ? { rows: [], rowCount: 0 }
@@ -108,6 +132,36 @@ describe("ATT-005 Wave 1 admin authorization", () => {
     expect(
       query.mock.calls.some(([sql]) => String(sql).includes("attendance_adms_detected_devices")),
     ).toBe(false);
+    await app.close();
+  });
+
+  it("does not select or expose raw protocol payloads in command history", async () => {
+    const { pool, query } = createPool("SUPER_ADMIN");
+    const app = Fastify({ logger: false });
+    await registerAdmsWave1AdminRoutes(app, pool, config);
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/admin/attendance/adms/devices/${deviceId}/commands`,
+      headers: { cookie: "hcis_session=test-token" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["cache-control"]).toBe("no-store");
+    expect(response.json().items[0]).toMatchObject({
+      commandNumber: "17",
+      commandType: "sync_new",
+      reason: "admin_sync_new",
+      returnCode: 0,
+    });
+    const commandHistorySql = query.mock.calls
+      .map(([sql]) => String(sql))
+      .find((sql) => sql.includes("FROM attendance_adms_commands") && sql.includes("LIMIT 100"));
+    expect(commandHistorySql).toBeDefined();
+    expect(commandHistorySql).not.toContain("wire_command");
+    expect(commandHistorySql).not.toContain("result_command");
+    expect(response.body).not.toContain("wireCommand");
+    expect(response.body).not.toContain("resultCommand");
     await app.close();
   });
 

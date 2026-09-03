@@ -5,14 +5,11 @@ import { PaginationBar } from "@/components/PaginationBar";
 import { useDeviceAdmin } from "@/components/attendance/device-admin/DeviceAdminContext";
 import {
   cancelAdmsPinCorrection,
-  commandStatusLabel,
   getAdmsDeviceRoster,
   getAdmsMappingAssistant,
-  listAdmsCommands,
   listAdmsUserCorrections,
   planAdmsPinCorrection,
   syncAdmsUserName,
-  type AdmsCommandItem,
   type AdmsMappingAssistantItem,
   type AdmsMappingLifecycleItem,
   type AdmsRosterItem,
@@ -52,27 +49,12 @@ function candidateLabel(kind: string) {
   return "Mirip";
 }
 
-function latestNameCommand(commands: AdmsCommandItem[], pin: string) {
-  return commands.find((command) => {
-    if (command.reason !== "admin_update_user_info") return false;
-    const match = command.wireCommand.match(/^DATA UPDATE USERINFO PIN=(\d+)/);
-    return match?.[1] === pin;
-  }) ?? null;
-}
-
-function commandSucceeded(command: AdmsCommandItem | null) {
-  return command?.status === "succeeded"
-    && (command.returnCode ?? -1) >= 0
-    && command.resultCommand === "DATA";
-}
-
 export function AdminAdmsDeviceUsersPage() {
   const { deviceId, detail, refresh: refreshDevice } = useDeviceAdmin();
   const [roster, setRoster] = useState<AdmsRosterItem[]>([]);
   const [mappingLifecycle, setMappingLifecycle] = useState<AdmsMappingLifecycleItem[]>([]);
   const [assistantItems, setAssistantItems] = useState<AdmsMappingAssistantItem[]>([]);
   const [corrections, setCorrections] = useState<AdmsUserCorrectionItem[]>([]);
-  const [commands, setCommands] = useState<AdmsCommandItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -90,17 +72,15 @@ export function AdminAdmsDeviceUsersPage() {
   const [intendedPin, setIntendedPin] = useState("");
 
   const load = useCallback(async () => {
-    const [rosterResult, assistantResult, correctionResult, commandResult] = await Promise.all([
+    const [rosterResult, assistantResult, correctionResult] = await Promise.all([
       getAdmsDeviceRoster(deviceId),
       getAdmsMappingAssistant(deviceId),
       listAdmsUserCorrections(deviceId),
-      listAdmsCommands(deviceId),
     ]);
     setRoster(rosterResult.items);
     setMappingLifecycle(rosterResult.mappingLifecycle.items);
     setAssistantItems(assistantResult.items);
     setCorrections(correctionResult.items);
-    setCommands(commandResult.items);
   }, [deviceId]);
 
   useEffect(() => {
@@ -439,7 +419,6 @@ export function AdminAdmsDeviceUsersPage() {
                   const mapped = Boolean(row.mappingId && row.employeeId);
                   const mappingReview = mappedEmployeeNeedsReview(row);
                   const plan = plannedByPin.get(row.pin) ?? null;
-                  const nameCommand = latestNameCommand(commands, row.pin);
                   return (
                     <tr key={row.pin} className="align-top hover:bg-surface/40">
                       <td className="px-4 py-4">
@@ -476,11 +455,6 @@ export function AdminAdmsDeviceUsersPage() {
                           </span>
                           {plan ? (
                             <div className="text-[11px] font-medium text-sky-700">Rencana PIN {plan.legacyPin} → {plan.intendedPin}</div>
-                          ) : null}
-                          {nameCommand ? (
-                            <div className={`text-[11px] ${commandSucceeded(nameCommand) ? "text-emerald-700" : "text-muted-foreground"}`}>
-                              Sinkron nama C:{nameCommand.commandNumber} · {commandStatusLabel(nameCommand.status)}
-                            </div>
                           ) : null}
                         </div>
                       </td>

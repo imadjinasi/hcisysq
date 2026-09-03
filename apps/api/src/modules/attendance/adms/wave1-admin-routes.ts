@@ -284,7 +284,6 @@ export async function registerAdmsWave1AdminRoutes(
          id,
          command_number::text AS "commandNumber",
          command_type AS "commandType",
-         wire_command AS "wireCommand",
          reason,
          status,
          attempt_count AS "attemptCount",
@@ -295,7 +294,6 @@ export async function registerAdmsWave1AdminRoutes(
          acknowledged_at AS "acknowledgedAt",
          completed_at AS "completedAt",
          return_code AS "returnCode",
-         result_command AS "resultCommand",
          created_at AS "createdAt",
          updated_at AS "updatedAt"
        FROM attendance_adms_commands
@@ -501,7 +499,6 @@ async function queueDeviceCommand(
          id,
          command_number::text AS "commandNumber",
          command_type AS "commandType",
-         wire_command AS "wireCommand",
          reason,
          status,
          expires_at AS "expiresAt",

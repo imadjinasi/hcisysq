@@ -97,7 +97,6 @@ export interface AdmsCommandItem {
   id: string;
   commandNumber: string;
   commandType: string;
-  wireCommand: string;
   reason: string;
   status: string;
   attemptCount: number;
@@ -108,7 +107,6 @@ export interface AdmsCommandItem {
   acknowledgedAt: string | null;
   completedAt: string | null;
   returnCode: number | null;
-  resultCommand: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -306,20 +304,15 @@ export function commandStatusLabel(status: string) {
   return status;
 }
 
-export function commandActionLabel(command: Pick<AdmsCommandItem, "reason" | "wireCommand" | "requestedRangeStart" | "requestedRangeEnd">) {
+export function commandActionLabel(command: Pick<AdmsCommandItem, "reason" | "commandType" | "requestedRangeStart" | "requestedRangeEnd">) {
   if (command.reason === "admin_sync_new") return "Minta transaksi terbaru";
   if (command.reason === "admin_range_recovery") return "Ambil ulang transaksi";
   if (command.reason === "admin_long_range_recovery") return "Pemulihan periode panjang";
   if (command.reason === "scheduled_reconciliation") return "Rekonsiliasi transaksi terjadwal";
   if (command.reason === "registration_recovery") return "Pemulihan transaksi awal";
   if (command.reason === "admin_read_information") return "Baca informasi mesin";
-  if (command.reason === "admin_query_user_info") {
-    const match = command.wireCommand.match(/^DATA QUERY USERINFO PIN=(\d+)/);
-    return match ? `Baca data pengguna ${match[1]}` : "Baca data pengguna";
-  }
-  if (command.reason === "admin_update_user_info") {
-    const match = command.wireCommand.match(/^DATA UPDATE USERINFO PIN=(\d+)/);
-    return match ? `Sinkronkan nama pengguna ${match[1]}` : "Sinkronkan nama pengguna";
-  }
+  if (command.reason === "admin_query_user_info") return "Baca data pengguna (riwayat lama)";
+  if (command.reason === "admin_update_user_info") return "Sinkronkan nama pengguna";
+  if (command.commandType === "read_info") return "Baca informasi mesin";
   return command.reason.replaceAll("_", " ");
 }

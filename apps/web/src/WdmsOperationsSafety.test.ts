@@ -20,8 +20,22 @@ describe("ATT-005 Wave 3 web safety", () => {
     expect(page).toContain("Device command = 0");
     expect(page).toContain("<PaginationBar");
     expect(combined).not.toContain("DATA QUERY USERINFO");
+    expect(combined).not.toContain("DATA UPDATE USERINFO");
     expect(combined).not.toContain("DATA DELETE USERINFO");
     expect(combined).not.toMatch(/fetch\([^\n]*(reboot|firmware|clear-all|clear-attendance|biometric-delete|time-sync)/i);
+  });
+
+  it("keeps raw ADMS command protocol payloads out of browser admin surfaces", async () => {
+    const commands = await source("./pages/AdminAdmsDeviceCommandsPage.tsx");
+    const users = await source("./pages/AdminAdmsDeviceUsersPage.tsx");
+    const client = await source("./lib/admsAdmin.ts");
+    const combined = `${commands}\n${users}\n${client}`;
+
+    expect(combined).not.toContain("wireCommand");
+    expect(combined).not.toContain("resultCommand");
+    expect(combined).not.toContain("DATA QUERY USERINFO");
+    expect(combined).not.toContain("DATA UPDATE USERINFO");
+    expect(commands).toContain("Payload protokol mentah tidak diekspos ke browser");
   });
 
   it("supports saved filters on transaction and command workspaces", async () => {
