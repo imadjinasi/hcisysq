@@ -240,7 +240,6 @@ export async function registerAdmsWave3AdminRoutes(
           rawPayloadExposed: false,
           arbitraryCommandEnabled: false,
           userInfoReadsRetired: true,
-          destructiveExecutionEnabled: false,
           operationalRetention: {
             deletionEnabled: false,
             state: "policy_required",
