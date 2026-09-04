@@ -18,7 +18,17 @@ const config = {
   BIOMETRIC_COLLECTION_ENABLED: "0" as const,
 };
 
-function createPool(principalType: "SUPER_ADMIN" | "EMPLOYEE" = "SUPER_ADMIN") {
+type PhysicalRow = {
+  capabilityKey: string;
+  state: string;
+  lastResultCode: number | null;
+  verifiedAt: Date | null;
+};
+
+function createPool(
+  principalType: "SUPER_ADMIN" | "EMPLOYEE" = "SUPER_ADMIN",
+  physicalRows: PhysicalRow[] = [],
+) {
   const query = vi.fn(async (sql: string) => {
     if (sql.includes("FROM auth_sessions s")) {
       return {
@@ -51,6 +61,9 @@ function createPool(principalType: "SUPER_ADMIN" | "EMPLOYEE" = "SUPER_ADMIN") {
     if (sql.includes("FROM attendance_adms_commands") && sql.includes("status = 'pending'")) {
       return { rows: [{ count: 0 }], rowCount: 1 };
     }
+    if (sql.includes("FROM attendance_adms_physical_capabilities")) {
+      return { rows: physicalRows, rowCount: physicalRows.length };
+    }
     throw new Error(`Unexpected SQL in Wave 3 operations route test: ${sql}`);
   });
   const connect = vi.fn();
@@ -58,7 +71,7 @@ function createPool(principalType: "SUPER_ADMIN" | "EMPLOYEE" = "SUPER_ADMIN") {
 }
 
 describe("ATT-005 Wave 3 operations routes", () => {
-  it("returns an explicit fail-closed capability matrix to SUPER_ADMIN", async () => {
+  it("keeps undocumented or not-yet-proven device operations fail-closed", async () => {
     const { pool } = createPool();
     const app = Fastify({ logger: false });
     await registerAdmsWave3AdminRoutes(app, pool, config);
@@ -87,9 +100,35 @@ describe("ATT-005 Wave 3 operations routes", () => {
     expect(capabilities.find((item) => item.key === "offline_attlog_import")).toMatchObject({ state: "available", execution: "hcis_only" });
     expect(capabilities.find((item) => item.key === "reboot")).toMatchObject({ state: "not_verified", execution: "blocked" });
     expect(capabilities.find((item) => item.key === "firmware_upgrade")).toMatchObject({ state: "not_verified", execution: "blocked" });
-    expect(capabilities.find((item) => item.key === "clear_all_data")).toMatchObject({ state: "blocked", execution: "blocked" });
+    expect(capabilities.find((item) => item.key === "clear_all_data")).toMatchObject({ state: "not_verified", execution: "blocked" });
     expect(response.body).not.toContain("DATA QUERY USERINFO");
     expect(response.body).not.toContain("ciphertext");
+    await app.close();
+  });
+
+  it("projects verified, failed, unsupported, and blocked physical evidence without widening execution", async () => {
+    const { pool } = createPool("SUPER_ADMIN", [
+      { capabilityKey: "time_sync", state: "verified", lastResultCode: 0, verifiedAt: new Date("2026-09-04T02:00:00.000Z") },
+      { capabilityKey: "duplicate_punch_period", state: "failed", lastResultCode: -1, verifiedAt: null },
+      { capabilityKey: "reboot", state: "unsupported", lastResultCode: 13, verifiedAt: null },
+      { capabilityKey: "clear_all_data", state: "blocked", lastResultCode: null, verifiedAt: null },
+    ]);
+    const app = Fastify({ logger: false });
+    await registerAdmsWave3AdminRoutes(app, pool, config);
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/admin/attendance/adms/devices/${deviceId}/operations`,
+      headers: { cookie: "hcis_session=test-token" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const capabilities = response.json().item.capabilities as Array<{ key: string; state: string; execution: string; reason: string }>;
+    expect(capabilities.find((item) => item.key === "time_sync")).toMatchObject({ state: "available", execution: "device" });
+    expect(capabilities.find((item) => item.key === "duplicate_punch_period")).toMatchObject({ state: "not_verified", execution: "blocked" });
+    expect(capabilities.find((item) => item.key === "duplicate_punch_period")?.reason).toContain("RC -1");
+    expect(capabilities.find((item) => item.key === "reboot")).toMatchObject({ state: "blocked", execution: "blocked" });
+    expect(capabilities.find((item) => item.key === "clear_all_data")).toMatchObject({ state: "blocked", execution: "blocked" });
     await app.close();
   });
 
