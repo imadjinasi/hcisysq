@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 const pageUrl = new URL("./pages/AdminAdmsDevicePhysicalParityPage.tsx", import.meta.url);
+const deliveryUrl = new URL("./pages/AdminAdmsDevicePhysicalDeliveryPanel.tsx", import.meta.url);
 const clientUrl = new URL("./lib/admsPhysicalParity.ts", import.meta.url);
 
 describe("full WDMS physical parity UI safety", () => {
@@ -17,8 +18,18 @@ describe("full WDMS physical parity UI safety", () => {
     expect(source).not.toContain("wireCommand");
   });
 
+  it("selects execute only for verified per-device evidence and locks pending/blocked states", async () => {
+    const source = `${await readFile(pageUrl, "utf8")}\n${await readFile(deliveryUrl, "utf8")}`;
+    expect(source).toContain('stateFor(capabilityKey) === "verified" ? "execute" : "canary"');
+    expect(source).toContain('state === "canary_pending"');
+    expect(source).toContain('state === "unsupported"');
+    expect(source).toContain('state === "blocked"');
+    expect(source).toContain("backend tetap memverifikasi state");
+    expect(source).toContain("Attendance-photo tetap canary-gated");
+  });
+
   it("never renders or fetches biometric secret fields or retired USERINFO reads", async () => {
-    const source = `${await readFile(pageUrl, "utf8")}\n${await readFile(clientUrl, "utf8")}`;
+    const source = `${await readFile(pageUrl, "utf8")}\n${await readFile(deliveryUrl, "utf8")}\n${await readFile(clientUrl, "utf8")}`;
     expect(source).not.toContain("payload_ciphertext");
     expect(source).not.toContain("payload_iv");
     expect(source).not.toContain("payload_auth_tag");
