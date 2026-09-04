@@ -9,7 +9,7 @@ import {
 import type { PhysicalCapabilityKey } from "../src/modules/attendance/adms/physical-parity-protocol.js";
 
 function snapshots(...rows: PhysicalCapabilitySnapshot[]) {
-  return new Map<PhysicalCapabilityKey, PhysicalCapabilitySnapshot>(rows.map((row) => [row.capabilityKey, row]));
+  return new Map<PhysicalCapabilityKey, PhysicalCapabilitySnapshot>(rows.map((row) => [row.capabilityKey, row] as const));
 }
 
 describe("ATT-005 operations capability state projection", () => {
