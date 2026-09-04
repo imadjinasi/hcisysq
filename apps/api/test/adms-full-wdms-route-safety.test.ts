@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 const routes = new URL("../src/modules/attendance/adms/physical-parity-routes.ts", import.meta.url);
 const extended = new URL("../src/modules/attendance/adms/physical-parity-extended-routes.ts", import.meta.url);
 const registryUser = new URL("../src/modules/attendance/adms/physical-parity-registry-user-routes.ts", import.meta.url);
-const observability = new URL("../src/modules/attendance/adms/physical-parity-observability.ts", import.meta.url);
+const observability = new URL("../src/modules/attendance/adms/physical-parity-observability-routes.ts", import.meta.url);
 
 describe("full WDMS route safety", () => {
   it("keeps all physical command routes SUPER_ADMIN typed and fail-closed", async () => {
