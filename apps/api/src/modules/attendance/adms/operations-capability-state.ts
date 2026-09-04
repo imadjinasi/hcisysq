@@ -119,7 +119,7 @@ export async function loadPhysicalCapabilitySnapshots(
      WHERE device_id = $1`,
     [deviceId],
   );
-  return new Map(result.rows.map((item) => [item.capabilityKey, item]));
+  return new Map(result.rows.map((item) => [item.capabilityKey, item] as const));
 }
 
 function failedReason(label: string, snapshot: PhysicalCapabilitySnapshot) {
