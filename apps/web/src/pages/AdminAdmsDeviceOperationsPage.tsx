@@ -33,6 +33,7 @@ import {
   type AdmsOfflineImportItem,
   type AdmsOperationsSummary,
   type AdmsWorkCodeItem,
+  type OperationsCapabilityState,
 } from "@/lib/admsOperations";
 
 const PAGE_SIZE = 8;
@@ -64,6 +65,10 @@ export function AdminAdmsDeviceOperationsPage() {
   const [workCodes, setWorkCodes] = useState<AdmsWorkCodeItem[]>([]);
   const [messages, setMessages] = useState<AdmsDeviceMessageItem[]>([]);
   const [imports, setImports] = useState<AdmsOfflineImportItem[]>([]);
+  const [workDeliveryCapability, setWorkDeliveryCapability] = useState<OperationsCapabilityState>("not_verified");
+  const [workDeliveryNote, setWorkDeliveryNote] = useState("");
+  const [messageDeliveryCapability, setMessageDeliveryCapability] = useState<OperationsCapabilityState>("not_verified");
+  const [messageDeliveryNote, setMessageDeliveryNote] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -91,7 +96,11 @@ export function AdminAdmsDeviceOperationsPage() {
     ]);
     setSummary(nextSummary);
     setWorkCodes(nextWorkCodes.items);
+    setWorkDeliveryCapability(nextWorkCodes.deliveryCapability);
+    setWorkDeliveryNote(nextWorkCodes.note);
     setMessages(nextMessages.items);
+    setMessageDeliveryCapability(nextMessages.deliveryCapability);
+    setMessageDeliveryNote(nextMessages.note);
     setImports(nextImports.items);
   }, [deviceId]);
 
@@ -150,7 +159,7 @@ export function AdminAdmsDeviceOperationsPage() {
     setBusy(`work-target:${item.id}`);
     try {
       await setAdmsWorkCodeTarget(deviceId, item.id, desiredState);
-      setNotice(`Desired state ${item.code} diperbarui. Distribusi fisik tetap belum terverifikasi.`);
+      setNotice(`Desired state ${item.code} diperbarui. Aksi ini tidak mengirim command ke mesin; gunakan physical delivery control secara terpisah.`);
       setError(null);
       await load();
     } catch (cause) {
@@ -193,7 +202,7 @@ export function AdminAdmsDeviceOperationsPage() {
       setSelectedEmployee(null);
       setEmployeeQuery("");
       setEmployeeResults([]);
-      setNotice("Pesan tersimpan di HCIS. Tidak ada command pesan yang dikirim ke mesin.");
+      setNotice("Pesan tersimpan di HCIS. Belum ada command yang dikirim ke mesin.");
       setError(null);
       await load();
     } catch (cause) {
@@ -207,7 +216,7 @@ export function AdminAdmsDeviceOperationsPage() {
     setBusy(`message-target:${item.id}`);
     try {
       await setAdmsDeviceMessageTarget(deviceId, item.id, desiredState);
-      setNotice(`Desired state pesan "${item.title}" diperbarui. Delivery fisik tetap belum terverifikasi.`);
+      setNotice(`Desired state pesan "${item.title}" diperbarui. Aksi ini tidak mengirim command ke mesin; gunakan physical delivery control secara terpisah.`);
       setError(null);
       await load();
     } catch (cause) {
@@ -265,7 +274,7 @@ export function AdminAdmsDeviceOperationsPage() {
               <h2 className="text-base font-bold text-brand-heading">Operasional WDMS</h2>
             </div>
             <p className="mt-1 max-w-4xl text-xs leading-5 text-muted-foreground">
-              Operasi HCIS-side tersedia tanpa arbitrary command. Fitur hardware yang wire protocol-nya belum dibuktikan tetap fail-closed dan tidak mempunyai tombol eksekusi.
+              Operasi HCIS-side dan device-side tetap typed tanpa arbitrary command. Status hardware berasal dari physical capability evidence per mesin; capability yang belum verified tetap fail-closed.
             </p>
           </div>
           <button type="button" onClick={() => void refresh()} disabled={refreshing} className="inline-flex h-9 items-center gap-2 rounded-xl border border-border px-3 text-xs font-semibold disabled:opacity-50">
@@ -285,7 +294,7 @@ export function AdminAdmsDeviceOperationsPage() {
       <div className="grid gap-4 xl:grid-cols-2">
         <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
           <div className="flex items-center gap-2"><Tags className="h-4 w-4 text-brand-primary" /><h3 className="text-sm font-bold text-brand-heading">Work Code</h3></div>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">Katalog bersifat policy-neutral. Desired state dapat disiapkan, tetapi delivery ke mesin masih <strong>belum terverifikasi</strong>.</p>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs leading-5 text-muted-foreground"><span>{workDeliveryNote}</span><span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${stateClass(workDeliveryCapability)}`}>{stateLabel(workDeliveryCapability)}</span></div>
           <div className="mt-4 grid gap-2 sm:grid-cols-[8rem_minmax(0,1fr)_auto]">
             <input value={workCode} onChange={(event) => setWorkCode(event.target.value.replace(/[^0-9A-Za-z._-]/g, ""))} placeholder="Kode" className="h-9 rounded-xl border border-border px-3 text-sm" />
             <input value={workCodeName} onChange={(event) => setWorkCodeName(event.target.value)} placeholder="Nama Work Code" className="h-9 rounded-xl border border-border px-3 text-sm" />
@@ -308,7 +317,7 @@ export function AdminAdmsDeviceOperationsPage() {
 
         <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
           <div className="flex items-center gap-2"><MessageSquareText className="h-4 w-4 text-brand-primary" /><h3 className="text-sm font-bold text-brand-heading">Pesan perangkat</h3></div>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">Public/private message dapat direncanakan di HCIS. Tidak ada message command ke mesin sampai protocol fisiknya terbukti.</p>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs leading-5 text-muted-foreground"><span>{messageDeliveryNote}</span><span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${stateClass(messageDeliveryCapability)}`}>{stateLabel(messageDeliveryCapability)}</span></div>
           <div className="mt-4 grid gap-2 sm:grid-cols-2">
             <select value={messageAudience} onChange={(event) => { setMessageAudience(event.target.value as "public" | "private"); setSelectedEmployee(null); }} className="h-9 rounded-xl border border-border px-3 text-sm"><option value="public">Public</option><option value="private">Private</option></select>
             <input value={messageTitle} onChange={(event) => setMessageTitle(event.target.value)} placeholder="Judul" className="h-9 rounded-xl border border-border px-3 text-sm" />
@@ -352,7 +361,7 @@ export function AdminAdmsDeviceOperationsPage() {
       </section>
 
       <section className="rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]">
-        <div className="flex items-start gap-3"><ShieldAlert className="mt-0.5 h-5 w-5 text-amber-600" /><div><h3 className="text-sm font-bold text-brand-heading">Capability matrix</h3><p className="mt-1 text-xs leading-5 text-muted-foreground">Status di bawah adalah contract eksekusi. “Belum terverifikasi” bukan tombol tersembunyi; HCIS memang tidak mempunyai wire command untuk operasi tersebut.</p></div></div>
+        <div className="flex items-start gap-3"><ShieldAlert className="mt-0.5 h-5 w-5 text-amber-600" /><div><h3 className="text-sm font-bold text-brand-heading">Capability matrix</h3><p className="mt-1 text-xs leading-5 text-muted-foreground">Status ini adalah projection dari physical capability evidence per mesin. “Belum terverifikasi” berarti typed capability belum memiliki canary verified atau hasil terakhir belum cukup; execute normal tetap fail-closed.</p></div></div>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {(summary?.capabilities ?? []).map((capability) => (
             <div key={capability.key} className="rounded-xl border border-border/70 p-3">
@@ -362,7 +371,7 @@ export function AdminAdmsDeviceOperationsPage() {
             </div>
           ))}
         </div>
-        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">Retention operasional masih policy-gated. Tidak ada cleanup otomatis terhadap raw ADMS facts. Destructive device maintenance, firmware upgrade, reboot, time sync, message delivery, dan Work Code delivery tetap membutuhkan protocol/hardware proof terpisah.</div>
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">Retention operasional tetap policy-gated dan raw ADMS facts tidak dibersihkan otomatis. Status verified hanya berlaku untuk capability dan mesin tersebut; biometric/destructive/firmware tetap mengikuti gate, confirmation, rate-limit, dan physical UAT masing-masing.</div>
       </section>
     </div>
   );
