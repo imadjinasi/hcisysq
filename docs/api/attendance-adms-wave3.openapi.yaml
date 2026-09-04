@@ -36,7 +36,7 @@ paths:
         - $ref: '#/components/parameters/DeviceId'
       responses:
         '200':
-          description: Work Code catalog; physical delivery remains not verified
+          description: Work Code catalog with per-device physical delivery capability projection
           content:
             application/json:
               schema:
@@ -44,7 +44,7 @@ paths:
                 required: [deliveryCapability, note, items]
                 properties:
                   deliveryCapability:
-                    const: not_verified
+                    $ref: '#/components/schemas/OperationsCapabilityState'
                   note: { type: string }
                   items:
                     type: array
@@ -120,14 +120,14 @@ paths:
         - $ref: '#/components/parameters/DeviceId'
       responses:
         '200':
-          description: Message catalog; physical delivery remains not verified
+          description: Message catalog with per-device physical delivery capability projection
           content:
             application/json:
               schema:
                 type: object
                 required: [deliveryCapability, note, items]
                 properties:
-                  deliveryCapability: { const: not_verified }
+                  deliveryCapability: { $ref: '#/components/schemas/OperationsCapabilityState' }
                   note: { type: string }
                   items:
                     type: array
@@ -401,6 +401,12 @@ components:
       required: [desiredState]
       properties:
         desiredState: { enum: [present, absent] }
+    OperationsCapabilityState:
+      type: string
+      enum: [available, not_verified, blocked]
+      description: >-
+        Per-device physical capability projection. This is distinct from a target row's
+        deliveryState, which records the lifecycle of a specific desired delivery.
     OperationsSummary:
       type: object
       required:
@@ -409,7 +415,6 @@ components:
         - rawPayloadExposed
         - arbitraryCommandEnabled
         - userInfoReadsRetired
-        - destructiveExecutionEnabled
         - operationalRetention
         - capabilities
       properties:
@@ -429,7 +434,6 @@ components:
         rawPayloadExposed: { const: false }
         arbitraryCommandEnabled: { const: false }
         userInfoReadsRetired: { const: true }
-        destructiveExecutionEnabled: { const: false }
         operationalRetention:
           type: object
           required: [deletionEnabled, state, note]
@@ -445,7 +449,7 @@ components:
             properties:
               key: { type: string }
               label: { type: string }
-              state: { enum: [available, not_verified, blocked] }
+              state: { $ref: '#/components/schemas/OperationsCapabilityState' }
               execution: { enum: [device, hcis_only, blocked] }
               reason: { type: string }
     WorkCode:

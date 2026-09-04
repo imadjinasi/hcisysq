@@ -199,6 +199,9 @@ async function enforce(
   mode: "canary" | "execute",
 ) {
   const current = await state(client, deviceId, capabilityKey);
+  if (current === "canary_pending") {
+    throw new RegistryParityError(409, "PHYSICAL_CANARY_PENDING", `${capabilityKey} masih memiliki physical canary yang menunggu result.`);
+  }
   if (["unsupported", "blocked"].includes(current)) {
     throw new RegistryParityError(409, "PHYSICAL_CAPABILITY_BLOCKED", `${capabilityKey} ditandai ${current} pada mesin ini.`);
   }
@@ -458,9 +461,12 @@ export async function registerAdmsPhysicalParityRegistryUserRoutes(
         const device = await deviceForUpdate(client, params.data.deviceId);
         confirm(body.data.confirmation, `SET SERVER ${device.serialNumber} ${body.data.host}:${body.data.port}`);
         await enforce(client, device.id, "server_config", body.data.mode);
-        const productionHost = config.ADMS_INGRESS_HOST?.trim().toLowerCase() ?? "";
-        if (body.data.mode === "canary" && (body.data.host.toLowerCase() !== productionHost || body.data.port !== 80)) {
-          throw new RegistryParityError(409, "SERVER_CANARY_MUST_PRESERVE_INGRESS", `Canary server config hanya boleh menulis ulang ${productionHost}:80 agar device tidak terputus.`);
+        const approvedHost = config.ADMS_INGRESS_HOST?.trim().toLowerCase() ?? "";
+        if (!approvedHost) {
+          throw new RegistryParityError(409, "SERVER_TARGET_NOT_CONFIGURED", "Approved ADMS ingress target belum dikonfigurasi di server HCIS.");
+        }
+        if (body.data.host.toLowerCase() !== approvedHost || body.data.port !== 80) {
+          throw new RegistryParityError(409, "SERVER_TARGET_NOT_APPROVED", `Server config hanya boleh menulis ulang target yang disetujui ${approvedHost}:80 agar device tidak terputus.`);
         }
         return queue(client, {
           deviceId: device.id,
@@ -468,8 +474,8 @@ export async function registerAdmsPhysicalParityRegistryUserRoutes(
           operationKey: "set_web_server",
           mode: body.data.mode,
           actorId: principal.id,
-          wires: [webServerWireCommand({ host: body.data.host, port: body.data.port })],
-          safeMetadata: { host: body.data.host, port: body.data.port, canaryPreservesIngress: body.data.mode === "canary" },
+          wires: [webServerWireCommand({ host: approvedHost, port: 80 })],
+          safeMetadata: { host: approvedHost, port: 80, approvedIngressTarget: true },
         });
       });
       reply.header("Cache-Control", "no-store");

@@ -108,6 +108,9 @@ async function enforceMode(
   mode: "canary" | "execute",
 ) {
   const state = await capabilityState(db, deviceId, capabilityKey);
+  if (state === "canary_pending") {
+    throw new ExtendedParityError(409, "PHYSICAL_CANARY_PENDING", `${capabilityKey} masih memiliki physical canary yang menunggu result.`);
+  }
   if (["unsupported", "blocked"].includes(state)) {
     throw new ExtendedParityError(409, "PHYSICAL_CAPABILITY_BLOCKED", `${capabilityKey} ditandai ${state} pada mesin ini.`);
   }

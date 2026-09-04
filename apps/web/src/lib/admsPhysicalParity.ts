@@ -25,6 +25,10 @@ export interface PhysicalCapabilityMatrix {
     deviceCollectionEnabled: boolean;
     keyringReady: boolean;
   };
+  approvedServerTarget: {
+    host: string;
+    port: number;
+  } | null;
   capabilities: PhysicalCapability[];
   runningOperations: Array<{
     id: string;

@@ -24,7 +24,6 @@ export interface AdmsOperationsSummary {
   rawPayloadExposed: false;
   arbitraryCommandEnabled: false;
   userInfoReadsRetired: true;
-  destructiveExecutionEnabled: false;
   operationalRetention: {
     deletionEnabled: false;
     state: "policy_required";
@@ -98,7 +97,7 @@ export async function getAdmsOperations(deviceId: string) {
 }
 
 export async function listAdmsWorkCodes(deviceId: string) {
-  return readJson<{ deliveryCapability: "not_verified"; note: string; items: AdmsWorkCodeItem[] }>(
+  return readJson<{ deliveryCapability: OperationsCapabilityState; note: string; items: AdmsWorkCodeItem[] }>(
     await fetch(`/api/admin/attendance/adms/devices/${deviceId}/work-codes`, {
       credentials: "include",
       headers: { Accept: "application/json" },
@@ -133,7 +132,7 @@ export async function setAdmsWorkCodeTarget(
 }
 
 export async function listAdmsDeviceMessages(deviceId: string) {
-  return readJson<{ deliveryCapability: "not_verified"; note: string; items: AdmsDeviceMessageItem[] }>(
+  return readJson<{ deliveryCapability: OperationsCapabilityState; note: string; items: AdmsDeviceMessageItem[] }>(
     await fetch(`/api/admin/attendance/adms/devices/${deviceId}/messages`, {
       credentials: "include",
       headers: { Accept: "application/json" },

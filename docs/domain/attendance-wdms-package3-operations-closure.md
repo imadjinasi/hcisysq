@@ -3,6 +3,8 @@
 Status: IMPLEMENTATION — PRODUCTION VERIFICATION PENDING  
 Updated: 2026-09-02
 
+> **Historical cutoff note:** this document records the Package 3 completion boundary as it existed on 2026-09-02. Statements below that call physical Work Code/message delivery, configuration, reboot, firmware, biometric, or destructive operations `not verified`, `blocked`, or “no executable endpoint” describe that historical cutoff. The current ATT-005 physical capability contract, typed controls, and evidence states are maintained in `docs/domain/attendance-wdms-full-physical-parity.md` and its evidence ledger; do not use this historical snapshot as current capability truth.
+
 ## Purpose
 
 Package 3 is the final large ATT-005 repository delivery package. It completes the HCIS-side operations plane that can be implemented without inventing or guessing unsupported ZKTeco wire commands.

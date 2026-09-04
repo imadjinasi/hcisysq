@@ -1,7 +1,7 @@
 # ATT-005 — Full WDMS Physical Parity Closure
 
 Status: IMPLEMENTING  
-Updated: 2026-09-03
+Updated: 2026-09-04
 
 ## Closure rule
 
@@ -15,6 +15,25 @@ Every accepted row must finish in exactly one evidence-backed state:
 
 A successful repository build alone does not produce `implemented_verified` for a physical command.
 
+## Canonical physical capability state
+
+`attendance_adms_physical_capabilities` is the canonical per-device execution-evidence state for hardware operations. Admin read models must project this state instead of maintaining a second hardcoded capability truth.
+
+Runtime states map to operator-facing execution as follows:
+
+| Physical state | Operator-facing state | Device execution |
+| --- | --- | --- |
+| missing / `documented` | `not_verified` | blocked; typed canary may be offered |
+| `canary_pending` | `not_verified` | blocked until terminal result; duplicate canary is rejected |
+| `failed` | `not_verified` | blocked; review evidence before deliberate retry |
+| `verified` | `available` | typed, explicit-target execution may be offered subject to the capability's other gates |
+| `unsupported` | `blocked` | not executable |
+| `blocked` | `blocked` | not executable |
+
+The Wave 3 operations summary and Work Code/message delivery metadata must read this same per-device state. A `verified` state is never global firmware approval: it is evidence for the exact capability/device record and does not bypass biometric, destructive, firmware, authorization, confirmation, or rate-limit gates.
+
+Changing an HCIS desired state or saving a catalog entry does not itself send a device command. Physical delivery remains a separate explicit operator action through typed endpoints.
+
 ## Non-negotiable safety boundaries
 
 - active USERINFO reads stay retired because previous physical evidence showed sensitive side traffic;
@@ -25,6 +44,9 @@ A successful repository build alone does not produce `implemented_verified` for 
 - biometric payloads and attendance photos never enter routine API/UI/log surfaces in plaintext;
 - production biometric collection stays OFF until an explicit biometric canary gate is approved;
 - destructive and firmware operations require typed confirmation, DB rate limiting and per-device canary evidence;
+- destructive, firmware, biometric-maintenance and attendance-photo controls require the operator to type the displayed target-specific confirmation phrase; the browser must not silently manufacture that human confirmation;
+- `canary_pending` is non-reentrant for physical capabilities: a second canary is rejected until the previous operation reaches a terminal result;
+- ADMS server configuration is restricted server-side to the configured approved ingress host/port for both canary and execute; a verified capability does not authorize arbitrary redirects;
 - HCIS raw ADMS history is not deleted by device-maintenance commands.
 
 ## Accepted parity matrix
@@ -52,7 +74,7 @@ A successful repository build alone does not produce `implemented_verified` for 
 | H | active time sync | typed ZKTeco DateTime update | per-device canary |
 | H | duplicate-punch period | typed AlarmReRec + reload | per-device canary |
 | H | NTP server | typed NTPServer + reload | per-device canary; unsupported is acceptable only after evidence |
-| H | ADMS server address/port | typed WebServerIP/WebServerPort; canary must preserve current ingress | per-device canary |
+| H | ADMS server address/port | typed WebServerIP/WebServerPort; server-side approved-ingress allowlist applies to canary and execute | per-device same-target canary |
 | H | PUSH protocol profile | registry desired version + handshake negotiation, no invented device setter | passive handshake evidence |
 | I | attendance-state mapping | raw status/verify/work-code facts only | HCIS-only |
 | J | clear attendance/photo/cache/all | typed break-glass operations; HCIS history preserved | per-device destructive canary |

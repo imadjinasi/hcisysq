@@ -14,11 +14,13 @@ describe("ATT-005 Wave 3 web safety", () => {
 
     expect(page).toContain("Operasional WDMS");
     expect(page).toContain("Capability matrix");
+    expect(page).toContain("physical capability evidence per mesin");
     expect(page).toContain("Import ATTLOG offline");
     expect(page).toContain("Work Code");
     expect(page).toContain("Pesan perangkat");
-    expect(page).toContain("Device command = 0");
+    expect(page).toContain("Device command: 0");
     expect(page).toContain("<PaginationBar");
+    expect(page).not.toContain("HCIS memang tidak mempunyai wire command");
     expect(combined).not.toContain("DATA QUERY USERINFO");
     expect(combined).not.toContain("DATA UPDATE USERINFO");
     expect(combined).not.toContain("DATA DELETE USERINFO");

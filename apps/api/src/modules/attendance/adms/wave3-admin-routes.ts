@@ -8,6 +8,11 @@ import type { ApiConfig } from "../../../config/env.js";
 import { requirePrincipalFromCookie } from "../../auth/authorization.js";
 import { AuthError, AuthService, type AuthPrincipal } from "../../auth/service.js";
 import {
+  deliveryCapabilitySummary,
+  loadPhysicalCapabilitySnapshots,
+  operationsCapabilities,
+} from "./operations-capability-state.js";
+import {
   ADMS_MAX_BODY_BYTES,
   attlogEventIdentity,
   bodySha256,
@@ -200,28 +205,6 @@ function csvCell(value: unknown) {
   return `"${text.replaceAll('"', '""')}"`;
 }
 
-function operationsCapabilities() {
-  return [
-    { key: "read_information", label: "Baca informasi mesin", state: "available", execution: "device", reason: "Command INFO sudah diverifikasi pada firmware produksi." },
-    { key: "transaction_recovery", label: "Recovery transaksi", state: "available", execution: "device", reason: "LOG dan bounded ATTLOG range sudah diverifikasi." },
-    { key: "cancel_pending_commands", label: "Bersihkan command pending", state: "available", execution: "hcis_only", reason: "Hanya command yang belum pernah delivered yang dibatalkan di HCIS." },
-    { key: "transaction_export", label: "Export transaksi CSV", state: "available", execution: "hcis_only", reason: "Export membaca fakta raw yang sudah durable." },
-    { key: "offline_attlog_import", label: "Import ATTLOG offline", state: "available", execution: "hcis_only", reason: "Parser, dedupe, quarantine, provenance, dan projection memakai invariant ingress yang sama." },
-    { key: "work_code_catalog", label: "Katalog Work Code", state: "available", execution: "hcis_only", reason: "Work Code bersifat policy-neutral dan dapat dikelola di HCIS." },
-    { key: "work_code_delivery", label: "Distribusi Work Code ke mesin", state: "not_verified", execution: "blocked", reason: "Wire command belum dibuktikan aman pada firmware produksi." },
-    { key: "message_catalog", label: "Katalog pesan perangkat", state: "available", execution: "hcis_only", reason: "Pesan dapat direncanakan di HCIS tanpa mengirim command." },
-    { key: "message_delivery", label: "Kirim/hapus pesan di mesin", state: "not_verified", execution: "blocked", reason: "Wire command message belum dibuktikan pada perangkat fisik." },
-    { key: "time_sync", label: "Sinkron waktu/timezone", state: "not_verified", execution: "blocked", reason: "Belum ada command fisik terverifikasi." },
-    { key: "duplicate_punch_period", label: "Duplicate-punch period", state: "not_verified", execution: "blocked", reason: "Belum ada config write terverifikasi." },
-    { key: "reboot", label: "Reboot mesin", state: "not_verified", execution: "blocked", reason: "Belum ada reboot wire command terverifikasi." },
-    { key: "firmware_upgrade", label: "Upgrade firmware", state: "not_verified", execution: "blocked", reason: "Butuh package/model preflight dan protocol proof terpisah." },
-    { key: "clear_attendance", label: "Hapus attendance di mesin", state: "blocked", execution: "blocked", reason: "Break-glass destructive command belum diverifikasi dan tidak boleh menghapus raw HCIS." },
-    { key: "clear_photo_cache", label: "Hapus photo/cache di mesin", state: "blocked", execution: "blocked", reason: "Break-glass destructive command belum diverifikasi." },
-    { key: "selected_biometric_delete", label: "Hapus biometrik terpilih di mesin", state: "blocked", execution: "blocked", reason: "Device delete terpisah dari HCIS master dan belum diverifikasi." },
-    { key: "clear_all_data", label: "Hapus seluruh data mesin", state: "blocked", execution: "blocked", reason: "Destructive all-data command tidak tersedia tanpa physical proof dan break-glass review." },
-  ] as const;
-}
-
 export async function registerAdmsWave3AdminRoutes(
   app: FastifyInstance,
   pool: Pool,
@@ -242,10 +225,13 @@ export async function registerAdmsWave3AdminRoutes(
     if (!params.success) return reply.status(400).send({ code: "INVALID_ADMS_DEVICE", message: "ID mesin tidak valid." });
     try {
       const device = await requireDevice(pool, params.data.deviceId);
-      const pending = await pool.query<{ count: number }>(
-        `SELECT count(*)::int AS count FROM attendance_adms_commands WHERE device_id = $1 AND status = 'pending'`,
-        [device.id],
-      );
+      const [pending, physicalCapabilities] = await Promise.all([
+        pool.query<{ count: number }>(
+          `SELECT count(*)::int AS count FROM attendance_adms_commands WHERE device_id = $1 AND status = 'pending'`,
+          [device.id],
+        ),
+        loadPhysicalCapabilitySnapshots(pool, device.id),
+      ]);
       reply.header("Cache-Control", "no-store");
       return reply.send({
         item: {
@@ -254,13 +240,12 @@ export async function registerAdmsWave3AdminRoutes(
           rawPayloadExposed: false,
           arbitraryCommandEnabled: false,
           userInfoReadsRetired: true,
-          destructiveExecutionEnabled: false,
           operationalRetention: {
             deletionEnabled: false,
             state: "policy_required",
             note: "Retention cleanup belum mengeksekusi DELETE sampai kebijakan retention HCIS disetujui.",
           },
-          capabilities: operationsCapabilities(),
+          capabilities: operationsCapabilities(physicalCapabilities),
         },
       });
     } catch (error) {
@@ -275,22 +260,26 @@ export async function registerAdmsWave3AdminRoutes(
     if (!params.success) return reply.status(400).send({ code: "INVALID_ADMS_DEVICE", message: "ID mesin tidak valid." });
     try {
       const device = await requireDevice(pool, params.data.deviceId);
-      const result = await pool.query(
-        `SELECT
-           w.id, w.code, w.name, w.active,
-           t.desired_state AS "desiredState",
-           COALESCE(t.delivery_state, 'not_verified') AS "deliveryState",
-           w.created_at AS "createdAt", w.updated_at AS "updatedAt"
-         FROM attendance_adms_work_codes w
-         LEFT JOIN attendance_adms_work_code_targets t
-           ON t.work_code_id = w.id AND t.device_id = $1
-         ORDER BY w.active DESC, w.code`,
-        [device.id],
-      );
+      const [result, physicalCapabilities] = await Promise.all([
+        pool.query(
+          `SELECT
+             w.id, w.code, w.name, w.active,
+             t.desired_state AS "desiredState",
+             COALESCE(t.delivery_state, 'not_verified') AS "deliveryState",
+             w.created_at AS "createdAt", w.updated_at AS "updatedAt"
+           FROM attendance_adms_work_codes w
+           LEFT JOIN attendance_adms_work_code_targets t
+             ON t.work_code_id = w.id AND t.device_id = $1
+           ORDER BY w.active DESC, w.code`,
+          [device.id],
+        ),
+        loadPhysicalCapabilitySnapshots(pool, device.id),
+      ]);
+      const delivery = deliveryCapabilitySummary(physicalCapabilities, "work_code_delivery", "Work Code");
       reply.header("Cache-Control", "no-store");
       return reply.send({
-        deliveryCapability: "not_verified",
-        note: "Katalog HCIS aktif. Target device adalah desired state saja; tidak ada command Work Code dikirim sampai protocol dibuktikan.",
+        deliveryCapability: delivery.state,
+        note: delivery.note,
         items: result.rows,
       });
     } catch (error) {
@@ -365,26 +354,30 @@ export async function registerAdmsWave3AdminRoutes(
     if (!params.success) return reply.status(400).send({ code: "INVALID_ADMS_DEVICE", message: "ID mesin tidak valid." });
     try {
       const device = await requireDevice(pool, params.data.deviceId);
-      const result = await pool.query(
-        `SELECT
-           m.id, m.audience, m.employee_id AS "employeeId",
-           e.employee_number AS "employeeNumber", e.full_name AS "employeeName",
-           m.title, m.message_text AS "messageText",
-           m.starts_at AS "startsAt", m.ends_at AS "endsAt", m.active,
-           t.desired_state AS "desiredState",
-           COALESCE(t.delivery_state, 'not_verified') AS "deliveryState",
-           m.created_at AS "createdAt", m.updated_at AS "updatedAt"
-         FROM attendance_adms_device_messages m
-         LEFT JOIN employees e ON e.id = m.employee_id
-         LEFT JOIN attendance_adms_device_message_targets t
-           ON t.message_id = m.id AND t.device_id = $1
-         ORDER BY m.active DESC, m.created_at DESC`,
-        [device.id],
-      );
+      const [result, physicalCapabilities] = await Promise.all([
+        pool.query(
+          `SELECT
+             m.id, m.audience, m.employee_id AS "employeeId",
+             e.employee_number AS "employeeNumber", e.full_name AS "employeeName",
+             m.title, m.message_text AS "messageText",
+             m.starts_at AS "startsAt", m.ends_at AS "endsAt", m.active,
+             t.desired_state AS "desiredState",
+             COALESCE(t.delivery_state, 'not_verified') AS "deliveryState",
+             m.created_at AS "createdAt", m.updated_at AS "updatedAt"
+           FROM attendance_adms_device_messages m
+           LEFT JOIN employees e ON e.id = m.employee_id
+           LEFT JOIN attendance_adms_device_message_targets t
+             ON t.message_id = m.id AND t.device_id = $1
+           ORDER BY m.active DESC, m.created_at DESC`,
+          [device.id],
+        ),
+        loadPhysicalCapabilitySnapshots(pool, device.id),
+      ]);
+      const delivery = deliveryCapabilitySummary(physicalCapabilities, "message_delivery", "Pesan perangkat");
       reply.header("Cache-Control", "no-store");
       return reply.send({
-        deliveryCapability: "not_verified",
-        note: "Pesan dapat disiapkan di HCIS, tetapi belum dikirim ke mesin sampai wire protocol message terverifikasi.",
+        deliveryCapability: delivery.state,
+        note: delivery.note,
         items: result.rows,
       });
     } catch (error) {
