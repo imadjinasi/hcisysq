@@ -36,8 +36,6 @@ type PhysicalSummarySpec = {
 };
 
 const BASE_CAPABILITIES: OperationsCapability[] = [
-  { key: "read_information", label: "Baca informasi mesin", state: "available", execution: "device", reason: "Command INFO sudah diverifikasi pada firmware produksi." },
-  { key: "transaction_recovery", label: "Recovery transaksi", state: "available", execution: "device", reason: "LOG dan bounded ATTLOG range sudah diverifikasi." },
   { key: "cancel_pending_commands", label: "Bersihkan command pending", state: "available", execution: "hcis_only", reason: "Hanya command yang belum pernah delivered yang dibatalkan di HCIS." },
   { key: "transaction_export", label: "Export transaksi CSV", state: "available", execution: "hcis_only", reason: "Export membaca fakta raw yang sudah durable." },
   { key: "offline_attlog_import", label: "Import ATTLOG offline", state: "available", execution: "hcis_only", reason: "Parser, dedupe, quarantine, provenance, dan projection memakai invariant ingress yang sama." },
