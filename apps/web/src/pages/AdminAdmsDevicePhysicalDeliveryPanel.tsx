@@ -18,6 +18,7 @@ export function AdminAdmsDevicePhysicalDeliveryPanel() {
   const [matrix, setMatrix] = useState<PhysicalCapabilityMatrix | null>(null);
   const [workCodeId, setWorkCodeId] = useState("");
   const [messageId, setMessageId] = useState("");
+  const [attendancePhotoConfirmation, setAttendancePhotoConfirmation] = useState("");
   const [firmwareVersion, setFirmwareVersion] = useState("");
   const [firmwareFile, setFirmwareFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -63,6 +64,7 @@ export function AdminAdmsDevicePhysicalDeliveryPanel() {
 
   const workMode = modeFor("work_code_delivery");
   const messageMode = modeFor("message_delivery");
+  const attendancePhotoPhrase = serial ? `ENABLE ATTPHOTO CANARY ${serial}` : "";
 
   return (
     <section className="mt-4 rounded-2xl border border-border/70 bg-white p-5 shadow-[var(--shadow-soft)]" id="physical-delivery-controls">
@@ -93,10 +95,11 @@ export function AdminAdmsDevicePhysicalDeliveryPanel() {
         </div>
 
         <div className="rounded-xl border border-border p-4">
-          <div className="text-xs font-bold">Attendance photo ingress</div>
-          <div className="mt-2 font-mono text-[10px] text-muted-foreground">ENABLE ATTPHOTO CANARY {serial}</div>
-          <button type="button" disabled={busy || !serial} onClick={() => void run(() => enableAttendancePhotoCanary(deviceId, `ENABLE ATTPHOTO CANARY ${serial}`), "Attendance-photo canary dibuka untuk target device." )} className="mt-3 h-9 rounded-xl border border-border px-3 text-xs font-semibold disabled:opacity-50">Enable one-device canary</button>
-          <p className="mt-2 text-[11px] text-muted-foreground">Attendance-photo tetap canary-gated. Backend menolak bila restricted-media keyring belum siap; upload disimpan terenkripsi.</p>
+          <div className="flex items-center justify-between gap-2"><div className="text-xs font-bold">Attendance photo ingress</div><span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold">{stateFor("attendance_photo")} · canary only</span></div>
+          <div className="mt-2 font-mono text-[10px] text-muted-foreground">{attendancePhotoPhrase}</div>
+          <input value={attendancePhotoConfirmation} onChange={(event) => setAttendancePhotoConfirmation(event.target.value)} placeholder="Ketik phrase attendance-photo persis" className="mt-2 h-9 w-full rounded-xl border border-border px-3 text-sm" />
+          <button type="button" disabled={busy || !serial || actionLocked("attendance_photo") || attendancePhotoConfirmation !== attendancePhotoPhrase} onClick={() => { const confirmation = attendancePhotoConfirmation; setAttendancePhotoConfirmation(""); void run(() => enableAttendancePhotoCanary(deviceId, confirmation), "Attendance-photo canary dibuka untuk target device."); }} className="mt-3 h-9 rounded-xl border border-border px-3 text-xs font-semibold disabled:opacity-50">Enable one-device canary</button>
+          <p className="mt-2 text-[11px] text-muted-foreground">Attendance-photo tetap canary-only, dikunci saat pending/unsupported/blocked, dan membutuhkan human-entered phrase. Backend juga menolak bila restricted-media keyring belum siap; upload disimpan terenkripsi.</p>
         </div>
 
         <div className="rounded-xl border border-amber-300 bg-amber-50/40 p-4">
