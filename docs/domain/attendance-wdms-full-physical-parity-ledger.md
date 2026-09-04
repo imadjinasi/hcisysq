@@ -12,7 +12,7 @@ Primary canary device: `SPK7245000707`. Second device `SPK7245000738` is not use
 | Heartbeat / getrequest | passive journal evidence | not_verified | repeated primary-device heartbeat evidence |
 | Push protocol metadata | safe `pushver`/`PushVersion` metadata + desired profile | not_verified | actual firmware value or evidence firmware omits it |
 | PUSH attendance-only profile | base `TransData + AttLog`; biometric/photo flags gated | not_verified | verify idle production handshake remains attendance-only |
-| Active time sync | typed canary operation | not_verified | operation/result + before/after device time |
+| Active time sync | typed canary operation | blocked | Production attempt failed transactionally before command delivery because the applied wire-command constraint used PostgreSQL-invalid `{1,500}`; deploy migration 0044, rerun the single-device canary, and capture operation/result plus before/after device time. No physical PASS or return code is recorded. |
 | Duplicate-punch period | typed SET OPTION + reload | not_verified | apply safe value, verify, restore original |
 | Work Code upsert/delete | typed delivery + target state | not_verified | upsert then delete on primary device |
 | Public message | typed SMS delivery/delete | not_verified | visible message + removal evidence |
