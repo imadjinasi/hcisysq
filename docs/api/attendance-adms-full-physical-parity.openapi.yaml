@@ -16,7 +16,12 @@ paths:
       summary: Read per-device physical capability matrix and safe gate state
       parameters: [{ $ref: '#/components/parameters/DeviceId' }]
       responses:
-        '200': { description: Safe capability matrix; no raw wire commands or biometric secrets }
+        '200':
+          description: Safe capability matrix; no raw wire commands or biometric secrets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhysicalCapabilityMatrixResponse'
   /admin/attendance/adms/devices/{deviceId}/wdms-evidence:
     get:
       summary: Read passive registration, heartbeat, PUSH protocol and transfer-profile evidence
@@ -59,9 +64,32 @@ paths:
       responses: { '202': { $ref: '#/components/responses/Queued' } }
   /admin/attendance/adms/devices/{deviceId}/physical/server-config:
     post:
-      summary: Queue typed ADMS server configuration; canary must preserve production ingress
+      summary: Queue typed ADMS server rewrite restricted to the approved ingress target
+      description: >-
+        Both canary and execute are restricted server-side to the configured ADMS_INGRESS_HOST on
+        port 80. A verified capability does not authorize an arbitrary redirect. The request fails
+        closed with 409 when the approved target is not configured, the submitted target differs
+        from the approved target, a canary is already pending, or execute is requested before the
+        per-device capability is verified.
       parameters: [{ $ref: '#/components/parameters/DeviceId' }]
-      responses: { '202': { $ref: '#/components/responses/Queued' } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [host, port, confirmation]
+              properties:
+                host: { type: string, minLength: 1 }
+                port: { type: integer, minimum: 1, maximum: 65535 }
+                mode: { enum: [canary, execute], default: canary }
+                confirmation: { type: string }
+      responses:
+        '202': { $ref: '#/components/responses/Queued' }
+        '409':
+          description: >-
+            Fail-closed conflict such as SERVER_TARGET_NOT_CONFIGURED, SERVER_TARGET_NOT_APPROVED,
+            PHYSICAL_CANARY_PENDING, PHYSICAL_CAPABILITY_NOT_VERIFIED, or another physical-operation conflict.
   /admin/attendance/adms/devices/{deviceId}/physical/reboot:
     post:
       summary: Queue typed reboot
@@ -130,6 +158,75 @@ components:
     cookieAuth: { type: apiKey, in: cookie, name: hcis_session }
   parameters:
     DeviceId: { name: deviceId, in: path, required: true, schema: { type: string, format: uuid } }
+  schemas:
+    PhysicalCapabilityMatrixResponse:
+      type: object
+      required: [item]
+      properties:
+        item:
+          type: object
+          required:
+            - device
+            - arbitraryCommandEnabled
+            - activeUserInfoReadsRetired
+            - biometricGate
+            - approvedServerTarget
+            - capabilities
+            - runningOperations
+          properties:
+            device:
+              type: object
+              required: [id, serialNumber, displayName, model, firmwareVersion]
+              properties:
+                id: { type: string, format: uuid }
+                serialNumber: { type: string }
+                displayName: { type: string }
+                model: { type: [string, 'null'] }
+                firmwareVersion: { type: [string, 'null'] }
+            arbitraryCommandEnabled: { const: false }
+            activeUserInfoReadsRetired: { const: true }
+            biometricGate:
+              type: object
+              required: [globalCollectionEnabled, deviceCollectionEnabled, keyringReady]
+              properties:
+                globalCollectionEnabled: { type: boolean }
+                deviceCollectionEnabled: { type: boolean }
+                keyringReady: { type: boolean }
+            approvedServerTarget:
+              oneOf:
+                - type: object
+                  required: [host, port]
+                  properties:
+                    host: { type: string, minLength: 1 }
+                    port: { const: 80 }
+                - type: 'null'
+              description: >-
+                Server-approved ADMS ingress target. Null means server rewrite must fail closed until
+                ADMS_INGRESS_HOST is configured.
+            capabilities:
+              type: array
+              items:
+                type: object
+                required: [key, label, state, lastResultCode, verifiedAt, safeMetadata]
+                properties:
+                  key: { type: string }
+                  label: { type: string }
+                  state: { enum: [documented, canary_pending, verified, failed, unsupported, blocked] }
+                  lastResultCode: { type: [integer, 'null'] }
+                  verifiedAt: { type: [string, 'null'], format: date-time }
+                  safeMetadata: { type: object, additionalProperties: true }
+            runningOperations:
+              type: array
+              items:
+                type: object
+                required: [id, capabilityKey, operationKey, mode, destructive, createdAt]
+                properties:
+                  id: { type: string, format: uuid }
+                  capabilityKey: { type: string }
+                  operationKey: { type: string }
+                  mode: { enum: [canary, execute] }
+                  destructive: { type: boolean }
+                  createdAt: { type: string, format: date-time }
   requestBodies:
     ConfirmedMode:
       required: true
