@@ -243,11 +243,11 @@ async function enforceMode(
   mode: "canary" | "execute",
 ) {
   const state = await capabilityState(db, deviceId, capabilityKey);
-  if (mode === "execute" && state !== "verified") {
+  if (state === "canary_pending") {
     throw new PhysicalParityError(
       409,
-      "PHYSICAL_CAPABILITY_NOT_VERIFIED",
-      `Capability ${capabilityKey} belum lolos physical canary pada mesin ini.`,
+      "PHYSICAL_CANARY_PENDING",
+      `Capability ${capabilityKey} masih memiliki physical canary yang menunggu result.`,
     );
   }
   if (state === "unsupported" || state === "blocked") {
@@ -255,6 +255,13 @@ async function enforceMode(
       409,
       "PHYSICAL_CAPABILITY_BLOCKED",
       `Capability ${capabilityKey} ditandai ${state} pada mesin ini.`,
+    );
+  }
+  if (mode === "execute" && state !== "verified") {
+    throw new PhysicalParityError(
+      409,
+      "PHYSICAL_CAPABILITY_NOT_VERIFIED",
+      `Capability ${capabilityKey} belum lolos physical canary pada mesin ini.`,
     );
   }
   return state;
@@ -426,6 +433,7 @@ export async function registerAdmsPhysicalParityRoutes(
         deviceCollectionEnabled: device.biometricCollectionEnabled,
         keyringReady: biometricKeyringReadiness(config).ready,
       };
+      const approvedServerHost = config.ADMS_INGRESS_HOST?.trim().toLowerCase() || null;
       reply.header("Cache-Control", "no-store");
       return reply.send({
         item: {
@@ -439,6 +447,7 @@ export async function registerAdmsPhysicalParityRoutes(
           arbitraryCommandEnabled: false,
           activeUserInfoReadsRetired: true,
           biometricGate,
+          approvedServerTarget: approvedServerHost ? { host: approvedServerHost, port: 80 } : null,
           capabilities: PHYSICAL_CAPABILITY_KEYS.map((key) => ({
             key,
             label: capabilityLabel(key),
