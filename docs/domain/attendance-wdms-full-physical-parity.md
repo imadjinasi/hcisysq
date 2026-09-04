@@ -1,7 +1,7 @@
 # ATT-005 — Full WDMS Physical Parity Closure
 
 Status: IMPLEMENTING  
-Updated: 2026-09-03
+Updated: 2026-09-04
 
 ## Closure rule
 
@@ -14,6 +14,25 @@ Every accepted row must finish in exactly one evidence-backed state:
 - `excluded_by_product_contract` — the row is outside HCIS scope by the accepted parity contract, not an unfinished feature.
 
 A successful repository build alone does not produce `implemented_verified` for a physical command.
+
+## Canonical physical capability state
+
+`attendance_adms_physical_capabilities` is the canonical per-device execution-evidence state for hardware operations. Admin read models must project this state instead of maintaining a second hardcoded capability truth.
+
+Runtime states map to operator-facing execution as follows:
+
+| Physical state | Operator-facing state | Device execution |
+| --- | --- | --- |
+| missing / `documented` | `not_verified` | blocked; typed canary may be offered |
+| `canary_pending` | `not_verified` | blocked until terminal result |
+| `failed` | `not_verified` | blocked; review evidence before deliberate retry |
+| `verified` | `available` | typed, explicit-target execution may be offered subject to the capability's other gates |
+| `unsupported` | `blocked` | not executable |
+| `blocked` | `blocked` | not executable |
+
+The Wave 3 operations summary and Work Code/message delivery metadata must read this same per-device state. A `verified` state is never global firmware approval: it is evidence for the exact capability/device record and does not bypass biometric, destructive, firmware, authorization, confirmation, or rate-limit gates.
+
+Changing an HCIS desired state or saving a catalog entry does not itself send a device command. Physical delivery remains a separate explicit operator action through typed endpoints.
 
 ## Non-negotiable safety boundaries
 
