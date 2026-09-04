@@ -90,14 +90,16 @@ describe("ATT-005 Wave 3 operations routes", () => {
         rawPayloadExposed: false,
         arbitraryCommandEnabled: false,
         userInfoReadsRetired: true,
-        destructiveExecutionEnabled: false,
         pendingCommandCount: 0,
         operationalRetention: { deletionEnabled: false, state: "policy_required" },
       },
     });
+    expect(body.item).not.toHaveProperty("destructiveExecutionEnabled");
     const capabilities = body.item.capabilities as Array<{ key: string; state: string; execution: string }>;
     expect(capabilities.find((item) => item.key === "transaction_export")).toMatchObject({ state: "available", execution: "hcis_only" });
     expect(capabilities.find((item) => item.key === "offline_attlog_import")).toMatchObject({ state: "available", execution: "hcis_only" });
+    expect(capabilities.find((item) => item.key === "read_information")).toBeUndefined();
+    expect(capabilities.find((item) => item.key === "transaction_recovery")).toBeUndefined();
     expect(capabilities.find((item) => item.key === "reboot")).toMatchObject({ state: "not_verified", execution: "blocked" });
     expect(capabilities.find((item) => item.key === "firmware_upgrade")).toMatchObject({ state: "not_verified", execution: "blocked" });
     expect(capabilities.find((item) => item.key === "clear_all_data")).toMatchObject({ state: "not_verified", execution: "blocked" });
