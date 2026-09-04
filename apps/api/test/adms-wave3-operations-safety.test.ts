@@ -7,20 +7,25 @@ async function source(path: string) {
 }
 
 describe("ATT-005 Wave 3 operations safety", () => {
-  it("keeps unverified hardware operations capability-gated instead of inventing wire commands", async () => {
+  it("keeps physical execution truth in the canonical capability projection", async () => {
     const wave3 = await source("../src/modules/attendance/adms/wave3-admin-routes.ts");
+    const capabilities = await source("../src/modules/attendance/adms/operations-capability-state.ts");
     const protocol = await source("../src/modules/attendance/adms/protocol.ts");
     const wave2Protocol = await source("../src/modules/attendance/adms/wave2-protocol.ts");
     const combinedWire = `${protocol}\n${wave2Protocol}`;
 
-    expect(wave3).toContain('destructiveExecutionEnabled: false');
     expect(wave3).toContain('arbitraryCommandEnabled: false');
     expect(wave3).toContain('userInfoReadsRetired: true');
     expect(wave3).toContain('deviceCommandsRequested: 0');
-    expect(wave3).toContain('work_code_delivery');
-    expect(wave3).toContain('message_delivery');
-    expect(wave3).toContain('firmware_upgrade');
-    expect(wave3).toContain('clear_all_data');
+    expect(wave3).not.toContain('destructiveExecutionEnabled:');
+
+    expect(capabilities).toContain('physicalKey: "work_code_delivery"');
+    expect(capabilities).toContain('physicalKey: "message_delivery"');
+    expect(capabilities).toContain('physicalKey: "firmware_upgrade"');
+    expect(capabilities).toContain('physicalKey: "clear_all_data"');
+    expect(capabilities).not.toContain('key: "read_information"');
+    expect(capabilities).not.toContain('key: "transaction_recovery"');
+
     expect(wave3).not.toContain("DATA QUERY USERINFO");
     expect(wave3).not.toContain("DATA UPDATE USERINFO");
     expect(wave3).not.toMatch(/wire_command\s*=|INSERT INTO attendance_adms_commands/);
