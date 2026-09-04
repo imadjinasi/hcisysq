@@ -24,7 +24,7 @@ Runtime states map to operator-facing execution as follows:
 | Physical state | Operator-facing state | Device execution |
 | --- | --- | --- |
 | missing / `documented` | `not_verified` | blocked; typed canary may be offered |
-| `canary_pending` | `not_verified` | blocked until terminal result |
+| `canary_pending` | `not_verified` | blocked until terminal result; duplicate canary is rejected |
 | `failed` | `not_verified` | blocked; review evidence before deliberate retry |
 | `verified` | `available` | typed, explicit-target execution may be offered subject to the capability's other gates |
 | `unsupported` | `blocked` | not executable |
@@ -44,6 +44,9 @@ Changing an HCIS desired state or saving a catalog entry does not itself send a 
 - biometric payloads and attendance photos never enter routine API/UI/log surfaces in plaintext;
 - production biometric collection stays OFF until an explicit biometric canary gate is approved;
 - destructive and firmware operations require typed confirmation, DB rate limiting and per-device canary evidence;
+- destructive, firmware, biometric-maintenance and attendance-photo controls require the operator to type the displayed target-specific confirmation phrase; the browser must not silently manufacture that human confirmation;
+- `canary_pending` is non-reentrant for physical capabilities: a second canary is rejected until the previous operation reaches a terminal result;
+- ADMS server configuration is restricted server-side to the configured approved ingress host/port for both canary and execute; a verified capability does not authorize arbitrary redirects;
 - HCIS raw ADMS history is not deleted by device-maintenance commands.
 
 ## Accepted parity matrix
@@ -71,7 +74,7 @@ Changing an HCIS desired state or saving a catalog entry does not itself send a 
 | H | active time sync | typed ZKTeco DateTime update | per-device canary |
 | H | duplicate-punch period | typed AlarmReRec + reload | per-device canary |
 | H | NTP server | typed NTPServer + reload | per-device canary; unsupported is acceptable only after evidence |
-| H | ADMS server address/port | typed WebServerIP/WebServerPort; canary must preserve current ingress | per-device canary |
+| H | ADMS server address/port | typed WebServerIP/WebServerPort; server-side approved-ingress allowlist applies to canary and execute | per-device same-target canary |
 | H | PUSH protocol profile | registry desired version + handshake negotiation, no invented device setter | passive handshake evidence |
 | I | attendance-state mapping | raw status/verify/work-code facts only | HCIS-only |
 | J | clear attendance/photo/cache/all | typed break-glass operations; HCIS history preserved | per-device destructive canary |
